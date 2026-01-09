@@ -1,0 +1,93 @@
+import { NextRequest, NextResponse } from "next/server";
+import { buildAnalysis } from "@/lib/graph/graph-builder";
+import type { AnalyzeRequest, AnalyzeResponse } from "@/types/api";
+import type { HybridAnalysisParams } from "@/types/nlp";
+import { DEFAULT_HYBRID_PARAMS } from "@/lib/analysis/hybrid-vectors";
+
+export async function POST(request: NextRequest) {
+  try {
+    const body: AnalyzeRequest = await request.json();
+    const { 
+      blocks, 
+      kConcepts, 
+      similarityThreshold, 
+      semanticWeight, 
+      frequencyWeight,
+      clusteringMode,
+      autoK,
+      kMin,
+      kMax,
+      softMembership,
+      softTopN
+    } = body;
+
+    if (!blocks || !Array.isArray(blocks)) {
+      return NextResponse.json({ error: "Invalid request: blocks array is required" }, { status: 400 });
+    }
+
+    if (typeof kConcepts !== "number" || kConcepts < 1) {
+      return NextResponse.json({ error: "Invalid request: kConcepts must be a positive number" }, { status: 400 });
+    }
+
+    if (typeof similarityThreshold !== "number" || similarityThreshold < 0 || similarityThreshold > 1) {
+      return NextResponse.json(
+        { error: "Invalid request: similarityThreshold must be between 0 and 1" },
+        { status: 400 }
+      );
+    }
+
+    // Validate hybrid weights if provided
+    const hybridParams: HybridAnalysisParams = {
+      semanticWeight: DEFAULT_HYBRID_PARAMS.semanticWeight,
+      frequencyWeight: DEFAULT_HYBRID_PARAMS.frequencyWeight,
+    };
+
+    if (semanticWeight !== undefined) {
+      if (typeof semanticWeight !== "number" || semanticWeight < 0 || semanticWeight > 1) {
+        return NextResponse.json(
+          { error: "Invalid request: semanticWeight must be between 0 and 1" },
+          { status: 400 }
+        );
+      }
+      hybridParams.semanticWeight = semanticWeight;
+    }
+
+    if (frequencyWeight !== undefined) {
+      if (typeof frequencyWeight !== "number" || frequencyWeight < 0 || frequencyWeight > 1) {
+        return NextResponse.json(
+          { error: "Invalid request: frequencyWeight must be between 0 and 1" },
+          { status: 400 }
+        );
+      }
+      hybridParams.frequencyWeight = frequencyWeight;
+    }
+
+    // buildAnalysis is now async
+    const analysis = await buildAnalysis(
+      blocks, 
+      kConcepts, 
+      similarityThreshold, 
+      hybridParams,
+      {
+        clusteringMode,
+        autoK,
+        kMin,
+        kMax,
+        softMembership,
+        softTopN
+      }
+    );
+
+    const response: AnalyzeResponse = {
+      analysis,
+    };
+
+    return NextResponse.json(response);
+  } catch (error) {
+    console.error("Error in analyze API:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Internal server error" },
+      { status: 500 }
+    );
+  }
+}

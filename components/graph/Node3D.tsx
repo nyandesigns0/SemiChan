@@ -1,0 +1,134 @@
+"use client";
+
+import { useRef, useState, useMemo } from "react";
+import { useFrame } from "@react-three/fiber";
+import { Text, Billboard } from "@react-three/drei";
+import * as THREE from "three";
+import type { GraphNode, NodeType } from "@/types/graph";
+
+interface Node3DProps {
+  node: GraphNode;
+  isSelected: boolean;
+  onClick: (node: GraphNode) => void;
+  onDoubleClick: (node: GraphNode) => void;
+}
+
+// Color scheme for node types
+type NodeColorScheme = {
+  base: string;
+  hover: string;
+  selected: string;
+};
+
+const defaultNodeColors: NodeColorScheme = {
+  base: "#94a3b8",
+  hover: "#cbd5f5",
+  selected: "#0f172a",
+};
+
+const nodeColors: Record<NodeType, NodeColorScheme> = {
+  juror: {
+    base: "#3b82f6", // blue-500
+    hover: "#60a5fa", // blue-400
+    selected: "#1d4ed8", // blue-700
+  },
+  concept: {
+    base: "#8b5cf6", // violet-500
+    hover: "#a78bfa", // violet-400
+    selected: "#6d28d9", // violet-700
+  },
+};
+
+export function Node3D({ node, isSelected, onClick, onDoubleClick }: Node3DProps) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const [hovered, setHovered] = useState(false);
+  
+  // Get position from node (3D coordinates from PCA)
+  const position: [number, number, number] = useMemo(() => [
+    node.x ?? 0,
+    node.y ?? 0,
+    node.z ?? 0,
+  ], [node.x, node.y, node.z]);
+  
+  // Calculate size and color
+  const colors = nodeColors[node.type as NodeType] ?? defaultNodeColors;
+  const color = isSelected ? colors.selected : hovered ? colors.hover : colors.base;
+  const radius = (node.size / 16) * 0.3; // Scale down for 3D space
+  
+  // Animate on hover/select
+  useFrame(() => {
+    if (!meshRef.current) return;
+    const targetScale = hovered || isSelected ? 1.2 : 1;
+    meshRef.current.scale.lerp(
+      new THREE.Vector3(targetScale, targetScale, targetScale),
+      0.1
+    );
+  });
+  
+  // Handle click with debounce for double-click detection
+  const clickTimeout = useRef<NodeJS.Timeout | null>(null);
+  
+  const handleClick = () => {
+    if (clickTimeout.current) {
+      // Double-click detected
+      clearTimeout(clickTimeout.current);
+      clickTimeout.current = null;
+      onDoubleClick(node);
+    } else {
+      // Single click - wait to see if it's a double-click
+      clickTimeout.current = setTimeout(() => {
+        onClick(node);
+        clickTimeout.current = null;
+      }, 200);
+    }
+  };
+  
+  return (
+    <group position={position}>
+      {/* Node sphere */}
+      <mesh
+        ref={meshRef}
+        onClick={handleClick}
+        onPointerOver={() => setHovered(true)}
+        onPointerOut={() => setHovered(false)}
+      >
+        <sphereGeometry args={[radius, 32, 32]} />
+        <meshStandardMaterial
+          color={color}
+          metalness={0.3}
+          roughness={0.4}
+          emissive={isSelected ? color : "#000000"}
+          emissiveIntensity={isSelected ? 0.3 : 0}
+        />
+      </mesh>
+      
+      {/* Node label - always faces camera */}
+      <Billboard
+        follow={true}
+        lockX={false}
+        lockY={false}
+        lockZ={false}
+      >
+        <Text
+          position={[0, radius + 0.3, 0]}
+          fontSize={0.25}
+          color={isSelected || hovered ? "#1e293b" : "#64748b"}
+          anchorX="center"
+          anchorY="bottom"
+          maxWidth={3}
+          textAlign="center"
+        >
+          {node.label}
+        </Text>
+      </Billboard>
+      
+      {/* Selection ring */}
+      {isSelected && (
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[radius + 0.1, radius + 0.15, 32]} />
+          <meshBasicMaterial color="#fbbf24" side={THREE.DoubleSide} />
+        </mesh>
+      )}
+    </group>
+  );
+}
