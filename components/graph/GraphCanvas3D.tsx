@@ -34,6 +34,13 @@ interface GraphCanvas3DProps {
   axisLabels?: AnalysisResult["axisLabels"];
   enableAxisLabelAI?: boolean;
   onToggleAxisLabelAI?: (enabled: boolean) => void;
+  analysis?: AnalysisResult | null;
+  filteredNodesCount?: number;
+  filteredLinksCount?: number;
+  checkpointIndex?: number;
+  onCheckpointIndexChange?: (index: number) => void;
+  showAxes?: boolean;
+  onToggleAxes?: (show: boolean) => void;
 }
 
 // Camera controller component to handle reset
@@ -294,20 +301,20 @@ export function GraphCanvas3D({
   axisLabels,
   enableAxisLabelAI = false,
   onToggleAxisLabelAI,
+  analysis = null,
+  filteredNodesCount = 0,
+  filteredLinksCount = 0,
+  checkpointIndex: checkpointIndexProp = -1,
+  onCheckpointIndexChange,
+  showAxes: showAxesProp = false,
+  onToggleAxes,
 }: GraphCanvas3DProps) {
   const controlsRef = useRef<OrbitControlsType>(null);
   const [showGrid, setShowGrid] = useState(true);
-  const [showAxes, setShowAxes] = useState(false);
-  const [checkpointIndex, setCheckpointIndex] = useState(-1);
   
-  // Reset checkpoint index when new analysis arrives
-  useEffect(() => {
-    if (checkpoints.length > 0) {
-      setCheckpointIndex(checkpoints.length - 1);
-    } else {
-      setCheckpointIndex(-1);
-    }
-  }, [checkpoints]);
+  // Use props if provided, otherwise fall back to internal state (for backwards compatibility)
+  const checkpointIndex = checkpointIndexProp;
+  const showAxes = showAxesProp;
 
   const activeNodes = useMemo(() => {
     if (checkpointIndex >= 0 && checkpoints[checkpointIndex]) {
@@ -370,37 +377,12 @@ export function GraphCanvas3D({
               </Suspense>
             </Canvas>
             
-            {/* Pipeline Controls Overlay */}
-            {checkpoints.length > 0 && (
-              <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-full border bg-white/90 px-4 py-2 shadow-lg backdrop-blur-sm">
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Pipeline Trace</span>
-                  <div className="flex items-center gap-1">
-                    {checkpoints.map((cp, idx) => (
-                      <button
-                        key={cp.id}
-                        onClick={() => setCheckpointIndex(idx)}
-                        className={cn(
-                          "h-2 w-8 rounded-full transition-all",
-                          idx === checkpointIndex ? "bg-indigo-600" : "bg-slate-200 hover:bg-slate-300"
-                        )}
-                        title={cp.label}
-                      />
-                    ))}
-                  </div>
-                  <span className="min-w-[100px] text-[10px] font-bold text-slate-700">
-                    {checkpoints[checkpointIndex]?.label ?? "Final Result"}
-                  </span>
-                </div>
-              </div>
-            )}
-            
             {/* Controls overlay */}
             <Graph3DControls
               showGrid={showGrid}
               onToggleGrid={() => setShowGrid(!showGrid)}
               showAxes={showAxes}
-              onToggleAxes={() => setShowAxes(!showAxes)}
+              onToggleAxes={onToggleAxes ? () => onToggleAxes(!showAxes) : () => {}}
               onResetCamera={handleResetCamera}
               axisLabels={axisLabels}
               enableAxisLabelAI={enableAxisLabelAI}
@@ -419,7 +401,11 @@ export function GraphCanvas3D({
           </>
         )}
       </div>
-      <GraphLegend />
+      <GraphLegend 
+        analysis={analysis}
+        filteredNodesCount={filteredNodesCount}
+        filteredLinksCount={filteredLinksCount}
+      />
     </>
   );
 }

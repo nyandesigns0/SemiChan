@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Download, Network, Trash2, MessageSquare, Lightbulb, Link as LinkIcon, Hash, Layers, Users } from "lucide-react";
+import { Download, Network, Trash2, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { IngestPanel } from "@/components/ingest/IngestPanel";
 import { AnalysisControlsAccordion } from "@/components/controls/AnalysisControlsAccordion";
@@ -102,6 +102,12 @@ export default function HomePage() {
 
   // AI Axis Labels toggle
   const [enableAxisLabelAI, setEnableAxisLabelAI] = useState(false);
+  
+  // Pipeline checkpoint state
+  const [checkpointIndex, setCheckpointIndex] = useState(-1);
+  
+  // Graph view toggles
+  const [showAxes, setShowAxes] = useState(false);
 
   // Console logging state
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -655,6 +661,48 @@ export default function HomePage() {
                 <p className="text-xs text-slate-500 font-medium">Explainable juror-concept mapping</p>
               </div>
             </div>
+            
+            {/* Middle: Pipeline Controls and Graph Build Toggle */}
+            <div className="flex items-center gap-4">
+              {/* Pipeline Controls */}
+              {analysis?.checkpoints && analysis.checkpoints.length > 0 && (
+                <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-4 py-1.5 shadow-sm">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Pipeline Trace</span>
+                  <div className="flex items-center gap-1">
+                    {analysis.checkpoints.map((cp, idx) => (
+                      <button
+                        key={cp.id}
+                        onClick={() => setCheckpointIndex(idx)}
+                        className={cn(
+                          "h-2 w-8 rounded-full transition-all",
+                          idx === checkpointIndex ? "bg-indigo-600" : "bg-slate-200 hover:bg-slate-300"
+                        )}
+                        title={cp.label}
+                      />
+                    ))}
+                  </div>
+                  <span className="min-w-[100px] text-[10px] font-bold text-slate-700">
+                    {analysis.checkpoints[checkpointIndex]?.label ?? "Final Result"}
+                  </span>
+                </div>
+              )}
+              
+              {/* Graph Build Toggle (Axes) */}
+              <Button
+                variant={showAxes ? "default" : "outline"}
+                className={cn(
+                  "h-9 rounded-xl px-4 font-semibold shadow-sm transition-all active:scale-95 text-xs",
+                  showAxes 
+                    ? "bg-slate-800 hover:bg-slate-700 text-white" 
+                    : "border-slate-200 hover:bg-slate-50 hover:shadow-md"
+                )}
+                onClick={() => setShowAxes(!showAxes)}
+              >
+                <Layers className="mr-2 h-4 w-4" />
+                {showAxes ? "Hide Axes" : "Show Axes"}
+              </Button>
+            </div>
+            
             <div className="flex items-center gap-3">
               <Button
                 variant="outline"
@@ -694,38 +742,6 @@ export default function HomePage() {
                 !leftSidebarOpen && !rightSidebarOpen ? "rounded-none" : "rounded-t-[2rem]"
               )}
             >
-              <CardHeader className="flex-shrink-0 border-b border-slate-50 px-8 py-5">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg font-bold text-slate-800">Graph Workspace</CardTitle>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {analysis && (
-                      <>
-                        <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
-                          <Users className="h-3.5 w-3.5" />
-                          <span>{analysis.stats.totalJurors} jurors</span>
-                        </Badge>
-                        <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
-                          <MessageSquare className="h-3.5 w-3.5" />
-                          <span>{analysis.stats.totalSentences} sentences processed</span>
-                        </Badge>
-                        <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
-                          <Lightbulb className="h-3.5 w-3.5" />
-                          <span>{analysis.stats.totalConcepts} concepts found</span>
-                        </Badge>
-                        <div className="mx-1 h-6 w-px bg-slate-200" />
-                      </>
-                    )}
-                    <Badge variant="secondary" className="flex items-center gap-1.5 border border-indigo-100 bg-indigo-50 px-3 py-1 text-indigo-700">
-                      <Hash className="h-3.5 w-3.5" />
-                      <span>{filteredNodes.length} Nodes</span>
-                    </Badge>
-                    <Badge variant="secondary" className="flex items-center gap-1.5 border border-emerald-100 bg-emerald-50 px-3 py-1 text-emerald-700">
-                      <LinkIcon className="h-3.5 w-3.5" />
-                      <span>{filteredLinks.length} Edges ({analysis?.links.length} total)</span>
-                    </Badge>
-                  </div>
-                </div>
-              </CardHeader>
               <CardContent className="flex flex-1 flex-col overflow-hidden p-0">
                 <GraphCanvas3D
                   nodes={filteredNodes}
@@ -744,6 +760,13 @@ export default function HomePage() {
                   axisLabels={displayAxisLabels}
                   enableAxisLabelAI={enableAxisLabelAI}
                   onToggleAxisLabelAI={setEnableAxisLabelAI}
+                  analysis={analysis}
+                  filteredNodesCount={filteredNodes.length}
+                  filteredLinksCount={filteredLinks.length}
+                  checkpointIndex={checkpointIndex}
+                  onCheckpointIndexChange={setCheckpointIndex}
+                  showAxes={showAxes}
+                  onToggleAxes={setShowAxes}
                 />
               </CardContent>
             </Card>
