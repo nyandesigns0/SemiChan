@@ -113,6 +113,7 @@ export default function HomePage() {
   
   // Graph view toggles
   const [showAxes, setShowAxes] = useState(false);
+  const [showGraph, setShowGraph] = useState(true);
 
   // Console logging state
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -752,6 +753,8 @@ export default function HomePage() {
                   onCheckpointIndexChange={setCheckpointIndex}
                   showAxes={showAxes}
                   onToggleAxes={setShowAxes}
+                  showGraph={showGraph}
+                  onToggleGraph={setShowGraph}
                   numDimensions={numDimensions}
                 />
               </div>
@@ -775,18 +778,6 @@ export default function HomePage() {
             logs={logs}
           />
 
-          <div className="flex-shrink-0 flex items-center justify-between bg-white border-t border-slate-100 px-8 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-            <div className="flex items-center gap-4">
-              <span>Next.js Engine</span>
-              <span className="h-1 w-1 rounded-full bg-slate-300"></span>
-              <span>Explainable NLP Graph v1.0</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <span>Double-click to pin</span>
-              <span className="h-1 w-1 rounded-full bg-slate-300"></span>
-              <span>Export for audit</span>
-            </div>
-          </div>
         </div>
       </main>
 

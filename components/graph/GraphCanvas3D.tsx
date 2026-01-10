@@ -42,6 +42,8 @@ interface GraphCanvas3DProps {
   onCheckpointIndexChange?: (index: number) => void;
   showAxes?: boolean;
   onToggleAxes?: (show: boolean) => void;
+  showGraph?: boolean;
+  onToggleGraph?: (show: boolean) => void;
   numDimensions?: number;
 }
 
@@ -286,6 +288,7 @@ function SceneContent({
   axisLabels,
   enableAxisLabelAI,
   numDimensions = 3,
+  showGraph = true,
 }: {
   nodes: GraphNode[];
   links: GraphLink[];
@@ -303,6 +306,7 @@ function SceneContent({
   axisLabels?: AnalysisResult["axisLabels"];
   enableAxisLabelAI?: boolean;
   numDimensions?: number;
+  showGraph?: boolean;
 }) {
   // Create node lookup map
   const nodeMap = useMemo(() => {
@@ -345,7 +349,7 @@ function SceneContent({
       {/* Grid */}
       {showGrid && (
         <Grid
-          position={[0, -5, 0]}
+          position={[0, 0, 0]}
           args={[30, 30]}
           cellSize={1}
           cellThickness={0.5}
@@ -370,7 +374,7 @@ function SceneContent({
       />
       
       {/* Links */}
-      {links.map((link) => (
+      {showGraph && links.map((link) => (
         <Link3D
           key={link.id}
           link={link}
@@ -382,7 +386,7 @@ function SceneContent({
       ))}
       
       {/* Nodes */}
-      {nodes.map((node) => (
+      {showGraph && nodes.map((node) => (
         <Node3D
           key={node.id}
           node={node}
@@ -421,6 +425,8 @@ export function GraphCanvas3D({
   onCheckpointIndexChange,
   showAxes: showAxesProp = false,
   onToggleAxes,
+  showGraph: showGraphProp = true,
+  onToggleGraph,
   numDimensions = 3,
 }: GraphCanvas3DProps) {
   const controlsRef = useRef<OrbitControlsType>(null);
@@ -429,6 +435,7 @@ export function GraphCanvas3D({
   // Use props if provided, otherwise fall back to internal state (for backwards compatibility)
   const checkpointIndex = checkpointIndexProp;
   const showAxes = showAxesProp;
+  const showGraph = showGraphProp;
 
   const activeNodes = useMemo(() => {
     if (checkpointIndex >= 0 && checkpoints[checkpointIndex]) {
@@ -488,6 +495,7 @@ export function GraphCanvas3D({
                   axisLabels={axisLabels}
                   enableAxisLabelAI={enableAxisLabelAI}
                   numDimensions={numDimensions}
+                  showGraph={showGraph}
                 />
               </Suspense>
             </Canvas>
@@ -498,6 +506,8 @@ export function GraphCanvas3D({
               onToggleGrid={() => setShowGrid(!showGrid)}
               showAxes={showAxes}
               onToggleAxes={onToggleAxes ? () => onToggleAxes(!showAxes) : () => {}}
+              showGraph={showGraph}
+              onToggleGraph={onToggleGraph ? () => onToggleGraph(!showGraph) : () => {}}
               onResetCamera={handleResetCamera}
               axisLabels={axisLabels}
               enableAxisLabelAI={enableAxisLabelAI}

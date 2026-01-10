@@ -1,6 +1,6 @@
 "use client";
 
-import { RotateCcw, Grid3X3, Box, Layers } from "lucide-react";
+import { RotateCcw, Grid3X3, Box, Layers, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -14,6 +14,8 @@ interface Graph3DControlsProps {
   onToggleGrid: () => void;
   showAxes: boolean;
   onToggleAxes: () => void;
+  showGraph: boolean;
+  onToggleGraph: () => void;
   onResetCamera: () => void;
   axisLabels?: AnalysisResult["axisLabels"];
   enableAxisLabelAI?: boolean;
@@ -26,6 +28,8 @@ export function Graph3DControls({
   onToggleGrid,
   showAxes,
   onToggleAxes,
+  showGraph,
+  onToggleGraph,
   onResetCamera,
   axisLabels,
   enableAxisLabelAI = false,
@@ -47,14 +51,18 @@ export function Graph3DControls({
         </Button>
         
         <Button
-          variant={showGrid ? "default" : "outline"}
+          variant={showGraph ? "default" : "outline"}
           className={`h-9 w-9 rounded-lg p-0 shadow-md backdrop-blur-sm ${
-            showGrid ? "bg-slate-800 hover:bg-slate-700" : "bg-white/90 hover:bg-white"
+            showGraph ? "bg-slate-800 hover:bg-slate-700" : "bg-white/90 hover:bg-white"
           }`}
-          onClick={onToggleGrid}
-          title="Toggle grid"
+          onClick={onToggleGraph}
+          title={showGraph ? "Hide Graph Content" : "Show Graph Content"}
         >
-          <Grid3X3 className={`h-4 w-4 ${showGrid ? "text-white" : "text-slate-700"}`} />
+          {showGraph ? (
+            <Eye className="h-4 w-4 text-white" />
+          ) : (
+            <EyeOff className="h-4 w-4 text-slate-700" />
+          )}
         </Button>
 
         <Button
@@ -66,6 +74,17 @@ export function Graph3DControls({
           title="Toggle axes"
         >
           <Box className={`h-4 w-4 ${showAxes ? "text-white" : "text-slate-700"}`} />
+        </Button>
+
+        <Button
+          variant={showGrid ? "default" : "outline"}
+          className={`h-9 w-9 rounded-lg p-0 shadow-md backdrop-blur-sm ${
+            showGrid ? "bg-slate-800 hover:bg-slate-700" : "bg-white/90 hover:bg-white"
+          }`}
+          onClick={onToggleGrid}
+          title="Toggle grid"
+        >
+          <Grid3X3 className={`h-4 w-4 ${showGrid ? "text-white" : "text-slate-700"}`} />
         </Button>
       </div>
 
