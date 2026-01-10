@@ -74,7 +74,7 @@ export function CollapsibleSidebar({
       {/* Toggle button - always visible as vertical bar */}
       <button
         ref={buttonRef}
-        className="fixed top-[48px] z-[60] h-16 w-1 bg-slate-900 border-none text-white transition-all duration-300 hover:w-1.5 hover:bg-slate-700 active:bg-slate-800"
+        className="fixed top-[48px] z-[60] h-8 w-1 min-h-10 min-w-4 bg-slate-900 border-none text-white transition-all duration-300 hover:h-12 hover:w-8 hover:bg-slate-700 active:bg-slate-800 flex items-center justify-center group"
         style={
           isMounted
             ? isLeft
@@ -90,19 +90,17 @@ export function CollapsibleSidebar({
         aria-label={isOpen ? "Close sidebar" : "Open sidebar"}
         title={isOpen ? "Close sidebar" : "Open sidebar"}
       >
-        <div className="absolute inset-y-0 flex items-center justify-center">
-          {isLeft ? (
-            isOpen ? (
-              <ChevronLeft className="h-4 w-4 text-white opacity-60" />
-            ) : (
-              <ChevronRight className="h-4 w-4 text-white opacity-60" />
-            )
-          ) : isOpen ? (
-            <ChevronRight className="h-4 w-4 text-white opacity-60" />
+        {isLeft ? (
+          isOpen ? (
+            <ChevronLeft className="h-4 w-4 text-white opacity-0 group-hover:opacity-60 transition-opacity duration-300" />
           ) : (
-            <ChevronLeft className="h-4 w-4 text-white opacity-60" />
-          )}
-        </div>
+            <ChevronRight className="h-4 w-4 text-white opacity-0 group-hover:opacity-60 transition-opacity duration-300" />
+          )
+        ) : isOpen ? (
+          <ChevronRight className="h-4 w-4 text-white opacity-0 group-hover:opacity-60 transition-opacity duration-300" />
+        ) : (
+          <ChevronLeft className="h-4 w-4 text-white opacity-0 group-hover:opacity-60 transition-opacity duration-300" />
+        )}
       </button>
 
       {/* Sidebar */}

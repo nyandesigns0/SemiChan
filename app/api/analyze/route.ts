@@ -6,7 +6,18 @@ import { DEFAULT_HYBRID_PARAMS } from "@/lib/analysis/hybrid-vectors";
 
 export async function POST(request: NextRequest) {
   try {
-    const body: AnalyzeRequest = await request.json();
+    const rawBody = await request.text();
+    if (!rawBody.trim()) {
+      return NextResponse.json({ error: "Empty request body" }, { status: 400 });
+    }
+
+    let body: AnalyzeRequest;
+    try {
+      body = JSON.parse(rawBody);
+    } catch (error) {
+      return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
+    }
+
     const { 
       blocks, 
       kConcepts, 

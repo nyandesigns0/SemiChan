@@ -123,7 +123,7 @@ export function NodeInspector({ node, analysis, jurorBlocks }: NodeInspectorProp
               </div>
               <div className="text-right">
                 <h3 className="text-base font-black text-red-900 uppercase tracking-tight">Semantic Fingerprint</h3>
-                <p className="text-xs text-red-600 font-bold opacity-70">High-dimensional centroids</p>
+                <p className="text-xs text-red-600 font-bold opacity-70">Top terms from high-dimensional vector</p>
               </div>
             </div>
             <div className="flex flex-wrap gap-3 p-1">
@@ -196,8 +196,8 @@ export function NodeInspector({ node, analysis, jurorBlocks }: NodeInspectorProp
 
         <div className="flex-1 min-w-0 rounded-2xl border-2 border-purple-100 bg-purple-50/20 p-5 shadow-md">
           <div className="mb-4">
-            <h3 className="text-lg font-black text-purple-900 uppercase tracking-tight">Concept Vocabulary</h3>
-            <p className="text-xs text-purple-600 font-medium">Primary terms from centroid weights</p>
+            <h3 className="text-lg font-black text-purple-900 uppercase tracking-tight">Semantic Fingerprint</h3>
+            <p className="text-xs text-purple-600 font-medium">Top terms from centroid vector</p>
           </div>
           <div className="flex flex-wrap gap-3 p-1">
             {topTerms.map((t) => (

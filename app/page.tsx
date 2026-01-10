@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { Download, Network, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,10 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { IngestPanel } from "@/components/ingest/IngestPanel";
 import { AnalysisControlsAccordion } from "@/components/controls/AnalysisControlsAccordion";
-import { StanceFiltersAccordion } from "@/components/controls/StanceFiltersAccordion";
 import { SearchBarAccordion } from "@/components/controls/SearchBarAccordion";
-import { ModeSelectorAccordion } from "@/components/controls/ModeSelectorAccordion";
-import { type GraphMode } from "@/components/controls/ModeSelector";
+import { GraphFiltersAccordion } from "@/components/controls/GraphFiltersAccordion";
 import { GraphCanvas3D } from "@/components/graph/GraphCanvas3D";
 import { InspectorPanel } from "@/components/inspector/InspectorPanel";
 import { CorpusSummary } from "@/components/inspector/CorpusSummary";
@@ -58,10 +56,22 @@ export default function HomePage() {
   const [kConcepts, setKConcepts] = useState(10);
   const [minEdgeWeight, setMinEdgeWeight] = useState(0.12);
   const [similarityThreshold, setSimilarityThreshold] = useState(0.55);
-  const [showNeutral, setShowNeutral] = useState(false);
+
+  // Adaptive mode state
+  const [adaptiveMode, setAdaptiveMode] = useState(false);
+  const [adaptiveSelectedNodeIds, setAdaptiveSelectedNodeIds] = useState<Set<string>>(new Set());
+  const [adaptiveSelectedLinkIds, setAdaptiveSelectedLinkIds] = useState<Set<string>>(new Set());
+
+  // Graph filter toggles
+  const [showJurorNodes, setShowJurorNodes] = useState(true);
+  const [showConceptNodes, setShowConceptNodes] = useState(true);
+  const [showJurorConceptLinks, setShowJurorConceptLinks] = useState(true);
+  const [showJurorJurorLinks, setShowJurorJurorLinks] = useState(true);
+  const [showConceptConceptLinks, setShowConceptConceptLinks] = useState(true);
   const [showPraise, setShowPraise] = useState(true);
   const [showCritique, setShowCritique] = useState(true);
   const [showSuggestion, setShowSuggestion] = useState(true);
+  const [showNeutral, setShowNeutral] = useState(true);
 
   // Hybrid analysis weights
   const [semanticWeight, setSemanticWeight] = useState(0.7);
@@ -73,8 +83,6 @@ export default function HomePage() {
   const [softMembership, setSoftMembership] = useState(false);
   const [cutType, setCutType] = useState<"count" | "granularity">("count");
   const [granularityPercent, setGranularityPercent] = useState(50);
-
-  const [mode, setMode] = useState<GraphMode>("bipartite");
   const [search, setSearch] = useState("");
 
   // Selection
@@ -151,15 +159,50 @@ export default function HomePage() {
     analyze();
   }, [jurorBlocks, kConcepts, similarityThreshold, semanticWeight, frequencyWeight, clusteringMode, autoK, softMembership, cutType, granularityPercent]);
 
-  // Apply filters + mode
-  const { filteredNodes, filteredLinks } = useMemo(() => {
-    if (!analysis) return { filteredNodes: [] as GraphNode[], filteredLinks: [] as GraphLink[] };
+  // Helper function to get node network (node + connected links + connected nodes)
+  const getNodeNetwork = useCallback((nodeId: string, nodes: GraphNode[], links: GraphLink[]) => {
+    const nodeIds = new Set<string>([nodeId]);
+    const linkIds = new Set<string>();
 
-    const allowedStances = new Set<Stance>();
-    if (showPraise) allowedStances.add("praise");
-    if (showCritique) allowedStances.add("critique");
-    if (showSuggestion) allowedStances.add("suggestion");
-    if (showNeutral) allowedStances.add("neutral");
+    // Find all links connected to this node
+    for (const link of links) {
+      const sourceId = typeof link.source === "string" ? link.source : link.source.id;
+      const targetId = typeof link.target === "string" ? link.target : link.target.id;
+
+      if (sourceId === nodeId || targetId === nodeId) {
+        linkIds.add(link.id);
+        // Add the other node
+        nodeIds.add(sourceId === nodeId ? targetId : sourceId);
+      }
+    }
+
+    return { nodeIds, linkIds };
+  }, []);
+
+  // Helper function to get link network (link + its two nodes)
+  const getLinkNetwork = useCallback((linkId: string, links: GraphLink[]) => {
+    const link = links.find((l) => l.id === linkId);
+    if (!link) return { nodeIds: new Set<string>(), linkIds: new Set<string>() };
+
+    const sourceId = typeof link.source === "string" ? link.source : link.source.id;
+    const targetId = typeof link.target === "string" ? link.target : link.target.id;
+
+    return {
+      nodeIds: new Set([sourceId, targetId]),
+      linkIds: new Set([linkId]),
+    };
+  }, []);
+
+  // Apply filters and calculate visibility maps (opacity: 0 = grayed out, 0.7 = connected, 1.0 = selected/visible)
+  const { filteredNodes, filteredLinks, nodeVisibility, linkVisibility } = useMemo(() => {
+    if (!analysis) {
+      return {
+        filteredNodes: [] as GraphNode[],
+        filteredLinks: [] as GraphLink[],
+        nodeVisibility: new Map<string, number>(),
+        linkVisibility: new Map<string, number>(),
+      };
+    }
 
     const searchTerm = search.trim().toLowerCase();
 
@@ -170,46 +213,123 @@ export default function HomePage() {
       return hay.includes(searchTerm);
     };
 
-    let nodes = analysis.nodes.filter(nodeOk);
+    // Start with all nodes and links (only search and weight filters apply)
+    const nodes = analysis.nodes.filter(nodeOk);
+    const links = analysis.links.filter((l) => l.weight >= minEdgeWeight);
 
-    let links = analysis.links.filter((l) => l.weight >= minEdgeWeight);
+    // Calculate visibility maps (opacity values: 0 = grayed out, 0.7 = connected, 1.0 = selected/visible)
+    const linkVisibility = new Map<string, number>();
+    const nodeVisibility = new Map<string, number>();
 
-    if (mode === "bipartite") {
-      links = links.filter((l) => l.kind === "jurorConcept" && allowedStances.has(l.stance ?? "neutral"));
-      const nodeIds = new Set<string>();
-      for (const l of links) {
-        nodeIds.add(String(l.source));
-        nodeIds.add(String(l.target));
+    if (adaptiveMode) {
+      // Adaptive mode: everything starts grayed out, only selected networks are visible
+      // Start with all nodes/links grayed out (opacity 0)
+      for (const node of nodes) {
+        nodeVisibility.set(node.id, 0);
       }
-      nodes = nodes.filter((n) => nodeIds.has(n.id));
+      for (const link of links) {
+        linkVisibility.set(link.id, 0);
+      }
+
+      // Track which nodes are directly selected (for 100% opacity)
+      const directlySelectedNodeIds = new Set(adaptiveSelectedNodeIds);
+      const directlySelectedLinkIds = new Set(adaptiveSelectedLinkIds);
+
+      // First, set all directly selected nodes and links to 1.0
+      for (const nodeId of adaptiveSelectedNodeIds) {
+        nodeVisibility.set(nodeId, 1.0);
+      }
+      for (const linkId of adaptiveSelectedLinkIds) {
+        linkVisibility.set(linkId, 1.0);
+      }
+
+      // Then, activate connected networks (connected nodes/links get 0.7, but don't overwrite selected ones)
+      for (const nodeId of adaptiveSelectedNodeIds) {
+        const network = getNodeNetwork(nodeId, nodes, links);
+        // Connected nodes get 70% opacity (only if not directly selected)
+        for (const nId of network.nodeIds) {
+          if (!directlySelectedNodeIds.has(nId)) {
+            nodeVisibility.set(nId, 0.7);
+          }
+        }
+        // Connected links get 70% opacity (only if not directly selected)
+        for (const lId of network.linkIds) {
+          if (!directlySelectedLinkIds.has(lId)) {
+            linkVisibility.set(lId, 0.7);
+          }
+        }
+      }
+
+      for (const linkId of adaptiveSelectedLinkIds) {
+        const network = getLinkNetwork(linkId, links);
+        // Connected nodes get 70% opacity (only if not directly selected)
+        for (const nId of network.nodeIds) {
+          if (!directlySelectedNodeIds.has(nId)) {
+            nodeVisibility.set(nId, 0.7);
+          }
+        }
+        // Connected links get 70% opacity (only if not directly selected)
+        for (const lId of network.linkIds) {
+          if (!directlySelectedLinkIds.has(lId)) {
+            linkVisibility.set(lId, 0.7);
+          }
+        }
+      }
+    } else {
+      // Manual mode: existing toggle-based filtering logic (opacity 1.0 for visible, 0 for not visible)
+      // Calculate link visibility
+      for (const link of links) {
+        let visible = true;
+
+        // Check link type toggle
+        if (link.kind === "jurorConcept" && !showJurorConceptLinks) visible = false;
+        if (link.kind === "jurorJuror" && !showJurorJurorLinks) visible = false;
+        if (link.kind === "conceptConcept" && !showConceptConceptLinks) visible = false;
+
+        // For jurorConcept links, also check stance
+        if (link.kind === "jurorConcept") {
+          const stance = link.stance ?? "neutral";
+          if (stance === "praise" && !showPraise) visible = false;
+          if (stance === "critique" && !showCritique) visible = false;
+          if (stance === "suggestion" && !showSuggestion) visible = false;
+          if (stance === "neutral" && !showNeutral) visible = false;
+        }
+
+        linkVisibility.set(link.id, visible ? 1.0 : 0);
+      }
+
+      // Calculate node visibility (independent of links - based only on node type toggles)
+      for (const node of nodes) {
+        let visible = true;
+
+        // Check node type toggle only
+        if (node.type === "juror" && !showJurorNodes) visible = false;
+        if (node.type === "concept" && !showConceptNodes) visible = false;
+
+        nodeVisibility.set(node.id, visible ? 1.0 : 0);
+      }
     }
 
-    if (mode === "jurorSimilarity") {
-      links = links.filter((l) => l.kind === "jurorJuror");
-      const nodeIds = new Set<string>();
-      for (const l of links) {
-        nodeIds.add(String(l.source));
-        nodeIds.add(String(l.target));
-      }
-      nodes = nodes.filter((n) => n.type === "juror" && nodeIds.has(n.id));
-    }
-
-    if (mode === "conceptMap") {
-      links = links.filter((l) => l.kind === "conceptConcept");
-      const nodeIds = new Set<string>();
-      for (const l of links) {
-        nodeIds.add(String(l.source));
-        nodeIds.add(String(l.target));
-      }
-      nodes = nodes.filter((n) => n.type === "concept" && nodeIds.has(n.id));
-    }
-
-    // Ensure all link endpoints exist
-    const nodeSet = new Set(nodes.map((n) => n.id));
-    links = links.filter((l) => nodeSet.has(String(l.source)) && nodeSet.has(String(l.target)));
-
-    return { filteredNodes: nodes, filteredLinks: links };
-  }, [analysis, mode, minEdgeWeight, showPraise, showCritique, showSuggestion, showNeutral, search]);
+    return { filteredNodes: nodes, filteredLinks: links, nodeVisibility, linkVisibility };
+  }, [
+    analysis,
+    minEdgeWeight,
+    adaptiveMode,
+    adaptiveSelectedNodeIds,
+    adaptiveSelectedLinkIds,
+    showJurorNodes,
+    showConceptNodes,
+    showJurorConceptLinks,
+    showJurorJurorLinks,
+    showConceptConceptLinks,
+    showPraise,
+    showCritique,
+    showSuggestion,
+    showNeutral,
+    search,
+    getNodeNetwork,
+    getLinkNetwork,
+  ]);
 
   // Selection helpers
   const selectedNode = useMemo(() => {
@@ -238,14 +358,72 @@ export default function HomePage() {
   }
 
   // Graph interactivity
-  function onNodeClick(n: GraphNode): void {
-    setSelectedLinkId(null);
-    setSelectedNodeId((prev) => (prev === n.id ? null : n.id));
+  function onNodeClick(n: GraphNode, event?: MouseEvent): void {
+    if (adaptiveMode && analysis) {
+      const isShiftHeld = event?.shiftKey || false;
+
+      if (isShiftHeld) {
+        // Add to selection: add node + its network
+        const network = getNodeNetwork(n.id, analysis.nodes, analysis.links);
+        setAdaptiveSelectedNodeIds((prev) => {
+          const newSet = new Set(prev);
+          for (const nodeId of network.nodeIds) {
+            newSet.add(nodeId);
+          }
+          return newSet;
+        });
+        setAdaptiveSelectedLinkIds((prev) => {
+          const newSet = new Set(prev);
+          for (const linkId of network.linkIds) {
+            newSet.add(linkId);
+          }
+          return newSet;
+        });
+      } else {
+        // Clear and set new selection: only this node's network
+        const network = getNodeNetwork(n.id, analysis.nodes, analysis.links);
+        setAdaptiveSelectedNodeIds(network.nodeIds);
+        setAdaptiveSelectedLinkIds(network.linkIds);
+      }
+    } else {
+      // Existing behavior: toggle selection for inspector
+      setSelectedLinkId(null);
+      setSelectedNodeId((prev) => (prev === n.id ? null : n.id));
+    }
   }
 
-  function onLinkClick(l: GraphLink): void {
-    setSelectedNodeId(null);
-    setSelectedLinkId((prev) => (prev === l.id ? null : l.id));
+  function onLinkClick(l: GraphLink, event?: MouseEvent): void {
+    if (adaptiveMode && analysis) {
+      const isShiftHeld = event?.shiftKey || false;
+
+      if (isShiftHeld) {
+        // Add to selection: add link + its two nodes
+        const network = getLinkNetwork(l.id, analysis.links);
+        setAdaptiveSelectedNodeIds((prev) => {
+          const newSet = new Set(prev);
+          for (const nodeId of network.nodeIds) {
+            newSet.add(nodeId);
+          }
+          return newSet;
+        });
+        setAdaptiveSelectedLinkIds((prev) => {
+          const newSet = new Set(prev);
+          for (const linkId of network.linkIds) {
+            newSet.add(linkId);
+          }
+          return newSet;
+        });
+      } else {
+        // Clear and set new selection: only this link's network
+        const network = getLinkNetwork(l.id, analysis.links);
+        setAdaptiveSelectedNodeIds(network.nodeIds);
+        setAdaptiveSelectedLinkIds(network.linkIds);
+      }
+    } else {
+      // Existing behavior
+      setSelectedNodeId(null);
+      setSelectedLinkId((prev) => (prev === l.id ? null : l.id));
+    }
   }
 
   function onNodeDoubleClick(n: GraphNode): void {
@@ -253,6 +431,15 @@ export default function HomePage() {
     // For now, just toggle selection
     setSelectedLinkId(null);
     setSelectedNodeId((prev) => (prev === n.id ? null : n.id));
+  }
+
+  function onDeselect(): void {
+    setSelectedNodeId(null);
+    setSelectedLinkId(null);
+    if (adaptiveMode) {
+      setAdaptiveSelectedNodeIds(new Set());
+      setAdaptiveSelectedLinkIds(new Set());
+    }
   }
 
   const emptyState = !analysis || analysis.stats.totalSentences === 0;
@@ -292,16 +479,6 @@ export default function HomePage() {
             onGranularityPercentChange={setGranularityPercent}
           />
 
-          <StanceFiltersAccordion
-            showPraise={showPraise}
-            showCritique={showCritique}
-            showSuggestion={showSuggestion}
-            showNeutral={showNeutral}
-            onShowPraiseChange={setShowPraise}
-            onShowCritiqueChange={setShowCritique}
-            onShowSuggestionChange={setShowSuggestion}
-            onShowNeutralChange={setShowNeutral}
-          />
         </div>
       </CollapsibleSidebar>
 
@@ -380,11 +557,14 @@ export default function HomePage() {
                 <GraphCanvas3D
                   nodes={filteredNodes}
                   links={filteredLinks}
+                  nodeVisibility={nodeVisibility}
+                  linkVisibility={linkVisibility}
                   selectedNodeId={selectedNodeId}
                   selectedLinkId={selectedLinkId}
                   onNodeClick={onNodeClick}
                   onLinkClick={onLinkClick}
                   onNodeDoubleClick={onNodeDoubleClick}
+                  onDeselect={onDeselect}
                   empty={emptyState}
                   checkpoints={analysis?.checkpoints}
                 />
@@ -425,12 +605,59 @@ export default function HomePage() {
         width={400}
       >
         <div className="space-y-4">
-          <ModeSelectorAccordion
-            mode={mode}
-            onModeChange={(newMode) => {
-              setMode(newMode);
-              setSelectedNodeId(null);
-              setSelectedLinkId(null);
+          <GraphFiltersAccordion
+            adaptiveMode={adaptiveMode}
+            onAdaptiveModeChange={(value) => {
+              setAdaptiveMode(value);
+              if (!value) {
+                setAdaptiveSelectedNodeIds(new Set());
+                setAdaptiveSelectedLinkIds(new Set());
+              }
+            }}
+            showJurorNodes={showJurorNodes}
+            showConceptNodes={showConceptNodes}
+            showJurorConceptLinks={showJurorConceptLinks}
+            showJurorJurorLinks={showJurorJurorLinks}
+            showConceptConceptLinks={showConceptConceptLinks}
+            showPraise={showPraise}
+            showCritique={showCritique}
+            showSuggestion={showSuggestion}
+            showNeutral={showNeutral}
+            onShowJurorNodesChange={(value) => {
+              setAdaptiveMode(false);
+              setShowJurorNodes(value);
+            }}
+            onShowConceptNodesChange={(value) => {
+              setAdaptiveMode(false);
+              setShowConceptNodes(value);
+            }}
+            onShowJurorConceptLinksChange={(value) => {
+              setAdaptiveMode(false);
+              setShowJurorConceptLinks(value);
+            }}
+            onShowJurorJurorLinksChange={(value) => {
+              setAdaptiveMode(false);
+              setShowJurorJurorLinks(value);
+            }}
+            onShowConceptConceptLinksChange={(value) => {
+              setAdaptiveMode(false);
+              setShowConceptConceptLinks(value);
+            }}
+            onShowPraiseChange={(value) => {
+              setAdaptiveMode(false);
+              setShowPraise(value);
+            }}
+            onShowCritiqueChange={(value) => {
+              setAdaptiveMode(false);
+              setShowCritique(value);
+            }}
+            onShowSuggestionChange={(value) => {
+              setAdaptiveMode(false);
+              setShowSuggestion(value);
+            }}
+            onShowNeutralChange={(value) => {
+              setAdaptiveMode(false);
+              setShowNeutral(value);
             }}
           />
 

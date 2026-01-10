@@ -10,7 +10,8 @@ interface Link3DProps {
   link: GraphLink;
   nodes: Map<string, GraphNode>;
   isSelected: boolean;
-  onClick: (link: GraphLink) => void;
+  opacity: number; // 0 = grayed out, 0.7 = connected, 1.0 = selected/visible
+  onClick: (link: GraphLink, event?: MouseEvent) => void;
 }
 
 // Color scheme for stance types
@@ -28,7 +29,7 @@ const kindColors = {
   conceptConcept: "#8b5cf6", // violet-500
 };
 
-export function Link3D({ link, nodes, isSelected, onClick }: Link3DProps) {
+export function Link3D({ link, nodes, isSelected, opacity, onClick }: Link3DProps) {
   const [hovered, setHovered] = useState(false);
   
   // Get source and target nodes
@@ -64,23 +65,40 @@ export function Link3D({ link, nodes, isSelected, onClick }: Link3DProps) {
     ? stanceColors[link.stance]
     : kindColors[link.kind];
   
-  const color = isSelected ? "#fbbf24" : hovered ? "#94a3b8" : baseColor;
+  const isVisible = opacity > 0;
+  let color = baseColor;
+  if (opacity === 0) {
+    color = "#e2e8f0"; // Very light gray
+  } else if (isSelected) {
+    color = "#fbbf24";
+  } else if (hovered) {
+    color = "#94a3b8";
+  }
   
+  // Link opacity: use the provided opacity value (0, 0.7, or 1.0)
+  // Apply hover/select effects on top of base opacity
+  const linkOpacity = opacity === 0
+    ? (isSelected ? 0.4 : 0.25)
+    : (isSelected ? opacity : hovered ? Math.min(1, opacity * 1.2) : opacity * 0.85);
+
   // Line width based on weight
   const lineWidth = Math.max(1, Math.min(4, link.weight * 10));
   
+  // Only apply hover/select width increase when visible
+  const finalLineWidth = isVisible && (isSelected || hovered) ? lineWidth * 1.5 : lineWidth;
+  
   return (
     <group
-      onClick={() => onClick(link)}
+      onClick={(e) => onClick(link, e.nativeEvent as MouseEvent)}
       onPointerOver={() => setHovered(true)}
       onPointerOut={() => setHovered(false)}
     >
       <Line
         points={points}
         color={color}
-        lineWidth={isSelected || hovered ? lineWidth * 1.5 : lineWidth}
-        opacity={isSelected ? 1 : hovered ? 0.8 : 0.6}
-        transparent
+        lineWidth={finalLineWidth}
+        opacity={linkOpacity}
+        transparent={linkOpacity < 1}
       />
       
       {/* Invisible wider line for easier clicking */}

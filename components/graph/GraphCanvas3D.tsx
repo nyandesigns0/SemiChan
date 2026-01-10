@@ -3,6 +3,7 @@
 import { useRef, useState, useMemo, useCallback, Suspense, useEffect } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, Environment, PerspectiveCamera, Grid } from "@react-three/drei";
+import * as THREE from "three";
 import { FileText, Play, FastForward, SkipBack } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,11 +19,14 @@ import type { OrbitControls as OrbitControlsType } from "three-stdlib";
 interface GraphCanvas3DProps {
   nodes: GraphNode[];
   links: GraphLink[];
+  nodeVisibility: Map<string, number>;
+  linkVisibility: Map<string, number>;
   selectedNodeId: string | null;
   selectedLinkId: string | null;
-  onNodeClick: (node: GraphNode) => void;
-  onLinkClick: (link: GraphLink) => void;
+  onNodeClick: (node: GraphNode, event?: MouseEvent) => void;
+  onLinkClick: (link: GraphLink, event?: MouseEvent) => void;
   onNodeDoubleClick: (node: GraphNode) => void;
+  onDeselect: () => void;
   empty: boolean;
   checkpoints?: AnalysisCheckpoint[];
 }
@@ -60,21 +64,27 @@ function AxesHelper({ visible }: { visible: boolean }) {
 function SceneContent({
   nodes,
   links,
+  nodeVisibility,
+  linkVisibility,
   selectedNodeId,
   selectedLinkId,
   onNodeClick,
   onLinkClick,
   onNodeDoubleClick,
+  onDeselect,
   showGrid,
   showAxes,
 }: {
   nodes: GraphNode[];
   links: GraphLink[];
+  nodeVisibility: Map<string, number>;
+  linkVisibility: Map<string, number>;
   selectedNodeId: string | null;
   selectedLinkId: string | null;
-  onNodeClick: (node: GraphNode) => void;
-  onLinkClick: (link: GraphLink) => void;
+  onNodeClick: (node: GraphNode, event?: MouseEvent) => void;
+  onLinkClick: (link: GraphLink, event?: MouseEvent) => void;
   onNodeDoubleClick: (node: GraphNode) => void;
+  onDeselect: () => void;
   showGrid: boolean;
   showAxes: boolean;
 }) {
@@ -96,6 +106,19 @@ function SceneContent({
       
       {/* Environment for reflections */}
       <Environment preset="city" />
+      
+      {/* Invisible backdrop plane for deselecting on empty space click */}
+      <mesh
+        position={[0, 0, -20]}
+        onClick={(e) => {
+          // Only deselect if clicking directly on the backdrop (not through other objects)
+          e.stopPropagation();
+          onDeselect();
+        }}
+      >
+        <planeGeometry args={[1000, 1000]} />
+        <meshBasicMaterial transparent opacity={0} visible={false} />
+      </mesh>
       
       {/* Grid */}
       {showGrid && (
@@ -124,6 +147,7 @@ function SceneContent({
           link={link}
           nodes={nodeMap}
           isSelected={selectedLinkId === link.id}
+          opacity={linkVisibility.get(link.id) ?? 0}
           onClick={onLinkClick}
         />
       ))}
@@ -134,6 +158,7 @@ function SceneContent({
           key={node.id}
           node={node}
           isSelected={selectedNodeId === node.id}
+          opacity={nodeVisibility.get(node.id) ?? 0}
           onClick={onNodeClick}
           onDoubleClick={onNodeDoubleClick}
         />
@@ -145,11 +170,14 @@ function SceneContent({
 export function GraphCanvas3D({
   nodes,
   links,
+  nodeVisibility,
+  linkVisibility,
   selectedNodeId,
   selectedLinkId,
   onNodeClick,
   onLinkClick,
   onNodeDoubleClick,
+  onDeselect,
   empty,
   checkpoints = [],
 }: GraphCanvas3DProps) {
@@ -211,11 +239,14 @@ export function GraphCanvas3D({
                 <SceneContent
                   nodes={activeNodes}
                   links={activeLinks}
+                  nodeVisibility={nodeVisibility}
+                  linkVisibility={linkVisibility}
                   selectedNodeId={selectedNodeId}
                   selectedLinkId={selectedLinkId}
                   onNodeClick={onNodeClick}
                   onLinkClick={onLinkClick}
                   onNodeDoubleClick={onNodeDoubleClick}
+                  onDeselect={onDeselect}
                   showGrid={showGrid}
                   showAxes={showAxes}
                 />
@@ -272,6 +303,5 @@ export function GraphCanvas3D({
     </>
   );
 }
-
 
 

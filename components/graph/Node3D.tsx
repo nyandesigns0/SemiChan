@@ -9,7 +9,8 @@ import type { GraphNode, NodeType } from "@/types/graph";
 interface Node3DProps {
   node: GraphNode;
   isSelected: boolean;
-  onClick: (node: GraphNode) => void;
+  opacity: number; // 0 = grayed out, 0.7 = connected, 1.0 = selected/visible
+  onClick: (node: GraphNode, event?: MouseEvent) => void;
   onDoubleClick: (node: GraphNode) => void;
 }
 
@@ -39,7 +40,7 @@ const nodeColors: Record<NodeType, NodeColorScheme> = {
   },
 };
 
-export function Node3D({ node, isSelected, onClick, onDoubleClick }: Node3DProps) {
+export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick }: Node3DProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
   
@@ -52,13 +53,21 @@ export function Node3D({ node, isSelected, onClick, onDoubleClick }: Node3DProps
   
   // Calculate size and color
   const colors = nodeColors[node.type as NodeType] ?? defaultNodeColors;
-  const color = isSelected ? colors.selected : hovered ? colors.hover : colors.base;
+  const isVisible = opacity > 0;
+  let color: string;
+  if (opacity === 0) {
+    color = "#e2e8f0"; // Very light gray - no hover effect when not visible
+  } else {
+    color = isSelected ? colors.selected : hovered ? colors.hover : colors.base;
+  }
+  // Mesh opacity: use the provided opacity value (0, 0.7, or 1.0)
+  const meshOpacity = opacity === 0 ? 0.35 : opacity;
   const radius = (node.size / 16) * 0.3; // Scale down for 3D space
   
-  // Animate on hover/select
+  // Animate on hover/select (only if visible)
   useFrame(() => {
     if (!meshRef.current) return;
-    const targetScale = hovered || isSelected ? 1.2 : 1;
+    const targetScale = (hovered || isSelected) && isVisible ? 1.2 : 1;
     meshRef.current.scale.lerp(
       new THREE.Vector3(targetScale, targetScale, targetScale),
       0.1
@@ -67,8 +76,10 @@ export function Node3D({ node, isSelected, onClick, onDoubleClick }: Node3DProps
   
   // Handle click with debounce for double-click detection
   const clickTimeout = useRef<NodeJS.Timeout | null>(null);
+  const clickEventRef = useRef<MouseEvent | undefined>(undefined);
   
-  const handleClick = () => {
+  const handleClick = (event: MouseEvent) => {
+    clickEventRef.current = event;
     if (clickTimeout.current) {
       // Double-click detected
       clearTimeout(clickTimeout.current);
@@ -77,8 +88,9 @@ export function Node3D({ node, isSelected, onClick, onDoubleClick }: Node3DProps
     } else {
       // Single click - wait to see if it's a double-click
       clickTimeout.current = setTimeout(() => {
-        onClick(node);
+        onClick(node, clickEventRef.current);
         clickTimeout.current = null;
+        clickEventRef.current = undefined;
       }, 200);
     }
   };
@@ -88,7 +100,7 @@ export function Node3D({ node, isSelected, onClick, onDoubleClick }: Node3DProps
       {/* Node sphere */}
       <mesh
         ref={meshRef}
-        onClick={handleClick}
+        onClick={(e) => handleClick(e.nativeEvent as MouseEvent)}
         onPointerOver={() => setHovered(true)}
         onPointerOut={() => setHovered(false)}
       >
@@ -97,30 +109,34 @@ export function Node3D({ node, isSelected, onClick, onDoubleClick }: Node3DProps
           color={color}
           metalness={0.3}
           roughness={0.4}
+          opacity={meshOpacity}
+          transparent={meshOpacity < 1}
           emissive={isSelected ? color : "#000000"}
           emissiveIntensity={isSelected ? 0.3 : 0}
         />
       </mesh>
       
       {/* Node label - always faces camera */}
-      <Billboard
-        follow={true}
-        lockX={false}
-        lockY={false}
-        lockZ={false}
-      >
-        <Text
-          position={[0, radius + 0.3, 0]}
-          fontSize={0.25}
-          color={isSelected || hovered ? "#1e293b" : "#64748b"}
-          anchorX="center"
-          anchorY="bottom"
-          maxWidth={3}
-          textAlign="center"
+      {isVisible || hovered ? (
+        <Billboard
+          follow={true}
+          lockX={false}
+          lockY={false}
+          lockZ={false}
         >
-          {node.label}
-        </Text>
-      </Billboard>
+          <Text
+            position={[0, radius + 0.3, 0]}
+            fontSize={0.25}
+            color={!isVisible ? "#000000" : isSelected || hovered ? "#1e293b" : "#64748b"}
+            anchorX="center"
+            anchorY="bottom"
+            maxWidth={3}
+            textAlign="center"
+          >
+            {node.label}
+          </Text>
+        </Billboard>
+      ) : null}
       
       {/* Selection ring */}
       {isSelected && (
