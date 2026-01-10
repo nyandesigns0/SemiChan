@@ -17,7 +17,7 @@ import { hybridLabelCluster, getClusterTopTerms } from "@/lib/analysis/hybrid-co
 
 // New algorithm imports
 import { evaluateKRange } from "@/lib/analysis/cluster-eval";
-import { cutDendrogramByCount } from "@/lib/analysis/hierarchical-clustering";
+import { buildDendrogram, cutDendrogramByCount, cutDendrogramByThreshold } from "@/lib/analysis/hierarchical-clustering";
 import { computeSoftMembership } from "@/lib/analysis/soft-membership";
 import { computeCentroids } from "@/lib/analysis/concept-centroids";
 
@@ -36,6 +36,8 @@ export async function buildAnalysis(
     kMax?: number;
     softMembership?: boolean;
     softTopN?: number;
+    cutType?: "count" | "granularity";
+    granularityPercent?: number;
   } = {}
 ): Promise<AnalysisResult> {
   const {
@@ -45,6 +47,8 @@ export async function buildAnalysis(
     kMax = 20,
     softMembership = false,
     softTopN = 2,
+    cutType = "count",
+    granularityPercent = 50,
   } = options;
 
   const checkpoints: AnalysisCheckpoint[] = [];
@@ -129,8 +133,20 @@ export async function buildAnalysis(
   let centroids: Float64Array[];
 
   if (clusteringMode === "hierarchical" || clusteringMode === "hybrid") {
-    assignments = cutDendrogramByCount(hybridVectors, K);
-    centroids = computeCentroids(hybridVectors, assignments, K);
+    // Build dendrogram once
+    const dendrogram = buildDendrogram(hybridVectors);
+    
+    if (cutType === "granularity") {
+      // Cut by granularity threshold
+      assignments = cutDendrogramByThreshold(dendrogram, hybridVectors, granularityPercent);
+      // Get actual K from assignments
+      K = new Set(assignments).size;
+      centroids = computeCentroids(hybridVectors, assignments, K);
+    } else {
+      // Cut by count (default)
+      assignments = cutDendrogramByCount(hybridVectors, K);
+      centroids = computeCentroids(hybridVectors, assignments, K);
+    }
   } else {
     // Default K-means
     const km = kmeansCosine(hybridVectors, K);
@@ -204,8 +220,44 @@ export async function buildAnalysis(
     for (const c of Object.keys(jurorVectors[j])) jurorVectors[j][c] /= total;
   }
 
-  // Compute 3D positions
+  // Compute high-dimensional juror vectors and extract top terms
   const jurorList = [...new Set(effectiveSentences.map((s) => s.juror))].filter(Boolean);
+  const jurorTopTerms: Record<string, string[]> = {};
+  
+  if (centroids.length > 0 && jurorList.length > 0) {
+    const vectorDim = centroids[0].length;
+    
+    for (const juror of jurorList) {
+      const vec = jurorVectors[juror] || {};
+      
+      // Compute weighted average of concept centroids
+      const jurorHighDimVector = new Float64Array(vectorDim);
+      for (const [conceptId, weight] of Object.entries(vec)) {
+        const conceptIndex = conceptIds.indexOf(conceptId);
+        if (conceptIndex >= 0 && weight > 0) {
+          for (let i = 0; i < vectorDim; i++) {
+            jurorHighDimVector[i] += centroids[conceptIndex][i] * weight;
+          }
+        }
+      }
+      
+      // L2 normalize the vector
+      let norm = 0;
+      for (let i = 0; i < vectorDim; i++) {
+        norm += jurorHighDimVector[i] * jurorHighDimVector[i];
+      }
+      norm = Math.sqrt(norm) || 1;
+      for (let i = 0; i < vectorDim; i++) {
+        jurorHighDimVector[i] /= norm;
+      }
+      
+      // Extract top terms using the same function as concepts
+      const topTerms = getClusterTopTerms([], bm25Model, jurorHighDimVector, semanticDim, 12);
+      jurorTopTerms[juror] = topTerms;
+    }
+  }
+
+  // Compute 3D positions
   const positions3D = computeNode3DPositions(
     jurorVectors,
     centroids,
@@ -312,5 +364,6 @@ export async function buildAnalysis(
     kSearchMetrics,
     clusteringMode,
     checkpoints,
+    jurorTopTerms,
   };
 }

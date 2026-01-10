@@ -18,7 +18,9 @@ export async function POST(request: NextRequest) {
       kMin,
       kMax,
       softMembership,
-      softTopN
+      softTopN,
+      cutType,
+      granularityPercent
     } = body;
 
     if (!blocks || !Array.isArray(blocks)) {
@@ -62,6 +64,23 @@ export async function POST(request: NextRequest) {
       hybridParams.frequencyWeight = frequencyWeight;
     }
 
+    // Validate cutType and granularityPercent if provided
+    if (cutType !== undefined && cutType !== "count" && cutType !== "granularity") {
+      return NextResponse.json(
+        { error: "Invalid request: cutType must be 'count' or 'granularity'" },
+        { status: 400 }
+      );
+    }
+
+    if (granularityPercent !== undefined) {
+      if (typeof granularityPercent !== "number" || granularityPercent < 0 || granularityPercent > 100) {
+        return NextResponse.json(
+          { error: "Invalid request: granularityPercent must be between 0 and 100" },
+          { status: 400 }
+        );
+      }
+    }
+
     // buildAnalysis is now async
     const analysis = await buildAnalysis(
       blocks, 
@@ -74,7 +93,9 @@ export async function POST(request: NextRequest) {
         kMin,
         kMax,
         softMembership,
-        softTopN
+        softTopN,
+        cutType,
+        granularityPercent
       }
     );
 

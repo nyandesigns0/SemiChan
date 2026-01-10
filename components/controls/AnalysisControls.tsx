@@ -26,6 +26,10 @@ interface AnalysisControlsProps {
   onAutoKChange: (value: boolean) => void;
   softMembership: boolean;
   onSoftMembershipChange: (value: boolean) => void;
+  cutType: "count" | "granularity";
+  onCutTypeChange: (type: "count" | "granularity") => void;
+  granularityPercent: number;
+  onGranularityPercentChange: (value: number) => void;
 }
 
 export function AnalysisControls({
@@ -45,6 +49,10 @@ export function AnalysisControls({
   onAutoKChange,
   softMembership,
   onSoftMembershipChange,
+  cutType,
+  onCutTypeChange,
+  granularityPercent,
+  onGranularityPercentChange,
 }: AnalysisControlsProps) {
   return (
     <div className="space-y-6">
@@ -62,6 +70,22 @@ export function AnalysisControls({
           </TabsList>
         </Tabs>
       </div>
+
+      {/* Cut Type Toggle - only show for hierarchical/hybrid modes */}
+      {(clusteringMode === "hierarchical" || clusteringMode === "hybrid") && (
+        <div className="space-y-3">
+          <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+            <Maximize2 className="h-3.5 w-3.5" />
+            Cut Method
+          </Label>
+          <Tabs value={cutType} onValueChange={(v) => onCutTypeChange(v as "count" | "granularity")}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="count" className="text-[10px] font-bold">Cut by K</TabsTrigger>
+              <TabsTrigger value="granularity" className="text-[10px] font-bold">Cut by Granularity</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+      )}
 
       <div className="space-y-4 rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
         {/* Auto-K Toggle */}
@@ -131,22 +155,50 @@ export function AnalysisControls({
       </div>
 
       {!autoK && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label className="text-sm font-bold text-slate-700">Manual Concepts (k)</Label>
-            <Badge variant="secondary" className="bg-slate-100 font-bold text-slate-700">
-              {kConcepts}
-            </Badge>
-          </div>
-          <Slider 
-            value={[kConcepts]} 
-            min={4} 
-            max={30} 
-            step={1} 
-            onValueChange={(v) => onKConceptsChange(v[0])} 
-            className="py-4"
-          />
-        </div>
+        <>
+          {/* Show K slider when cutType is "count" or not in hierarchical/hybrid mode */}
+          {(cutType === "count" || (clusteringMode !== "hierarchical" && clusteringMode !== "hybrid")) && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-bold text-slate-700">Manual Concepts (k)</Label>
+                <Badge variant="secondary" className="bg-slate-100 font-bold text-slate-700">
+                  {kConcepts}
+                </Badge>
+              </div>
+              <Slider 
+                value={[kConcepts]} 
+                min={4} 
+                max={30} 
+                step={1} 
+                onValueChange={(v) => onKConceptsChange(v[0])} 
+                className="py-4"
+              />
+            </div>
+          )}
+          
+          {/* Show granularity slider when cutType is "granularity" and in hierarchical/hybrid mode */}
+          {cutType === "granularity" && (clusteringMode === "hierarchical" || clusteringMode === "hybrid") && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-bold text-slate-700">Granularity</Label>
+                <Badge variant="secondary" className="bg-slate-100 font-bold text-slate-700">
+                  {granularityPercent}%
+                </Badge>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] text-slate-500">0% = fine clusters, 100% = broad clusters</p>
+                <Slider 
+                  value={[granularityPercent]} 
+                  min={0} 
+                  max={100} 
+                  step={1} 
+                  onValueChange={(v) => onGranularityPercentChange(v[0])} 
+                  className="py-4"
+                />
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       <div className="space-y-4">

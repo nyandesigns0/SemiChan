@@ -25,8 +25,8 @@ export interface AnalyzeRequest {
   kMax?: number;
   softMembership?: boolean;
   softTopN?: number;
-  cutType?: "count" | "threshold";
-  cutValue?: number;
+  cutType?: "count" | "granularity";
+  granularityPercent?: number;
 }
 
 export interface AnalyzeResponse {

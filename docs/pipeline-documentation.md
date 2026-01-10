@@ -4,21 +4,71 @@ This document provides a comprehensive overview of how raw input (text or PDF) i
 
 ## Pipeline Overview
 
-The following diagram summarizes the data flow:
+The following diagram shows how different data streams branch and converge to produce the final graph visualization:
 
 ```mermaid
 graph TD
     Input[Raw Input: PDF/Text] --> Ingestion[1. Ingestion & Normalization]
     Ingestion --> Segmentation[2. Juror Segmentation]
     Segmentation --> Splitting[3. Sentence Splitting]
-    Splitting --> Stance[4. Stance Classification]
-    Stance --> Ngrams[5. N-gram Extraction]
-    Ngrams --> Vectors[6. Vectorization: Semantic & BM25]
-    Vectors --> Hybrid[7. Hybrid Vector Construction]
-    Hybrid --> Clustering[8. K-Means Clustering]
-    Clustering --> Labeling[9. Concept Labeling]
-    Labeling --> Assembly[10. Graph Assembly & Positioning]
-    Assembly --> Output[Final Graph: Jurors & Concepts]
+    Segmentation --> JurorBlocks[2.1 Juror Blocks<br/>Source Identifiers]
+    
+    Splitting --> StancePath[4. Stance Classification<br/>Praise/Critique/Suggestion]
+    Splitting --> NgramPath[5. N-gram Extraction<br/>Word Pairs & Triplets]
+    Splitting --> EmbedPath[6. Semantic Embeddings<br/>Meaning Vectors]
+    
+    NgramPath --> BM25[7.1 BM25 Frequency Vectors<br/>Cross-Juror Word Frequencies]
+    EmbedPath --> SemanticVecs[6.1 384-dim Semantic Vectors<br/>Meaning Representation]
+    BM25 --> Hybrid[7. Hybrid Vector Construction<br/>Combined Representation]
+    SemanticVecs --> Hybrid
+    
+    Hybrid --> Clustering[8. Clustering<br/>K-Means or Hierarchical]
+    Clustering --> Centroids[8.1 Cluster Centroids<br/>Theme Centers]
+    Clustering --> Assignments[8.2 Sentence Assignments<br/>Which Concept Each Sentence Belongs To]
+    
+    Centroids --> Labeling[9. Concept Labeling<br/>Extract Top N-grams from Centroids]
+    Labeling --> ConceptNodes[9.1 Concept Nodes<br/>Large Nodes with Labels]
+    
+    Centroids --> PCA[13. Concept 3D Positioning<br/>PCA Dimensionality Reduction]
+    PCA --> ConceptPos[13.1 Concept 3D Positions]
+    ConceptPos --> ConceptNodes
+    
+    Assignments --> JurorMapping[11. Juror-Concept Mapping<br/>Count Sentences per Concept<br/>Normalize per Juror]
+    StancePath --> JurorMapping
+    JurorBlocks --> JurorMapping
+    
+    JurorMapping --> JurorConceptLinks[12.1 Juror-Concept Links<br/>Weight = Normalized Count<br/>Color = Dominant Stance<br/>Green: Praise, Red: Critique<br/>Orange: Suggestion, Gray: Neutral]
+    JurorMapping --> JurorVectors[11.2 Juror Concept Vectors<br/>Distribution of Interest]
+    
+    JurorVectors --> JurorHighDim[11.5 High-Dimensional Juror Vectors<br/>Weighted Average of Centroids]
+    Centroids --> JurorHighDim
+    
+    JurorHighDim --> JurorTopTerms[11.6 Juror Top Terms Extraction<br/>Extracted from High-Dim Vectors]
+    JurorHighDim --> JurorPositioning[11.7 Juror 3D Positioning<br/>PCA Projection]
+    
+    JurorTopTerms --> JurorNodes[11.1 Juror Nodes<br/>Small Nodes]
+    JurorPositioning --> JurorNodes
+    
+    JurorVectors --> JurorSim[12.2 Juror Similarity Calculation<br/>Cosine Similarity]
+    JurorSim --> JurorJurorLinks[12.3 Juror-Juror Links<br/>Indigo Color<br/>Similar Interests]
+    
+    Centroids --> ConceptSim[12.4 Concept Similarity Calculation<br/>Cosine Similarity]
+    ConceptSim --> ConceptConceptLinks[12.5 Concept-Concept Links<br/>Purple Color<br/>Related Themes]
+    
+    ConceptNodes --> Assembly[14. Graph Assembly<br/>Combine All Elements]
+    JurorNodes --> Assembly
+    JurorConceptLinks --> Assembly
+    JurorJurorLinks --> Assembly
+    ConceptConceptLinks --> Assembly
+    
+    Assembly --> Output[Final Graph Visualization<br/>Large Nodes = Concepts<br/>Small Nodes = Jurors<br/>Colored Links = Relationships]
+    
+    style ConceptNodes fill:#e0f2fe,stroke:#0284c7,stroke-width:3px
+    style JurorNodes fill:#f1f5f9,stroke:#475569,stroke-width:2px
+    style JurorConceptLinks fill:#dcfce7,stroke:#16a34a,stroke-width:2px
+    style JurorJurorLinks fill:#e0e7ff,stroke:#6366f1,stroke-width:2px
+    style ConceptConceptLinks fill:#f3e8ff,stroke:#8b5cf6,stroke-width:2px
+    style Output fill:#fef3c7,stroke:#f59e0b,stroke-width:4px
 ```
 
 ## Simulation Setup: Example Sentences
@@ -45,9 +95,11 @@ To demonstrate the pipeline, we will track two specific sentences from the corpu
 The ingestion phase handles different input types. For PDFs, it iterates through pages, extracts text items, and joins them. All text then passes through `normalizeWhitespace` which replaces carriage returns, collapses multiple spaces, and trims the result.
 
 ### Example Tracking
-*   **Sentence A:** "I appreciated the careful attention to daylight and the sun path."
-*   **Sentence B:** "The geometry creates unique light conditions; indirect lighting and shadows form a serene atmosphere."
-*   **State:** A single normalized string containing the full text of all jurors, with consistent `\n` line endings and no double spaces.
+*   **Sentence A (Raw Input):** "I appreciated the careful attention to daylight and the sun path."
+*   **A* (Explanation):** Captured from the raw text stream and normalized to remove carriage returns and double spaces.
+*   **Sentence B (Raw Input):** "The geometry creates unique light conditions; indirect lighting and shadows form a serene atmosphere."
+*   **B* (Explanation):** Captured from the raw text stream and normalized to remove carriage returns and double spaces.
+*   **State (Normalized Text):** A single contiguous string containing the full text of all jurors, with consistent `\n` line endings and no double spaces. (e.g., `"Sarah Broadstock\nI appreciated the careful attention to daylight and the sun path."`).
 
 ---
 
@@ -62,13 +114,21 @@ The ingestion phase handles different input types. For PDFs, it iterates through
 The segmenter splits the text by lines and uses `looksLikeName` to find potential headers (checking for capitalization patterns and length). It flushes a buffer whenever a new name is found, assigning the collected text to the previous name. Small stray blocks are merged into an "Unattributed" category.
 
 ### Example Tracking
-*   **Sentence A (Sarah Broadstock):** "I appreciated the careful attention to daylight and the sun path. The proposal is strong in its narrative, but the site response could be clearer. The plan feels tight and circulation could be improved."
-*   **Sentence B (Sandra Baggerman):** "The geometry creates unique light conditions; indirect lighting and shadows form a serene atmosphere. The sustainability strategy would benefit from clearer explanation."
-*   **State:**
+*   **Thought A:** "I appreciated the careful attention to daylight and the sun path. The proposal is strong in its narrative, but the site response could be clearer. The plan feels tight and circulation could be improved."
+*   **A* (Explanation):** Grouped into Sarah Broadstock's block after identifying her name as a header using the `looksLikeName` heuristic.
+*   **Thought B:** "The geometry creates unique light conditions; indirect lighting and shadows form a serene atmosphere. The sustainability strategy would benefit from clearer explanation."
+*   **B* (Explanation):** Grouped into Sandra Baggerman's block after identifying her name as a header using the `looksLikeName` heuristic.
+*   **State (Full Juror Blocks):**
 ```json
 [
-  { "juror": "Sarah Broadstock", "text": "I appreciated the careful attention to daylight and the sun path. The proposal is strong in its narrative, but the site response could be clearer. The plan feels tight and circulation could be improved." },
-  { "juror": "Sandra Baggerman", "text": "The geometry creates unique light conditions; indirect lighting and shadows form a serene atmosphere. The sustainability strategy would benefit from clearer explanation." }
+  { 
+    "juror": "Sarah Broadstock", 
+    "text": "I appreciated the careful attention to daylight and the sun path. The proposal is strong in its narrative, but the site response could be clearer. The plan feels tight and circulation could be improved." 
+  },
+  { 
+    "juror": "Sandra Baggerman", 
+    "text": "The geometry creates unique light conditions; indirect lighting and shadows form a serene atmosphere. The sustainability strategy would benefit from clearer explanation." 
+  }
 ]
 ```
 
@@ -85,10 +145,13 @@ The segmenter splits the text by lines and uses `looksLikeName` to find potentia
 The splitter identifies sentence boundaries while preserving fragments. It specifically looks for punctuation followed by spaces and a capital letter. It also treats semicolons as secondary split points to handle complex architectural critiques. Very short boilerplate fragments are pruned.
 
 ### Example Tracking
-*   **Sentence A (Sarah Broadstock::0):** "I appreciated the careful attention to daylight and the sun path."
-*   **Sentence B1 (Sandra Baggerman::0):** "The geometry creates unique light conditions"
-*   **Sentence B2 (Sandra Baggerman::1):** "indirect lighting and shadows form a serene atmosphere."
-*   **State:**
+*   **Thought A:** "I appreciated the careful attention to daylight and the sun path."
+*   **A* (Explanation):** Isolated as the first sentence (`Sarah Broadstock::0`) of Sarah's block.
+*   **Thought B (Segment 1):** "The geometry creates unique light conditions"
+*   **B1* (Explanation):** Isolated as the first segment (`Sandra Baggerman::0`) of Sandra's sentence, split at the semicolon.
+*   **Thought B (Segment 2):** "indirect lighting and shadows form a serene atmosphere."
+*   **B2* (Explanation):** Isolated as the second segment (`Sandra Baggerman::1`) of Sandra's sentence.
+*   **State (Sentence Records):**
 ```json
 [
   { "id": "Sarah Broadstock::0", "juror": "Sarah Broadstock", "sentence": "I appreciated the careful attention to daylight and the sun path." },
@@ -111,15 +174,30 @@ The classifier searches for markers defined in constants. Critiques take priorit
 *   **Formula:** `Priority: Critique > Suggestion > Praise > Neutral`
 
 ### Example Tracking
-*   **Sentence A:** "I appreciated the careful attention to daylight and the sun path." matches "appreciated" in `PRAISE_MARKERS`. → **praise**
-*   **Sentence B1:** "The geometry creates unique light conditions" matches "unique" in `PRAISE_MARKERS`. → **praise**
-*   **Sentence B2:** "indirect lighting and shadows form a serene atmosphere." matches "serene" in `PRAISE_MARKERS`. → **praise**
-*   **State:**
+*   **Sentence A:** "I appreciated the careful attention to daylight and the sun path."
+*   **A* (Explanation):** Classified as **praise** due to the presence of the marker "appreciated" from the `PRAISE_MARKERS` list.
+*   **Sentence B1:** "The geometry creates unique light conditions"
+*   **B1* (Explanation):** Classified as **praise** due to the presence of the marker "unique" from the `PRAISE_MARKERS` list.
+*   **Sentence B2:** "indirect lighting and shadows form a serene atmosphere."
+*   **B2* (Explanation):** Classified as **praise** due to the presence of the marker "serene" from the `PRAISE_MARKERS` list.
+*   **State (Annotated Records):**
 ```json
 [
-  { "id": "Sarah Broadstock::0", "sentence": "I appreciated the careful attention to daylight and the sun path.", "stance": "praise" },
-  { "id": "Sandra Baggerman::0", "sentence": "The geometry creates unique light conditions", "stance": "praise" },
-  { "id": "Sandra Baggerman::1", "sentence": "indirect lighting and shadows form a serene atmosphere.", "stance": "praise" }
+  { 
+    "id": "Sarah Broadstock::0", 
+    "sentence": "I appreciated the careful attention to daylight and the sun path.", 
+    "stance": "praise" 
+  },
+  { 
+    "id": "Sandra Baggerman::0", 
+    "sentence": "The geometry creates unique light conditions", 
+    "stance": "praise" 
+  },
+  { 
+    "id": "Sandra Baggerman::1", 
+    "sentence": "indirect lighting and shadows form a serene atmosphere.", 
+    "stance": "praise" 
+  }
 ]
 ```
 
@@ -128,18 +206,33 @@ The classifier searches for markers defined in constants. Critiques take priorit
 ## Step 5: N-gram Extraction
 **Plain Language:** The system finds important pairs or triplets of words that represent key themes.
 
-**Technical Detail:** The system tokenizes sentences into lowercased words while stripping special characters and then filters them against a `STOPWORDS` list. It then generates bigrams (2-word pairs) and trigrams (3-word triplets) using a sliding window. Each n-gram is validated to ensure it doesn't consist solely of stopwords and doesn't start or end with a stopword (e.g., "of the" is rejected, while "sun path" is accepted), resulting in a set of high-entropy phrases that capture specific architectural concepts.
+**Technical Detail:** The extraction process works in three stages: First, the sentence is tokenized into individual words (lowercased, special characters removed, minimum length 2 characters). These tokens include stopwords like "the" and "and". Second, the system generates all possible bigrams (2-word sequences) and trigrams (3-word sequences) using a sliding window. Third, n-grams are filtered to remove those that consist entirely of stopwords or that start/end with a stopword (e.g., "the daylight" is rejected because it starts with "the", while "sun path" is accepted). This three-stage process ensures that only high-value semantic phrases are retained for analysis.
 
 **Location:** `lib/nlp/ngram-extractor.ts` (`extractNgrams`), `lib/analysis/bm25.ts` (`buildBM25`)
 
 ### Explanation
-Tokens are cleaned and lowercased. N-grams that consist entirely of stopwords or start/end with stopwords (like "of the" or "the daylight") are discarded to keep only high-value phrases.
+The process first tokenizes (keeping all words including stopwords), then generates all n-grams, then filters out low-value n-grams. N-grams that consist entirely of stopwords or start/end with stopwords are discarded to keep only high-entropy phrases that capture specific architectural concepts.
 
 ### Example Tracking
-*   **Sentence A:** "I appreciated the careful attention to daylight and the sun path." → `["careful attention", "daylight", "sun path", "attention to daylight", "daylight and the sun", "the sun path"]` (Filtered result: `["careful attention", "sun path"]`)
-*   **Sentence B1:** "The geometry creates unique light conditions" → `["geometry creates", "creates unique", "unique light", "light conditions", "geometry creates unique", "creates unique light", "unique light conditions"]` (Filtered result: `["unique light", "light conditions", "unique light conditions"]`)
-*   **Sentence B2:** "indirect lighting and shadows form a serene atmosphere." → `["indirect lighting", "lighting and shadows", "shadows form", "serene atmosphere", "indirect lighting and shadows", "lighting and shadows form", "shadows form a serene"]` (Filtered result: `["indirect lighting", "lighting and shadows", "serene atmosphere"]`)
-*   **State:** A `Map<string, string[]>` where keys are sentence IDs and values are arrays of unique n-grams.
+*   **Sentence A:** "I appreciated the careful attention to daylight and the sun path."
+*   **A (Tokens - All Words):** `["i", "appreciated", "the", "careful", "attention", "to", "daylight", "and", "the", "sun", "path"]`
+*   **A (All Bigrams Generated):** `["i appreciated", "appreciated the", "the careful", "careful attention", "attention to", "to daylight", "daylight and", "and the", "the sun", "sun path"]`
+*   **A (All Trigrams Generated):** `["i appreciated the", "appreciated the careful", "the careful attention", "careful attention to", "attention to daylight", "to daylight and", "daylight and the", "and the sun", "the sun path"]`
+*   **A* (Explanation):** After filtering out n-grams that start/end with stopwords: Bigrams kept `["careful attention", "sun path"]` (10 total, 8 filtered). Trigrams kept `["appreciated the careful", "attention to daylight"]` (9 total, 7 filtered). Final result: `["careful attention", "sun path", "appreciated the careful", "attention to daylight"]`.
+
+*   **Sentence B1:** "The geometry creates unique light conditions"
+*   **B1 (Tokens - All Words):** `["the", "geometry", "creates", "unique", "light", "conditions"]`
+*   **B1 (All Bigrams Generated):** `["the geometry", "geometry creates", "creates unique", "unique light", "light conditions"]`
+*   **B1 (All Trigrams Generated):** `["the geometry creates", "geometry creates unique", "creates unique light", "unique light conditions"]`
+*   **B1* (Explanation):** After filtering out n-grams that start/end with stopwords: Bigrams kept `["geometry creates", "unique light", "light conditions"]` (5 total, 2 filtered: "the geometry", "creates unique"). Trigrams kept `["geometry creates unique", "creates unique light", "unique light conditions"]` (4 total, 1 filtered: "the geometry creates"). Final result: `["geometry creates", "unique light", "light conditions", "geometry creates unique", "creates unique light", "unique light conditions"]`.
+
+*   **Sentence B2:** "indirect lighting and shadows form a serene atmosphere."
+*   **B2 (Tokens - All Words):** `["indirect", "lighting", "and", "shadows", "form", "a", "serene", "atmosphere"]`
+*   **B2 (All Bigrams Generated):** `["indirect lighting", "lighting and", "and shadows", "shadows form", "form a", "a serene", "serene atmosphere"]`
+*   **B2 (All Trigrams Generated):** `["indirect lighting and", "lighting and shadows", "and shadows form", "shadows form a", "form a serene", "a serene atmosphere"]`
+*   **B2* (Explanation):** After filtering out n-grams that start/end with stopwords: Bigrams kept `["indirect lighting", "serene atmosphere"]` (7 total, 5 filtered: "lighting and", "and shadows", "shadows form", "form a", "a serene"). Trigrams kept `["lighting and shadows", "shadows form a", "form a serene"]` (6 total, 3 filtered: "indirect lighting and", "a serene atmosphere"). Final result: `["indirect lighting", "serene atmosphere", "lighting and shadows", "shadows form a", "form a serene"]`.
+
+*   **State (N-gram Vocabulary):** A `Map<string, string[]>` where keys are sentence IDs and values are arrays of unique filtered bigrams and trigrams used for frequency analysis.
 
 ---
 
@@ -155,10 +248,13 @@ Using the Xenova/Transformers library, the model performs "feature extraction." 
 *   **Formula:** $V_{normalized} = \frac{V}{\|V\|}$
 
 ### Example Tracking
-*   **Sentence A:** "I appreciated the careful attention to daylight and the sun path." → `Float64Array(384) [0.012, -0.045, 0.089, ...]`
-*   **Sentence B1:** "The geometry creates unique light conditions" → `Float64Array(384) [0.034, -0.012, 0.056, ...]`
-*   **Sentence B2:** "indirect lighting and shadows form a serene atmosphere." → `Float64Array(384) [0.021, -0.033, 0.077, ...]`
-*   **State:** Each sentence record now has an associated 384-dimensional unit vector.
+*   **Sentence A:** "I appreciated the careful attention to daylight and the sun path."
+*   **A* (Explanation):** The transformer model generates a unit vector representing the architectural meaning of "daylight" and "sun path".
+*   **Sentence B1:** "The geometry creates unique light conditions"
+*   **B1* (Explanation):** The model encodes the concept of "unique light conditions" into high-dimensional space.
+*   **Sentence B2:** "indirect lighting and shadows form a serene atmosphere."
+*   **B2* (Explanation):** The model encodes "indirect lighting" and "serene atmosphere" into high-dimensional space.
+*   **State (Semantic Vectors):** Each sentence record now has an associated 384-dimensional unit vector. Example for `Sarah Broadstock::0`: `[0.012, -0.045, 0.089, 0.023, -0.011, 0.056, -0.034, 0.019]` (truncated, total 384 values).
 
 ---
 
@@ -174,10 +270,13 @@ Unlike standard TF-IDF, this implementation prioritizes n-grams that appear acro
 *   **Formula:** $score(t, D) = IDF(t) \cdot \frac{f(t, D) \cdot (k_1 + 1)}{f(t, D) + k_1 \cdot (1 - b + b \cdot \frac{|D|}{avgdl})}$
 
 ### Example Tracking
-*   **Sentence A:** "I appreciated the careful attention to daylight and the sun path." → Vector has non-zero values at indices for "careful attention" and "sun path".
-*   **Sentence B1:** "The geometry creates unique light conditions" → Vector has non-zero values for "unique light", "light conditions".
-*   **Sentence B2:** "indirect lighting and shadows form a serene atmosphere." → Vector has non-zero values for "indirect lighting", "serene atmosphere".
-*   **State:** A `Float64Array` for each sentence with a length equal to the size of the n-gram vocabulary.
+*   **Sentence A:** "I appreciated the careful attention to daylight and the sun path."
+*   **A* (Explanation):** The vector receives non-zero weights for "sun path" because other jurors also discussed solar orientation.
+*   **Sentence B1:** "The geometry creates unique light conditions"
+*   **B1* (Explanation):** The vector receives high weights for "light conditions", a frequent theme in the corpus.
+*   **Sentence B2:** "indirect lighting and shadows form a serene atmosphere."
+*   **B2* (Explanation):** The vector receives high weights for "serene atmosphere", reflecting shared values across juror blocks.
+*   **State (Frequency Vectors):** A `Float64Array` for each sentence with a length equal to the size of the n-gram vocabulary (e.g., `[0.0, 0.45, 0.0, 0.12, 0.0, 0.0, 0.33]`).
 
 ---
 
@@ -193,28 +292,46 @@ This step blends "what it means" (Semantic) with "what words it uses" (Frequency
 *   **Formula:** $V_{hybrid} = Normalize([w_{sem} \cdot V_{sem}, w_{freq} \cdot V_{freq}])$
 
 ### Example Tracking
-*   **Sentence A:** "I appreciated the careful attention to daylight and the sun path." → Hybrid vector (length 384 + Vocab size).
-*   **Sentence B1:** "The geometry creates unique light conditions" → Hybrid vector (length 384 + Vocab size).
-*   **Sentence B2:** "indirect lighting and shadows form a serene atmosphere." → Hybrid vector (length 384 + Vocab size).
-*   **State:** A final `Float64Array[]` containing one normalized hybrid vector for every sentence in the corpus.
+*   **Sentence A:** "I appreciated the careful attention to daylight and the sun path."
+*   **A* (Explanation):** Semantic and frequency vectors are concatenated using a 0.7/0.3 weighting scheme to prioritize underlying meaning over specific words.
+*   **Sentence B1:** "The geometry creates unique light conditions"
+*   **B1* (Explanation):** Combined into a single unit-length vector that captures both the architectural concept and the specific terminology.
+*   **Sentence B2:** "indirect lighting and shadows form a serene atmosphere."
+*   **B2* (Explanation):** Combined into a single unit-length vector that captures both the architectural concept and the specific terminology.
+*   **State:** A final `Float64Array[]` containing one normalized hybrid vector for every sentence in the corpus. (Length: $384 + |Vocab|$).
 
 ---
 
 ## Step 9: Clustering
 **Plain Language:** Similar sentences from all jurors are grouped together into "Concepts."
 
-**Technical Detail:** The system implements a K-Means clustering algorithm tailored for high-dimensional cosine similarity. It initializes $K$ centroids (either randomly or using K-Means++) and then iteratively performs two sub-steps: Assignment, where each sentence vector is assigned to the cluster with the highest cosine similarity to its centroid; and Update, where each centroid is re-calculated as the normalized average of all vectors assigned to it. This process continues for up to 25 iterations or until assignments stop changing, effectively discovering the emergent themes within the corpus.
+**Technical Detail:** The system supports multiple clustering algorithms:
 
-**Location:** `lib/analysis/kmeans.ts` (`kmeansCosine`)
+**K-Means Clustering (Default):** The system implements a K-Means clustering algorithm tailored for high-dimensional cosine similarity. It initializes $K$ centroids (either randomly or using K-Means++) and then iteratively performs two sub-steps: Assignment, where each sentence vector is assigned to the cluster with the highest cosine similarity to its centroid; and Update, where each centroid is re-calculated as the normalized average of all vectors assigned to it. This process continues for up to 25 iterations or until assignments stop changing, effectively discovering the emergent themes within the corpus.
+
+**Hierarchical Clustering (Tree-based):** The system also supports agglomerative hierarchical clustering, which builds a complete dendrogram tree of all possible cluster merges. This tree structure enables two cutting strategies:
+- **Cut by Count:** The dendrogram is cut to produce exactly $K$ clusters, similar to K-Means but using the hierarchical structure.
+- **Cut by Granularity:** The dendrogram is cut at a distance threshold determined by a granularity percentage (0-100%), where 0% produces the finest clusters (many small groups) and 100% produces the coarsest clusters (few large groups). This allows users to explore different levels of abstraction by adjusting a single granularity slider, naturally revealing how "bigger concepts emerge" from finer themes. The resulting number of clusters is determined dynamically by the chosen threshold.
+
+The hierarchical approach builds a complete dendrogram once, then cuts it based on the selected method. When cutting by granularity, the system converts the percentage to a distance threshold using the formula: $threshold = minDistance + (maxDistance - minDistance) \times (granularityPercent / 100)$.
+
+**Location:** `lib/analysis/kmeans.ts` (`kmeansCosine`), `lib/analysis/hierarchical-clustering.ts` (`buildDendrogram`, `cutDendrogramByCount`, `cutDendrogramByThreshold`)
 
 ### Explanation
-The algorithm iteratively assigns sentences to the nearest cluster center (centroid) and recomputes the centers until they stabilize. This effectively discovers emergent themes like "Lighting" or "Circulation" without being told what they are.
+**K-Means:** The algorithm iteratively assigns sentences to the nearest cluster center (centroid) and recomputes the centers until they stabilize. This effectively discovers emergent themes like "Lighting" or "Circulation" without being told what they are.
+
+**Hierarchical:** The algorithm builds a complete tree of all possible merges, then cuts it at a chosen level. This allows exploration of the data at different granularities—you can "zoom in" to see fine distinctions or "zoom out" to see broader themes. The granularity-based approach is particularly intuitive for exploring how concepts naturally emerge at different scales.
 
 ### Example Tracking
-*   **Sentence A:** "I appreciated the careful attention to daylight and the sun path." → Assigned to `concept:2`.
-*   **Sentence B1:** "The geometry creates unique light conditions" → Assigned to `concept:2`.
-*   **Sentence B2:** "indirect lighting and shadows form a serene atmosphere." → Assigned to `concept:2`.
-*   **State:** `assignments: [2, 2, 2, ...]` (array of cluster indices for all sentences).
+*   **Sentence A:** "I appreciated the careful attention to daylight and the sun path."
+*   **A* (Explanation):** Clustered into **Concept 2** because its hybrid vector is closest to the centroid representing "Daylight" and "Sun path".
+*   **Sentence B1:** "The geometry creates unique light conditions"
+*   **B1* (Explanation):** Clustered into **Concept 2** because it shares the "Light conditions" theme with other sentences.
+*   **Sentence B2:** "indirect lighting and shadows form a serene atmosphere."
+*   **B2* (Explanation):** Clustered into **Concept 2** because it shares the "Atmosphere" and "Light" theme.
+*   **State (Assignments):** `assignments: [2, 2, 2, 0, 5, 2, 1]` (array of cluster indices for all sentences in the corpus).
+
+**Note:** When using hierarchical clustering with granularity-based cutting, the number of clusters ($K$) is determined dynamically based on the selected threshold, allowing the number of concepts to emerge naturally rather than being predetermined.
 
 ---
 
@@ -229,8 +346,9 @@ The algorithm iteratively assigns sentences to the nearest cluster center (centr
 The labeler looks at the "Frequency" portion of the hybrid centroid to pick out the most important BM25 n-grams. It joins the top 2-4 terms with " · " to create a readable label.
 
 ### Example Tracking
-*   **Cluster 2:** Top terms extracted: `"daylight"`, `"light conditions"`, `"sun path"`.
-*   **Final Label:** `"daylight · light conditions · sun path"`
+*   **Concept 2 (Analysis):** The centroid is analyzed to find the terms with the highest collective weights: "daylight" (semantic) and "light conditions" (n-gram).
+*   **Label Generation:** The system joins the top terms with a " · " separator to describe the discovered theme.
+*   **Final Label:** "daylight · light conditions · sun path"
 *   **State:** `conceptLabel: Map("concept:2" -> "daylight · light conditions · sun path")`
 
 ---
@@ -240,15 +358,15 @@ The labeler looks at the "Frequency" portion of the hybrid centroid to pick out 
 
 **Technical Detail:** The system builds a weight matrix by counting the number of sentences from each juror that were assigned to each concept. These counts are then normalized per juror: if a juror wrote 10 sentences and 4 were assigned to Concept A, the weight for that Juror→Concept edge is 0.4. This creates a relative influence score that accounts for the varying lengths of juror comments, ensuring that a juror who wrote a single long paragraph has a proportional impact compared to one who wrote several short notes.
 
-**Location:** `lib/graph/graph-builder.ts` (lines 178-205)
+**Location:** `lib/graph/graph-builder.ts` (lines 194-221)
 
 ### Explanation
 If Sarah Broadstock has 10 sentences and 3 are in the "Lighting" concept, her weight for that concept is 0.3. These weights become the "edges" in the graph.
 
 ### Example Tracking
-*   **Sarah Broadstock:** Has 1 sentence in `concept:2`. Total sentences = 3. Weight = 1/3 = 0.333.
-*   **Sandra Baggerman:** Has 2 sentences (B1 and B2) in `concept:2`. Total sentences = 3. Weight = 2/3 = 0.666.
-*   **State:**
+*   **Sarah Broadstock:** Directed to `concept:2` because 33.3% of her feedback was about daylight and the sun path.
+*   **Sandra Baggerman:** Directed to `concept:2` because 66.6% of her feedback focused on lighting conditions and atmosphere.
+*   **State (Normalized Weights per Juror):**
 ```json
 {
   "Sarah Broadstock": { "concept:2": 0.3333333333333333 },
@@ -258,39 +376,98 @@ If Sarah Broadstock has 10 sentences and 3 are in the "Lighting" concept, her we
 
 ---
 
+## Step 11.5: High-Dimensional Juror Vector Computation
+**Plain Language:** For each juror, we compute a high-dimensional vector that represents their overall thematic focus by combining the concept centroids they care about.
+
+**Technical Detail:** While the juror-concept mapping (Step 11) produces normalized weights indicating how much each juror emphasizes each concept, this step computes the implicit high-dimensional representation of each juror's thematic focus. For each juror, the system calculates a weighted average of all concept centroids, where the weights come from the normalized juror-concept mapping. Specifically, for each juror, it computes: $V_{juror} = \Sigma(weight[concept] \times centroid[concept])$ across all concepts. The resulting vector is then L2-normalized to unit length. This high-dimensional juror vector represents the juror's position in the same semantic space as the concept centroids, effectively capturing what themes they care about most in the same vector space used for clustering.
+
+**Location:** `lib/graph/graph-builder.ts` (lines 223-258)
+
+### Explanation
+This step makes explicit the implicit high-dimensional representation of each juror. Conceptually, this is the same computation that happens when juror 3D positions are calculated (Step 13), but here we compute it in the original high-dimensional space rather than the reduced 3D space. The weighted average combines the semantic and frequency information from all concepts a juror discussed, creating a comprehensive vector representation of their interests.
+
+**Formula:** $V_{juror} = Normalize(\Sigma_{c \in concepts} weight_{juror}[c] \times centroid[c])$
+
+### Example Tracking
+*   **Sarah Broadstock:** Her high-dimensional vector is computed as $0.333 \times centroid[concept:2] + 0.667 \times centroid[concept:0]$ (assuming she also discussed another concept). The vector captures her focus on "daylight" and "sun path" themes combined with other concepts she mentioned.
+*   **Sandra Baggerman:** Her high-dimensional vector is computed as $0.666 \times centroid[concept:2] + 0.334 \times centroid[concept:5]$ (assuming another concept). The vector emphasizes "light conditions" and "serene atmosphere" themes.
+*   **State (High-Dimensional Juror Vectors):** Each juror now has an associated high-dimensional hybrid vector (same dimensionality as concept centroids, typically 384 + n-gram vocabulary size) representing their combined thematic focus.
+
+---
+
+## Step 11.6: Juror Top Terms Extraction
+**Plain Language:** From each juror's high-dimensional vector, we extract the most important terms that describe what themes they care about.
+
+**Technical Detail:** Using the same term extraction process applied to concept centroids (Step 10), the system analyzes each juror's high-dimensional vector to identify the n-grams and semantic terms with the highest weights. The system uses the `getClusterTopTerms()` function, which extracts terms from both the semantic portion (384 dimensions) and the frequency portion (n-gram vocabulary) of the hybrid vector. The top 12 terms are extracted per juror, with deduplication logic to prevent overlapping terms like "light" and "light conditions" from both appearing. These terms provide a human-readable summary of each juror's thematic interests, displayed in the inspector panel when a juror node is selected.
+
+**Location:** `lib/graph/graph-builder.ts` (lines 254-256), `lib/analysis/hybrid-concept-labeler.ts` (`getClusterTopTerms`)
+
+### Explanation
+This step applies the same labeling methodology used for concepts (Step 10) to juror vectors. By analyzing the frequency portion of the high-dimensional juror vector, the system identifies which n-grams and semantic themes are most strongly associated with that juror's combined interests. This provides a textual representation of what the juror cares about, complementing the numerical weights from Step 11.
+
+### Example Tracking
+*   **Sarah Broadstock:** From her high-dimensional vector, the system extracts top terms like `["daylight", "sun path", "careful attention", "site response", "circulation"]`, reflecting her emphasis on solar orientation and spatial planning concepts.
+*   **Sandra Baggerman:** From her high-dimensional vector, the system extracts top terms like `["light conditions", "serene atmosphere", "indirect lighting", "geometry", "shadows"]`, reflecting her focus on lighting quality and spatial atmosphere.
+*   **State (Juror Top Terms):** A `Record<string, string[]>` mapping juror names to arrays of top terms, stored in the `AnalysisResult.jurorTopTerms` field and displayed in the UI inspector panel.
+
+---
+
+## Step 11.7: Juror 3D Position Calculation
+**Plain Language:** For each person, we calculate their 3D location based on their high-dimensional thematic vector.
+
+**Technical Detail:** Each juror is positioned in the 3D semantic space by applying dimensionality reduction to their high-dimensional vector (Step 11.5). This projects the complex mixture of concepts they care about into the same (x, y, z) coordinate system used by the concepts. While the implementation uses a weighted-average shortcut for efficiency, it is conceptually a direct PCA projection of the juror's semantic fingerprint.
+
+**Location:** `lib/graph/dimensionality-reduction.ts` (`computeNode3DPositions`)
+
+---
+
+## Step 11.1: Juror Node Construction
+**Plain Language:** The final juror "nodes" are created, combining their name, their position, and their thematic summary.
+
+**Technical Detail:** This step synthesizes the outputs of the juror flow to create the final `GraphNode` objects. Each node contains:
+- **Identifier:** The juror's name (Step 2.1)
+- **Position:** The (x, y, z) coordinates calculated in Step 11.7
+- **Thematic Summary:** The top terms extracted from their high-dimensional vector in Step 11.6
+- **Metadata:** Sizing information based on their total sentence count
+
+**Location:** `lib/graph/graph-builder.ts` (lines 234-247)
+
+---
+
 ## Step 12: Link Construction
 **Plain Language:** The system creates the lines connecting jurors to concepts and to each other.
 
 **Technical Detail:** The system generates three types of graph links: `jurorConcept` links represent direct mentions and are assigned a dominant "stance" (praise, critique, etc.) based on the majority stance of the supporting sentences; `jurorJuror` links are created if the cosine similarity between two jurors' concept vectors exceeds a user-defined threshold; and `conceptConcept` links are similarly created based on the similarity between cluster centroids. Each link is assigned a `weight` and a set of `evidenceIds` that allow the UI to show the specific sentences justifying the connection.
 
-**Location:** `lib/graph/projections.ts`, `lib/graph/graph-builder.ts`
+**Location:** `lib/graph/projections.ts`, `lib/graph/graph-builder.ts` (lines 271-333)
 
 ### Explanation
 Links are created if the weight exceeds a threshold. "Juror-Juror" links are created if two jurors talk about the same concepts in similar proportions (computed via cosine similarity of their concept vectors).
 
 ### Example Tracking
-*   **Link 1 (Juror-Concept):** `source: "juror:Sarah Broadstock"`, `target: "concept:2"`, `weight: 0.333`, `stance: "praise"`, `evidenceIds: ["Sarah Broadstock::0"]`
-*   **Link 2 (Juror-Concept):** `source: "juror:Sandra Baggerman"`, `target: "concept:2"`, `weight: 0.666`, `stance: "praise"`, `evidenceIds: ["Sandra Baggerman::0", "Sandra Baggerman::1"]`
-*   **Link 3 (Juror-Juror):** `source: "juror:Sarah Broadstock"`, `target: "juror:Sandra Baggerman"`, `weight: 0.89` (since they share Concept 2).
-*   **State:** A flat array of `GraphLink` objects ready for the D3 simulation.
+*   **Link 1 (Sarah ↔ Concept 2):** A connection is drawn representing her praise for daylight, with a weight of 0.333.
+*   **Link 2 (Sandra ↔ Concept 2):** A stronger connection is drawn representing her praise for light conditions, with a weight of 0.666.
+*   **Link 3 (Sarah ↔ Sandra):** A similarity link is drawn between the two jurors because they both prioritized the "Daylight" concept in their critiques.
+*   **State:** A flat array of `GraphLink` objects ready for the 3D force simulation engine.
 
 ---
 
-## Step 13: 3D Position Calculation
-**Plain Language:** Every person and concept is placed in a 3D space so that similar items are close together.
+## Step 13: Concept 3D Position Calculation
+**Plain Language:** Concept nodes are placed in a 3D space so that similar items are close together.
 
-**Technical Detail:** The system uses a custom Principal Component Analysis (PCA) implementation to project high-dimensional centroids into a 3D coordinate system. It uses the Power Iteration method to find the top three eigenvectors of the covariance matrix, which represent the directions of maximum variance in the data. Concept nodes are placed at these projected coordinates, while Juror nodes are positioned at the weighted average location of the concepts they are connected to, effectively placing each juror in the "semantic neighborhood" of their primary concerns.
+**Technical Detail:** The system uses a custom Principal Component Analysis (PCA) implementation to project high-dimensional concept centroids into a 3D coordinate system. It uses the Power Iteration method to find the top three eigenvectors of the covariance matrix, which represent the directions of maximum variance in the data.
 
-**Location:** `lib/graph/dimensionality-reduction.ts` (`reduceTo3D`, `computeNode3DPositions`)
+### Step 13.1: Concept 3D Positions
+Concept nodes are placed at the PCA-projected coordinates of their high-dimensional centroids. Each centroid is projected onto the top three principal components to obtain (x, y, z) coordinates.
+
+**Location:** `lib/graph/dimensionality-reduction.ts` (`reduceTo3D`)
 
 ### Explanation
-Concept nodes are placed directly using PCA on their centroids. Juror nodes are placed at the weighted average position of the concepts they are linked to, ensuring they "float" near the themes they discussed most.
+Concept nodes are placed directly using PCA on their centroids. This serves as the primary "anchor" for the 3D visualization, establishing the semantic landscape that jurors will then be mapped into.
 
 ### Example Tracking
-*   **Concept 2 (Node):** `x: 1.45, y: -2.12, z: 0.88` (calculated via PCA of its centroid).
-*   **Sarah Broadstock (Node):** `x: 1.32, y: -1.98, z: 0.76` (weighted average of connected concepts).
-*   **Sandra Baggerman (Node):** `x: 1.51, y: -2.25, z: 0.94` (weighted average of connected concepts).
-*   **State:** Every `GraphNode` object has `x`, `y`, and `z` properties populated.
+*   **Concept 2 (13.1 - PCA Projection):** The centroid `[0.012, -0.045, 0.089, ...]` (384+ dimensions) is projected onto the top 3 principal components, resulting in 3D coordinates like `{ x: 1.45, y: -2.12, z: 0.88 }`.
+*   **State:** Every concept `GraphNode` now has `x`, `y`, and `z` properties populated for the WebGL renderer.
 
 ---
 
@@ -305,5 +482,7 @@ Concept nodes are placed directly using PCA on their centroids. Juror nodes are 
 The final object contains all jurors, concepts, sentence records, and graph elements. This is what the frontend receives to render the interactive 3D force-directed graph.
 
 ### Example Tracking
-*   **Output:** The browser receives an `AnalysisResult` JSON. When the user clicks the node **"Sandra Baggerman"**, the UI highlights the link to **"daylight · light conditions · sun path"**, and the sidebar displays the sentences: *"The geometry creates unique light conditions"* and *"indirect lighting and shadows form a serene atmosphere."*
-*   **State:** The final `AnalysisResult` object containing 7 jurors, 10 concepts, and 23 links.
+*   **Simulation Data:** All nodes (Jurors and Concepts) and links are bundled into a final data package.
+*   **Final Output:** The `AnalysisResult` JSON is sent to the browser to render the 3D interaction.
+*   **Interaction:** Clicking "Sarah Broadstock" in the UI now highlights the concept "daylight · light conditions" and reveals her specific sentence as evidence. The inspector panel displays her thematic focus summary (from Step 11.6) and her 3D proximity to themes (Step 11.7).
+*   **State:** Final `AnalysisResult` JSON containing the complete mapped network of 7 jurors and 10 themes, including `jurorTopTerms` with high-dimensional vector-derived term summaries for each juror (Step 11.1).

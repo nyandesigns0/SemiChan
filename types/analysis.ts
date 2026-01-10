@@ -40,5 +40,6 @@ export interface AnalysisResult {
   kSearchMetrics?: Array<{ k: number; score: number }>;
   clusteringMode?: "kmeans" | "hierarchical" | "hybrid";
   checkpoints?: AnalysisCheckpoint[];
+  jurorTopTerms?: Record<string, string[]>; // juror name -> top terms array
 }
 

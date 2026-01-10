@@ -23,6 +23,10 @@ interface AnalysisControlsAccordionProps {
   onAutoKChange: (value: boolean) => void;
   softMembership: boolean;
   onSoftMembershipChange: (value: boolean) => void;
+  cutType: "count" | "granularity";
+  onCutTypeChange: (type: "count" | "granularity") => void;
+  granularityPercent: number;
+  onGranularityPercentChange: (value: number) => void;
 }
 
 export function AnalysisControlsAccordion({
@@ -42,6 +46,10 @@ export function AnalysisControlsAccordion({
   onAutoKChange,
   softMembership,
   onSoftMembershipChange,
+  cutType,
+  onCutTypeChange,
+  granularityPercent,
+  onGranularityPercentChange,
 }: AnalysisControlsAccordionProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -83,6 +91,10 @@ export function AnalysisControlsAccordion({
             onAutoKChange={onAutoKChange}
             softMembership={softMembership}
             onSoftMembershipChange={onSoftMembershipChange}
+            cutType={cutType}
+            onCutTypeChange={onCutTypeChange}
+            granularityPercent={granularityPercent}
+            onGranularityPercentChange={onGranularityPercentChange}
           />
         </div>
       )}

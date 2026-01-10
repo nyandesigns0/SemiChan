@@ -71,6 +71,8 @@ export default function HomePage() {
   const [clusteringMode, setClusteringMode] = useState<"kmeans" | "hierarchical" | "hybrid">("kmeans");
   const [autoK, setAutoK] = useState(false);
   const [softMembership, setSoftMembership] = useState(false);
+  const [cutType, setCutType] = useState<"count" | "granularity">("count");
+  const [granularityPercent, setGranularityPercent] = useState(50);
 
   const [mode, setMode] = useState<GraphMode>("bipartite");
   const [search, setSearch] = useState("");
@@ -130,6 +132,8 @@ export default function HomePage() {
             clusteringMode,
             autoK,
             softMembership,
+            cutType,
+            granularityPercent: cutType === "granularity" ? granularityPercent : undefined,
           }),
         });
         if (response.ok) {
@@ -145,7 +149,7 @@ export default function HomePage() {
     };
 
     analyze();
-  }, [jurorBlocks, kConcepts, similarityThreshold, semanticWeight, frequencyWeight, clusteringMode, autoK, softMembership]);
+  }, [jurorBlocks, kConcepts, similarityThreshold, semanticWeight, frequencyWeight, clusteringMode, autoK, softMembership, cutType, granularityPercent]);
 
   // Apply filters + mode
   const { filteredNodes, filteredLinks } = useMemo(() => {
@@ -282,6 +286,10 @@ export default function HomePage() {
             onAutoKChange={setAutoK}
             softMembership={softMembership}
             onSoftMembershipChange={setSoftMembership}
+            cutType={cutType}
+            onCutTypeChange={setCutType}
+            granularityPercent={granularityPercent}
+            onGranularityPercentChange={setGranularityPercent}
           />
 
           <StanceFiltersAccordion

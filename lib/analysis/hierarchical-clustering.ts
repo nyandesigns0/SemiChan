@@ -1,10 +1,17 @@
 import { hybridCosine } from "./hybrid-vectors";
 
 /**
+ * Dendrogram structure: tree of merges from agglomerative clustering
+ */
+export interface Dendrogram {
+  merges: Array<{ left: number; right: number; distance: number; size: number }>;
+}
+
+/**
  * Agglomerative Hierarchical Clustering using Cosine Similarity
  * Simple O(n^2) implementation suitable for < 500 sentences
  */
-export function buildDendrogram(vectors: Float64Array[]) {
+export function buildDendrogram(vectors: Float64Array[]): Dendrogram {
   const n = vectors.length;
   if (n === 0) return { merges: [] };
 
@@ -136,5 +143,105 @@ export function cutDendrogramByCount(vectors: Float64Array[], targetK: number): 
   return assignments;
 }
 
+/**
+ * Cut dendrogram by distance threshold based on granularity percentage
+ * @param dendrogram The pre-built dendrogram tree
+ * @param vectors Original vectors (for computing centroids if needed)
+ * @param granularityPercent 0-100, where 0% = finest (most clusters), 100% = coarsest (fewest clusters)
+ * @returns Cluster assignments array
+ */
+export function cutDendrogramByThreshold(
+  dendrogram: Dendrogram,
+  vectors: Float64Array[],
+  granularityPercent: number
+): number[] {
+  const n = vectors.length;
+  if (n === 0) return [];
+  if (dendrogram.merges.length === 0) {
+    // No merges means each vector is its own cluster
+    return Array.from({ length: n }, (_, i) => i);
+  }
 
+  // Find min and max distances in the dendrogram
+  let minDistance = Infinity;
+  let maxDistance = -Infinity;
+  for (const merge of dendrogram.merges) {
+    if (merge.distance < minDistance) minDistance = merge.distance;
+    if (merge.distance > maxDistance) maxDistance = merge.distance;
+  }
+
+  // Handle edge case where all distances are the same
+  if (minDistance === maxDistance) {
+    // All merges happen at the same distance, return all in one cluster
+    return new Array(n).fill(0);
+  }
+
+  // Convert granularity percent to distance threshold
+  // 0% = minDistance (finest, most clusters)
+  // 100% = maxDistance (coarsest, fewest clusters)
+  const threshold = minDistance + (maxDistance - minDistance) * (granularityPercent / 100);
+
+  // Union-Find data structure to track cluster membership
+  const parent = new Array(n + dendrogram.merges.length).fill(-1);
+  const clusterMap = new Map<number, number[]>(); // cluster id -> vector indices
+
+  // Initialize: each vector is its own cluster
+  for (let i = 0; i < n; i++) {
+    parent[i] = i;
+    clusterMap.set(i, [i]);
+  }
+
+  // Process merges up to the threshold
+  let nextClusterId = n;
+  for (const merge of dendrogram.merges) {
+    if (merge.distance > threshold) {
+      // Stop merging at this threshold
+      break;
+    }
+
+    // Find root clusters for left and right
+    const leftRoot = findRoot(merge.left, parent);
+    const leftIndices = clusterMap.get(leftRoot) || [];
+    const rightRoot = findRoot(merge.right, parent);
+    const rightIndices = clusterMap.get(rightRoot) || [];
+
+    // Merge clusters
+    parent[leftRoot] = nextClusterId;
+    parent[rightRoot] = nextClusterId;
+    parent[nextClusterId] = nextClusterId;
+
+    clusterMap.set(nextClusterId, [...leftIndices, ...rightIndices]);
+    clusterMap.delete(leftRoot);
+    if (leftRoot !== rightRoot) {
+      clusterMap.delete(rightRoot);
+    }
+
+    nextClusterId++;
+  }
+
+  // Compress paths and assign final cluster IDs
+  const finalAssignments = new Array(n).fill(-1);
+  const clusterIdMap = new Map<number, number>();
+  let nextFinalId = 0;
+
+  for (let i = 0; i < n; i++) {
+    const root = findRoot(i, parent);
+    if (!clusterIdMap.has(root)) {
+      clusterIdMap.set(root, nextFinalId++);
+    }
+    finalAssignments[i] = clusterIdMap.get(root)!;
+  }
+
+  return finalAssignments;
+}
+
+/**
+ * Find root with path compression
+ */
+function findRoot(x: number, parent: number[]): number {
+  if (parent[x] !== x && parent[x] !== -1) {
+    parent[x] = findRoot(parent[x], parent);
+  }
+  return parent[x] === -1 ? x : parent[x];
+}
 

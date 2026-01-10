@@ -191,7 +191,7 @@ export function InspectorPanel({
 
           {activeTab === "details" && (
             <div className="flex h-full overflow-hidden">
-              <div className="flex-1 overflow-y-auto p-6">
+              <div className="flex-1 overflow-y-auto px-6 pt-6 pb-0">
                 {empty || !analysis ? (
                   <div className="flex h-full flex-col items-center justify-center text-center text-slate-400">
                     <Info className="mb-4 h-12 w-12 opacity-10" />
@@ -200,31 +200,29 @@ export function InspectorPanel({
                     </p>
                   </div>
                 ) : selectedNode ? (
-                  <div className="mx-auto max-w-4xl space-y-6">
-                    <div className="flex items-center justify-between">
+                  <div className="w-full">
+                    <div className="flex items-center justify-between mb-3">
                       <div>
                         <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-blue-500/70">
                           <BarChart3 className="h-3 w-3" />
                           {selectedNode.type} Properties
                         </div>
-                        <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-900">{selectedNode.label}</h2>
+                        <h2 className="mt-1 text-3xl font-black tracking-tight text-slate-900">{selectedNode.label}</h2>
                       </div>
                       <Badge variant="outline" className="border-blue-100 bg-blue-50/50 text-blue-600 px-3 py-1 font-bold">
                         ACTIVE
                       </Badge>
                     </div>
-                    <Separator className="bg-slate-200/60" />
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <NodeInspector node={selectedNode} analysis={analysis} jurorBlocks={jurorBlocks} />
-                    </div>
+                    <Separator className="bg-slate-200/60 mb-3" />
+                    <NodeInspector node={selectedNode} analysis={analysis} jurorBlocks={jurorBlocks} />
                   </div>
                 ) : selectedLink ? (
-                  <div className="mx-auto max-w-4xl space-y-6">
+                  <div className="w-full space-y-8">
                     <div>
                       <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-purple-500/70">
                         Relationship Analysis
                       </div>
-                      <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-900 capitalize">
+                      <h2 className="mt-1 text-3xl font-black tracking-tight text-slate-900 capitalize">
                         {selectedLink.kind.replace(/([A-Z])/g, ' $1')}
                       </h2>
                     </div>
