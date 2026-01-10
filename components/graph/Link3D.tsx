@@ -104,7 +104,7 @@ export function Link3D({ link, nodes, isSelected, opacity, onClick }: Link3DProp
       {/* Invisible wider line for easier clicking */}
       <Line
         points={points}
-        color="transparent"
+        color="#000000"
         lineWidth={10}
         transparent
         opacity={0}
@@ -112,7 +112,6 @@ export function Link3D({ link, nodes, isSelected, opacity, onClick }: Link3DProp
     </group>
   );
 }
-
 
 
 
