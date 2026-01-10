@@ -15,6 +15,7 @@ import { GraphLegend } from "./GraphLegend";
 import type { GraphNode, GraphLink } from "@/types/graph";
 import type { AnalysisCheckpoint } from "@/types/analysis";
 import type { OrbitControls as OrbitControlsType } from "three-stdlib";
+import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
 
 interface GraphCanvas3DProps {
   nodes: GraphNode[];
@@ -29,6 +30,7 @@ interface GraphCanvas3DProps {
   onDeselect: () => void;
   empty: boolean;
   checkpoints?: AnalysisCheckpoint[];
+  insights?: Record<string, ConceptInsight>;
 }
 
 // Camera controller component to handle reset
@@ -74,6 +76,7 @@ function SceneContent({
   onDeselect,
   showGrid,
   showAxes,
+  insights = {},
 }: {
   nodes: GraphNode[];
   links: GraphLink[];
@@ -87,6 +90,7 @@ function SceneContent({
   onDeselect: () => void;
   showGrid: boolean;
   showAxes: boolean;
+  insights?: Record<string, ConceptInsight>;
 }) {
   // Create node lookup map
   const nodeMap = useMemo(() => {
@@ -161,6 +165,7 @@ function SceneContent({
           opacity={nodeVisibility.get(node.id) ?? 0}
           onClick={onNodeClick}
           onDoubleClick={onNodeDoubleClick}
+          insight={insights[node.id]}
         />
       ))}
     </>
@@ -180,6 +185,7 @@ export function GraphCanvas3D({
   onDeselect,
   empty,
   checkpoints = [],
+  insights = {},
 }: GraphCanvas3DProps) {
   const controlsRef = useRef<OrbitControlsType>(null);
   const [showGrid, setShowGrid] = useState(true);
@@ -249,6 +255,7 @@ export function GraphCanvas3D({
                   onDeselect={onDeselect}
                   showGrid={showGrid}
                   showAxes={showAxes}
+                  insights={insights}
                 />
               </Suspense>
             </Canvas>

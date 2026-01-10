@@ -32,3 +32,22 @@ export interface AnalyzeRequest {
 export interface AnalyzeResponse {
   analysis: AnalysisResult;
 }
+
+export interface ConceptBrief {
+  id: string;
+  label_seed: string;
+  top_ngrams: string[];
+  evidence_sentences: string[];
+  stance_mix: {
+    praise: number;
+    critique: number;
+    suggestion: number;
+    neutral: number;
+  };
+}
+
+export interface SynthesisResponse {
+  concept_title: string;
+  concept_one_liner: string;
+  is_fallback: boolean;
+}

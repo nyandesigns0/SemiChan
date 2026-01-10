@@ -3,21 +3,9 @@
 import { Link2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { stanceColor } from "@/lib/utils/stance-utils";
 import type { GraphLink } from "@/types/graph";
 import type { SentenceRecord } from "@/types/analysis";
-
-function stanceColor(s?: string): string {
-  switch (s) {
-    case "praise":
-      return "#16a34a";
-    case "critique":
-      return "#dc2626";
-    case "suggestion":
-      return "#f59e0b";
-    default:
-      return "#64748b";
-  }
-}
 
 interface LinkInspectorProps {
   link: GraphLink;

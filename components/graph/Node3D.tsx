@@ -5,6 +5,7 @@ import { useFrame } from "@react-three/fiber";
 import { Text, Billboard } from "@react-three/drei";
 import * as THREE from "three";
 import type { GraphNode, NodeType } from "@/types/graph";
+import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
 
 // Helper function to lighten a hex color by mixing with white
 function lightenColor(hex: string, amount: number): string {
@@ -28,6 +29,7 @@ interface Node3DProps {
   opacity: number; // 0 = grayed out, 0.7 = connected, 1.0 = selected/visible
   onClick: (node: GraphNode, event?: MouseEvent) => void;
   onDoubleClick: (node: GraphNode) => void;
+  insight?: ConceptInsight;
 }
 
 // Color scheme for node types
@@ -56,7 +58,7 @@ const nodeColors: Record<NodeType, NodeColorScheme> = {
   },
 };
 
-export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick }: Node3DProps) {
+export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insight }: Node3DProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
   
@@ -159,7 +161,7 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick }: No
             maxWidth={3}
             textAlign="center"
           >
-            {node.label}
+            {insight?.shortLabel || node.label}
           </Text>
         </Billboard>
       ) : null}

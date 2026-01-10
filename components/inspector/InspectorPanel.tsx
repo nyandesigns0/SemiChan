@@ -22,6 +22,7 @@ import type { GraphNode, GraphLink } from "@/types/graph";
 import type { AnalysisResult } from "@/types/analysis";
 import type { JurorBlock } from "@/types/nlp";
 import type { SentenceRecord } from "@/types/analysis";
+import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
 
 interface InspectorPanelProps {
   analysis: AnalysisResult | null;
@@ -30,6 +31,8 @@ interface InspectorPanelProps {
   evidence: SentenceRecord[];
   jurorBlocks: JurorBlock[];
   empty: boolean;
+  insights?: Record<string, ConceptInsight>;
+  onFetchSummary?: (conceptId: string) => void;
 }
 
 type TabType = "console" | "details" | "schema";
@@ -45,6 +48,8 @@ export function InspectorPanel({
   evidence,
   jurorBlocks,
   empty,
+  insights = {},
+  onFetchSummary,
 }: InspectorPanelProps) {
   const [activeTab, setActiveTab] = useState<TabType>("console");
   const [height, setHeight] = useState(DEFAULT_HEIGHT);
@@ -214,7 +219,13 @@ export function InspectorPanel({
                       </Badge>
                     </div>
                     <Separator className="bg-slate-200/60 mb-3" />
-                    <NodeInspector node={selectedNode} analysis={analysis} jurorBlocks={jurorBlocks} />
+                    <NodeInspector 
+                      node={selectedNode} 
+                      analysis={analysis} 
+                      jurorBlocks={jurorBlocks} 
+                      insight={insights[selectedNode.id]} 
+                      onFetchSummary={onFetchSummary}
+                    />
                   </div>
                 ) : selectedLink ? (
                   <div className="w-full space-y-8">

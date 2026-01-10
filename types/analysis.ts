@@ -22,6 +22,8 @@ export interface AnalysisResult {
   concepts: { 
     id: string; 
     label: string; 
+    shortLabel?: string;
+    summary?: string;
     size: number; 
     topTerms: string[];
     representativeSentences?: string[];

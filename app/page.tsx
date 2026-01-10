@@ -14,6 +14,7 @@ import { GraphCanvas3D } from "@/components/graph/GraphCanvas3D";
 import { InspectorPanel } from "@/components/inspector/InspectorPanel";
 import { CorpusSummary } from "@/components/inspector/CorpusSummary";
 import { CollapsibleSidebar } from "@/components/ui/collapsible-sidebar";
+import { useConceptSummarizer } from "@/hooks/useConceptSummarizer";
 import { segmentByJuror } from "@/lib/segmentation/juror-segmenter";
 import { downloadJson } from "@/lib/utils/download";
 import { cn } from "@/lib/utils/cn";
@@ -92,6 +93,9 @@ export default function HomePage() {
   // Analysis state
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+
+  // Concept Summarization
+  const { insights, fetchSummary } = useConceptSummarizer(analysis);
 
   // Update blocks when rawText changes
   useEffect(() => {
@@ -649,6 +653,7 @@ export default function HomePage() {
                   onDeselect={onDeselect}
                   empty={emptyState}
                   checkpoints={analysis?.checkpoints}
+                  insights={insights}
                 />
               </CardContent>
             </Card>
@@ -661,6 +666,8 @@ export default function HomePage() {
               evidence={evidence}
               jurorBlocks={jurorBlocks}
               empty={emptyState}
+              insights={insights}
+              onFetchSummary={fetchSummary}
             />
           </div>
 
