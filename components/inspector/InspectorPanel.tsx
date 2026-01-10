@@ -203,19 +203,19 @@ export function InspectorPanel({
                   </div>
                 ) : selectedNode ? (
                   <div className="w-full">
-                    <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center justify-between mb-2">
                       <div>
-                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-blue-500/70">
-                          <BarChart3 className="h-3 w-3" />
+                        <div className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-[0.2em] text-blue-500/70">
+                          <BarChart3 className="h-2.5 w-2.5" />
                           {selectedNode.type} Properties
                         </div>
-                        <h2 className="mt-1 text-3xl font-black tracking-tight text-slate-900">{selectedNode.label}</h2>
+                        <h2 className="mt-0.5 text-2xl font-black tracking-tight text-slate-900">{selectedNode.label}</h2>
                       </div>
-                      <Badge variant="outline" className="border-blue-100 bg-blue-50/50 text-blue-600 px-3 py-1 font-bold">
+                      <Badge variant="outline" className="border-blue-100 bg-blue-50/50 text-blue-600 px-2.5 py-0.5 text-[10px] font-bold">
                         ACTIVE
                       </Badge>
                     </div>
-                    <Separator className="bg-slate-200/60 mb-3" />
+                    <Separator className="bg-slate-200/60 mb-2" />
                     <NodeInspector 
                       node={selectedNode} 
                       analysis={analysis} 

@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState, useMemo, useCallback, Suspense, useEffect } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import { useRef, useState, useMemo, useCallback, Suspense, useEffect, memo } from "react";
+import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, Environment, PerspectiveCamera, Grid, Html } from "@react-three/drei";
 import * as THREE from "three";
 import { FileText, Play, FastForward, SkipBack } from "lucide-react";
@@ -72,8 +72,64 @@ function AxesHelper({ visible }: { visible: boolean }) {
   return <axesHelper args={[10]} />;
 }
 
-// Axis end labels component
-function AxisEndLabels({ 
+// Axis end labels component - memoized to prevent unnecessary re-renders
+const DynamicAxisLabel = ({ 
+  position, 
+  label, 
+  subLabel, 
+  colorClass, 
+  textColorClass, 
+  borderColorClass 
+}: { 
+  position: [number, number, number]; 
+  label: string; 
+  subLabel?: string;
+  colorClass: string;
+  textColorClass: string;
+  borderColorClass: string;
+}) => {
+  const [isVisible, setIsVisible] = useState(true);
+  const { camera } = useThree();
+  const origin = useMemo(() => new THREE.Vector3(0, 0, 0), []);
+  const labelPos = useMemo(() => new THREE.Vector3(...position), [position]);
+
+  useFrame(() => {
+    const distToCamera = labelPos.distanceTo(camera.position);
+    const originDistToCamera = origin.distanceTo(camera.position);
+    
+    // If the label is significantly further than the origin, it's on the "back side"
+    // We use a small threshold (1.0) to prevent rapid switching at the boundary
+    const shouldBeVisible = distToCamera < originDistToCamera + 1.0;
+    
+    if (shouldBeVisible !== isVisible) {
+      setIsVisible(shouldBeVisible);
+    }
+  });
+
+  return (
+    <Html position={position} center distanceFactor={15} pointerEvents="none">
+      <div 
+        className="flex flex-col items-center gap-1 transition-opacity duration-300" 
+        style={{ 
+          opacity: isVisible ? 1 : 0,
+          pointerEvents: "none",
+          userSelect: "none"
+        }}
+      >
+        <div className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold text-white shadow-sm border border-white/20", colorClass)}>
+          {isVisible ? label : " "}
+        </div>
+        {subLabel && (
+          <div className={cn("px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold shadow-sm border whitespace-nowrap", textColorClass, borderColorClass)}>
+            {isVisible ? subLabel : " "}
+          </div>
+        )}
+      </div>
+    </Html>
+  );
+};
+
+const AxisEndLabels = memo(function AxisEndLabels({ 
   visible, 
   axisLabels, 
   enableAI 
@@ -101,73 +157,61 @@ function AxisEndLabels({
   return (
     <group>
       {/* X Axis */}
-      <Html position={[size + offset, 0, 0]} center distanceFactor={15} occlude="blended" pointerEvents="none">
-        <div className="flex flex-col items-center gap-1">
-          <div className="px-1.5 py-0.5 rounded bg-red-500/90 text-[10px] font-bold text-white shadow-sm select-none border border-white/20">X+</div>
-          {axisLabels && (
-            <div className="px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold text-red-600 shadow-sm border border-red-100 whitespace-nowrap">
-              {getLabel("x", "positive")}
-            </div>
-          )}
-        </div>
-      </Html>
-      <Html position={[-(size + offset), 0, 0]} center distanceFactor={15} occlude="blended" pointerEvents="none">
-        <div className="flex flex-col items-center gap-1">
-          <div className="px-1.5 py-0.5 rounded bg-red-500/90 text-[10px] font-bold text-white shadow-sm select-none border border-white/20">X-</div>
-          {axisLabels && (
-            <div className="px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold text-red-600 shadow-sm border border-red-100 whitespace-nowrap">
-              {getLabel("x", "negative")}
-            </div>
-          )}
-        </div>
-      </Html>
+      <DynamicAxisLabel 
+        position={[size + offset, 0, 0]} 
+        label="X+" 
+        subLabel={getLabel("x", "positive")}
+        colorClass="bg-red-500/90"
+        textColorClass="text-red-600"
+        borderColorClass="border-red-100"
+      />
+      <DynamicAxisLabel 
+        position={[-(size + offset), 0, 0]} 
+        label="X-" 
+        subLabel={getLabel("x", "negative")}
+        colorClass="bg-red-500/90"
+        textColorClass="text-red-600"
+        borderColorClass="border-red-100"
+      />
       
       {/* Y Axis */}
-      <Html position={[0, size + offset, 0]} center distanceFactor={15} occlude="blended" pointerEvents="none">
-        <div className="flex flex-col items-center gap-1">
-          <div className="px-1.5 py-0.5 rounded bg-green-500/90 text-[10px] font-bold text-white shadow-sm select-none border border-white/20">Y+</div>
-          {axisLabels && (
-            <div className="px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold text-green-600 shadow-sm border border-green-100 whitespace-nowrap">
-              {getLabel("y", "positive")}
-            </div>
-          )}
-        </div>
-      </Html>
-      <Html position={[0, -(size + offset), 0]} center distanceFactor={15} occlude="blended" pointerEvents="none">
-        <div className="flex flex-col items-center gap-1">
-          <div className="px-1.5 py-0.5 rounded bg-green-500/90 text-[10px] font-bold text-white shadow-sm select-none border border-white/20">Y-</div>
-          {axisLabels && (
-            <div className="px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold text-green-600 shadow-sm border border-green-100 whitespace-nowrap">
-              {getLabel("y", "negative")}
-            </div>
-          )}
-        </div>
-      </Html>
+      <DynamicAxisLabel 
+        position={[0, size + offset, 0]} 
+        label="Y+" 
+        subLabel={getLabel("y", "positive")}
+        colorClass="bg-green-500/90"
+        textColorClass="text-green-600"
+        borderColorClass="border-green-100"
+      />
+      <DynamicAxisLabel 
+        position={[0, -(size + offset), 0]} 
+        label="Y-" 
+        subLabel={getLabel("y", "negative")}
+        colorClass="bg-green-500/90"
+        textColorClass="text-green-600"
+        borderColorClass="border-green-100"
+      />
       
       {/* Z Axis */}
-      <Html position={[0, 0, size + offset]} center distanceFactor={15} occlude="blended" pointerEvents="none">
-        <div className="flex flex-col items-center gap-1">
-          <div className="px-1.5 py-0.5 rounded bg-blue-500/90 text-[10px] font-bold text-white shadow-sm select-none border border-white/20">Z+</div>
-          {axisLabels && (
-            <div className="px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold text-blue-600 shadow-sm border border-blue-100 whitespace-nowrap">
-              {getLabel("z", "positive")}
-            </div>
-          )}
-        </div>
-      </Html>
-      <Html position={[0, 0, -(size + offset)]} center distanceFactor={15} occlude="blended" pointerEvents="none">
-        <div className="flex flex-col items-center gap-1">
-          <div className="px-1.5 py-0.5 rounded bg-blue-500/90 text-[10px] font-bold text-white shadow-sm select-none border border-white/20">Z-</div>
-          {axisLabels && (
-            <div className="px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold text-blue-600 shadow-sm border border-blue-100 whitespace-nowrap">
-              {getLabel("z", "negative")}
-            </div>
-          )}
-        </div>
-      </Html>
+      <DynamicAxisLabel 
+        position={[0, 0, size + offset]} 
+        label="Z+" 
+        subLabel={getLabel("z", "positive")}
+        colorClass="bg-blue-500/90"
+        textColorClass="text-blue-600"
+        borderColorClass="border-blue-100"
+      />
+      <DynamicAxisLabel 
+        position={[0, 0, -(size + offset)]} 
+        label="Z-" 
+        subLabel={getLabel("z", "negative")}
+        colorClass="bg-blue-500/90"
+        textColorClass="text-blue-600"
+        borderColorClass="border-blue-100"
+      />
     </group>
   );
-}
+});
 
 // Scene content
 function SceneContent({
