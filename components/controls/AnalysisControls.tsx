@@ -1,6 +1,6 @@
 "use client";
 
-import { Brain, BarChart3, Fingerprint, Layers, Maximize2 } from "lucide-react";
+import { Brain, BarChart3, Fingerprint, Layers, Maximize2, Info } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
@@ -58,9 +58,13 @@ export function AnalysisControls({
     <div className="space-y-6">
       {/* Clustering Mode Selector */}
       <div className="space-y-3">
-        <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+        <Label 
+          className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500 cursor-help"
+          title="Choose the mathematical method for grouping sentences into themes."
+        >
           <Layers className="h-3.5 w-3.5" />
           Clustering Engine
+          <Info className="h-3 w-3 opacity-50" />
         </Label>
         <Tabs value={clusteringMode} onValueChange={(v) => onClusteringModeChange(v as any)}>
           <TabsList className="grid w-full grid-cols-3">
@@ -74,9 +78,13 @@ export function AnalysisControls({
       {/* Cut Type Toggle - only show for hierarchical/hybrid modes */}
       {(clusteringMode === "hierarchical" || clusteringMode === "hybrid") && (
         <div className="space-y-3">
-          <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+          <Label 
+            className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500 cursor-help"
+            title="Determine how the conceptual hierarchy is split into distinct nodes."
+          >
             <Maximize2 className="h-3.5 w-3.5" />
             Cut Method
+            <Info className="h-3 w-3 opacity-50" />
           </Label>
           <Tabs value={cutType} onValueChange={(v) => onCutTypeChange(v as "count" | "granularity")}>
             <TabsList className="grid w-full grid-cols-2">
@@ -91,7 +99,13 @@ export function AnalysisControls({
         {/* Auto-K Toggle */}
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
-            <Label className="text-sm font-bold text-slate-700">Auto-K Discovery</Label>
+            <Label 
+              className="text-sm font-bold text-slate-700 flex items-center gap-1.5 cursor-help"
+              title="Automatically calculate the mathematically optimal number of concepts based on data density."
+            >
+              Auto-K Discovery
+              <Info className="h-3 w-3 opacity-50" />
+            </Label>
             <p className="text-[10px] text-slate-500">Recommend optimal concept count</p>
           </div>
           <Switch checked={autoK} onCheckedChange={onAutoKChange} />
@@ -100,7 +114,13 @@ export function AnalysisControls({
         {/* Soft Membership Toggle */}
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
-            <Label className="text-sm font-bold text-slate-700">Allow Overlap</Label>
+            <Label 
+              className="text-sm font-bold text-slate-700 flex items-center gap-1.5 cursor-help"
+              title="Enable 'soft membership' where sentences can relate to multiple concepts simultaneously rather than just one."
+            >
+              Allow Overlap
+              <Info className="h-3 w-3 opacity-50" />
+            </Label>
             <p className="text-[10px] text-slate-500">Sentences can belong to 2+ concepts</p>
           </div>
           <Switch checked={softMembership} onCheckedChange={onSoftMembershipChange} />
@@ -118,7 +138,13 @@ export function AnalysisControls({
 
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <Label className="text-sm font-bold text-slate-700">Semantic weight</Label>
+            <Label 
+              className="text-sm font-bold text-slate-700 flex items-center gap-1.5 cursor-help"
+              title="Focus on the underlying meaning and intent of the feedback (e.g., grouping 'too dark' with 'insufficient light')."
+            >
+              Semantic weight
+              <Info className="h-3 w-3 opacity-50" />
+            </Label>
             <Badge variant="secondary" className="bg-indigo-100 font-bold text-indigo-700">
               {semanticWeight.toFixed(2)}
             </Badge>
@@ -135,9 +161,13 @@ export function AnalysisControls({
 
         <div className="mt-4 space-y-4">
           <div className="flex items-center justify-between">
-            <Label className="flex items-center gap-1.5 text-sm font-bold text-slate-700">
+            <Label 
+              className="flex items-center gap-1.5 text-sm font-bold text-slate-700 cursor-help"
+              title="Focus on specific technical terminology and literal word usage (e.g., exact matches for 'sun path' or 'CLT')."
+            >
               <BarChart3 className="h-3.5 w-3.5 text-emerald-600" />
               Frequency weight
+              <Info className="h-3 w-3 opacity-50" />
             </Label>
             <Badge variant="secondary" className="bg-emerald-100 font-bold text-emerald-700">
               {frequencyWeight.toFixed(2)}
@@ -160,7 +190,13 @@ export function AnalysisControls({
           {(cutType === "count" || (clusteringMode !== "hierarchical" && clusteringMode !== "hybrid")) && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <Label className="text-sm font-bold text-slate-700">Manual Concepts (k)</Label>
+                <Label 
+                  className="text-sm font-bold text-slate-700 flex items-center gap-1.5 cursor-help"
+                  title="Set the exact number of concept nodes (themes) you want the system to generate."
+                >
+                  Manual Concepts (k)
+                  <Info className="h-3 w-3 opacity-50" />
+                </Label>
                 <Badge variant="secondary" className="bg-slate-100 font-bold text-slate-700">
                   {kConcepts}
                 </Badge>
@@ -180,7 +216,13 @@ export function AnalysisControls({
           {cutType === "granularity" && (clusteringMode === "hierarchical" || clusteringMode === "hybrid") && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <Label className="text-sm font-bold text-slate-700">Granularity</Label>
+                <Label 
+                  className="text-sm font-bold text-slate-700 flex items-center gap-1.5 cursor-help"
+                  title="Adjust how broad (high granularity) or specific (low granularity) the resulting concepts should be."
+                >
+                  Granularity
+                  <Info className="h-3 w-3 opacity-50" />
+                </Label>
                 <Badge variant="secondary" className="bg-slate-100 font-bold text-slate-700">
                   {granularityPercent}%
                 </Badge>
@@ -203,7 +245,13 @@ export function AnalysisControls({
 
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <Label className="text-sm font-bold text-slate-700">Link Density</Label>
+          <Label 
+            className="text-sm font-bold text-slate-700 flex items-center gap-1.5 cursor-help"
+            title="Control the visibility of connections between jurors and concepts. Higher values filter out weak connections."
+          >
+            Link Density
+            <Info className="h-3 w-3 opacity-50" />
+          </Label>
           <Badge variant="secondary" className="bg-slate-100 font-bold text-slate-700">
             {minEdgeWeight.toFixed(2)}
           </Badge>
@@ -220,7 +268,13 @@ export function AnalysisControls({
 
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <Label className="text-sm font-bold text-slate-700">Similarity Cutoff</Label>
+          <Label 
+            className="text-sm font-bold text-slate-700 flex items-center gap-1.5 cursor-help"
+            title="Set the minimum mathematical similarity required to draw a 'similarity link' between two jurors or two concepts."
+          >
+            Similarity Cutoff
+            <Info className="h-3 w-3 opacity-50" />
+          </Label>
           <Badge variant="secondary" className="bg-slate-100 font-bold text-slate-700">
             {similarityThreshold.toFixed(2)}
           </Badge>

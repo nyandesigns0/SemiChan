@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Download, Network, Trash2 } from "lucide-react";
+import { Download, Network, Trash2, MessageSquare, Lightbulb, Link as LinkIcon, Hash, Layers, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -539,6 +539,26 @@ export default function HomePage() {
                 <h1 className="text-xl font-bold tracking-tight text-slate-900">Jury Concept Graph</h1>
                 <p className="text-xs text-slate-500 font-medium">Explainable juror-concept mapping</p>
               </div>
+              {analysis && (
+                <div className="ml-4 hidden items-center gap-6 border-l border-slate-200 pl-6 lg:flex">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Juror Pool</span>
+                    <span className="text-sm font-bold text-slate-700">{analysis.stats.totalJurors} Participants</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Corpus Size</span>
+                    <span className="text-sm font-bold text-slate-700">{analysis.stats.totalSentences} Sentences</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Thematic Clusters</span>
+                    <span className="text-sm font-bold text-slate-700">{analysis.stats.totalConcepts} Concepts</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Topology</span>
+                    <span className="text-sm font-bold text-slate-700">{analysis.links.length} Connections</span>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-3">
               <Button
@@ -582,12 +602,35 @@ export default function HomePage() {
               <CardHeader className="flex-shrink-0 border-b border-slate-50 px-8 py-5">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg font-bold text-slate-800">Graph Workspace</CardTitle>
-                  <div className="flex gap-2">
-                    <Badge variant="secondary" className="bg-slate-100 px-3 py-1 text-slate-600">
-                      {filteredNodes.length} Nodes
+                  <div className="flex flex-wrap items-center gap-2">
+                    {analysis && (
+                      <>
+                        <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
+                          <Users className="h-3.5 w-3.5" />
+                          <span>{analysis.stats.totalJurors} jurors</span>
+                        </Badge>
+                        <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
+                          <MessageSquare className="h-3.5 w-3.5" />
+                          <span>{analysis.stats.totalSentences} sentences processed</span>
+                        </Badge>
+                        <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
+                          <Lightbulb className="h-3.5 w-3.5" />
+                          <span>{analysis.stats.totalConcepts} concepts found</span>
+                        </Badge>
+                        <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
+                          <Layers className="h-3.5 w-3.5" />
+                          <span>K-Means: {analysis.stats.totalConcepts} clusters</span>
+                        </Badge>
+                        <div className="mx-1 h-6 w-px bg-slate-200" />
+                      </>
+                    )}
+                    <Badge variant="secondary" className="flex items-center gap-1.5 border border-indigo-100 bg-indigo-50 px-3 py-1 text-indigo-700">
+                      <Hash className="h-3.5 w-3.5" />
+                      <span>{filteredNodes.length} Nodes</span>
                     </Badge>
-                    <Badge variant="secondary" className="bg-slate-100 px-3 py-1 text-slate-600">
-                      {filteredLinks.length} Edges
+                    <Badge variant="secondary" className="flex items-center gap-1.5 border border-emerald-100 bg-emerald-50 px-3 py-1 text-emerald-700">
+                      <LinkIcon className="h-3.5 w-3.5" />
+                      <span>{filteredLinks.length} Edges ({analysis?.links.length} total)</span>
                     </Badge>
                   </div>
                 </div>
