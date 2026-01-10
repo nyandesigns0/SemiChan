@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import type { AnalysisResult } from "@/types/analysis";
-import type { ConceptBrief, SynthesizeRequest, SynthesisResponse } from "@/types/api";
+import type { SynthesizeRequest, SynthesisResponse } from "@/types/api";
 import { generateShortLabel } from "@/lib/nlp/summarizer";
+import type { LogEntry } from "@/components/inspector/InspectorConsole";
 
 import { DEFAULT_MODEL } from "@/constants/nlp-constants";
 
@@ -59,7 +60,7 @@ export function useConceptSummarizer(analysis: AnalysisResult | null, selectedMo
     });
   }, [analysis]);
 
-  const fetchSummary = useCallback(async (conceptId: string, onAddLog?: (type: string, msg: string) => void) => {
+  const fetchSummary = useCallback(async (conceptId: string, onAddLog?: (type: LogEntry["type"], msg: string, data?: any) => void) => {
     if (!analysis || !insights[conceptId] || insights[conceptId].summary || insights[conceptId].isLoadingSummary) {
       return;
     }
@@ -144,4 +145,3 @@ export function useConceptSummarizer(analysis: AnalysisResult | null, selectedMo
 
   return { insights, fetchSummary };
 }
-

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { Terminal } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Terminal, ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
 export interface LogEntry {
@@ -22,11 +22,24 @@ export function InspectorConsole({
   isEmbedded = false,
 }: InspectorConsoleProps) {
   const logEndRef = useRef<HTMLDivElement>(null);
+  const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
 
   // Scroll to bottom when new logs are added
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
+
+  const toggleExpand = (logId: string) => {
+    setExpandedLogs((prev) => {
+      const next = new Set(prev);
+      if (next.has(logId)) {
+        next.delete(logId);
+      } else {
+        next.add(logId);
+      }
+      return next;
+    });
+  };
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -84,15 +97,48 @@ export function InspectorConsole({
           </div>
         ) : (
           <div className="space-y-1.5">
-            {logs.map((log) => (
-              <div key={log.id} className="group flex gap-3 transition-colors hover:bg-white/5">
-                <span className="w-14 flex-shrink-0 font-bold text-slate-600">{formatTime(log.timestamp)}</span>
-                <span className={cn("w-3 flex-shrink-0 text-center font-bold", getLogColor(log.type))}>
-                  {getLogIcon(log.type)}
-                </span>
-                <span className="text-slate-300 group-hover:text-white">{log.message}</span>
-              </div>
-            ))}
+            {logs.map((log) => {
+              const keywordData =
+                log.type === "keyword" &&
+                log.data !== null &&
+                typeof log.data === "object" &&
+                "keywords" in log.data
+                  ? (log.data as { keywords: string[] })
+                  : null;
+              const isKeywordLog = Boolean(keywordData);
+              const keywords = keywordData?.keywords ?? null;
+              const isExpanded = expandedLogs.has(log.id);
+
+              return (
+                <div key={log.id} className="group">
+                  <div className={cn("flex gap-3 transition-colors hover:bg-white/5", isKeywordLog && "cursor-pointer")} onClick={() => isKeywordLog && toggleExpand(log.id)}>
+                    <span className="w-14 flex-shrink-0 font-bold text-slate-600">{formatTime(log.timestamp)}</span>
+                    <span className={cn("w-3 flex-shrink-0 text-center font-bold", getLogColor(log.type))}>
+                      {getLogIcon(log.type)}
+                    </span>
+                    <div className="flex-1 flex items-start gap-2">
+                      <span className="text-slate-300 group-hover:text-white">{log.message}</span>
+                      {isKeywordLog && (
+                        <span className="flex-shrink-0 text-slate-500 mt-0.5">
+                          {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {isKeywordLog && isExpanded && keywords && (
+                    <div className="ml-[5.75rem] mt-1 mb-2 pl-5 text-slate-400 border-l-2 border-slate-700">
+                      <div className="flex flex-wrap gap-1.5">
+                        {keywords.map((keyword, idx) => (
+                          <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded bg-slate-800/50 text-[10px]">
+                            {keyword}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             <div ref={logEndRef} />
           </div>
         )}

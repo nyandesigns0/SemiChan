@@ -11,6 +11,8 @@ export interface GraphNode extends SimulationNodeDatum {
   meta?: Record<string, unknown>;
   /** Z coordinate for 3D visualization (from PCA reduction) */
   z?: number;
+  /** Raw principal component values for N-dimensional visualization */
+  pcValues?: number[];
 }
 
 export interface GraphLink extends SimulationLinkDatum<GraphNode> {

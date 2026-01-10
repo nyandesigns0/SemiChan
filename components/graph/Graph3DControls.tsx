@@ -1,10 +1,13 @@
 "use client";
 
-import { RotateCcw, Grid3X3, Box } from "lucide-react";
+import { RotateCcw, Grid3X3, Box, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { getAxisColors } from "./GraphCanvas3D";
 import type { AnalysisResult } from "@/types/analysis";
+import { cn } from "@/lib/utils/cn";
 
 interface Graph3DControlsProps {
   showGrid: boolean;
@@ -15,6 +18,7 @@ interface Graph3DControlsProps {
   axisLabels?: AnalysisResult["axisLabels"];
   enableAxisLabelAI?: boolean;
   onToggleAxisLabelAI?: (enabled: boolean) => void;
+  numDimensions?: number;
 }
 
 export function Graph3DControls({
@@ -26,7 +30,10 @@ export function Graph3DControls({
   axisLabels,
   enableAxisLabelAI = false,
   onToggleAxisLabelAI,
+  numDimensions = 3,
 }: Graph3DControlsProps) {
+  const axisColors = getAxisColors(numDimensions);
+
   return (
     <>
       <div className="absolute bottom-4 left-4 flex flex-col gap-2 z-10">
@@ -49,7 +56,7 @@ export function Graph3DControls({
         >
           <Grid3X3 className={`h-4 w-4 ${showGrid ? "text-white" : "text-slate-700"}`} />
         </Button>
-        
+
         <Button
           variant={showAxes ? "default" : "outline"}
           className={`h-9 w-9 rounded-lg p-0 shadow-md backdrop-blur-sm ${
@@ -64,7 +71,7 @@ export function Graph3DControls({
 
       {/* Axis Labels Info Panel - shown when axes are visible */}
       {showAxes && axisLabels && (
-        <div className="absolute top-4 right-4 z-10 rounded-xl border bg-white/95 px-4 py-3 shadow-lg backdrop-blur-sm max-w-xs">
+        <div className="absolute top-4 left-4 z-10 rounded-xl border bg-white/95 px-4 py-3 shadow-lg backdrop-blur-sm max-w-xs overflow-hidden">
           <div className="mb-3 flex items-center justify-between">
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
               Axis Dimensions
@@ -78,53 +85,41 @@ export function Graph3DControls({
               />
             </div>
           </div>
-          <div className="space-y-3 text-xs">
-            <div>
-              <div className="flex items-center gap-1.5 font-bold text-red-600 uppercase tracking-tighter text-[9px]">
-                <div className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                X-Axis (Horizontal)
-              </div>
-              <div className="text-slate-600 font-medium pl-3 border-l border-red-100 mt-0.5 flex items-center gap-2">
-                <span className={enableAxisLabelAI && axisLabels.x.synthesizedNegative ? "text-indigo-600 font-bold" : ""}>
-                  {(enableAxisLabelAI && axisLabels.x.synthesizedNegative) || axisLabels.x.negative}
-                </span>
-                <span className="text-red-500 font-bold opacity-50">↔</span>
-                <span className={enableAxisLabelAI && axisLabels.x.synthesizedPositive ? "text-indigo-600 font-bold" : ""}>
-                  {(enableAxisLabelAI && axisLabels.x.synthesizedPositive) || axisLabels.x.positive}
-                </span>
-              </div>
+          
+          <ScrollArea className={cn("pr-2", numDimensions > 4 ? "h-[200px]" : "h-auto")}>
+            <div className="space-y-3 text-xs">
+              {Array.from({ length: numDimensions }).map((_, i) => {
+                const axisIdx = i.toString();
+                const data = axisLabels[axisIdx];
+                if (!data) return null;
+                const color = axisColors[i];
+
+                return (
+                  <div key={axisIdx}>
+                    <div 
+                      className="flex items-center gap-1.5 font-bold uppercase tracking-tighter text-[9px]"
+                      style={{ color }}
+                    >
+                      <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
+                      Axis {i + 1}
+                    </div>
+                    <div 
+                      className="text-slate-600 font-medium pl-3 border-l mt-0.5 flex items-center gap-2"
+                      style={{ borderLeftColor: color + "40" }}
+                    >
+                      <span className={enableAxisLabelAI && data.synthesizedNegative ? "text-indigo-600 font-bold" : ""}>
+                        {(enableAxisLabelAI && data.synthesizedNegative) || data.negative}
+                      </span>
+                      <span className="font-bold opacity-50" style={{ color }}>↔</span>
+                      <span className={enableAxisLabelAI && data.synthesizedPositive ? "text-indigo-600 font-bold" : ""}>
+                        {(enableAxisLabelAI && data.synthesizedPositive) || data.positive}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <div>
-              <div className="flex items-center gap-1.5 font-bold text-green-600 uppercase tracking-tighter text-[9px]">
-                <div className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                Y-Axis (Vertical)
-              </div>
-              <div className="text-slate-600 font-medium pl-3 border-l border-green-100 mt-0.5 flex items-center gap-2">
-                <span className={enableAxisLabelAI && axisLabels.y.synthesizedNegative ? "text-indigo-600 font-bold" : ""}>
-                  {(enableAxisLabelAI && axisLabels.y.synthesizedNegative) || axisLabels.y.negative}
-                </span>
-                <span className="text-green-500 font-bold opacity-50">↔</span>
-                <span className={enableAxisLabelAI && axisLabels.y.synthesizedPositive ? "text-indigo-600 font-bold" : ""}>
-                  {(enableAxisLabelAI && axisLabels.y.synthesizedPositive) || axisLabels.y.positive}
-                </span>
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5 font-bold text-blue-600 uppercase tracking-tighter text-[9px]">
-                <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                Z-Axis (Depth)
-              </div>
-              <div className="text-slate-600 font-medium pl-3 border-l border-blue-100 mt-0.5 flex items-center gap-2">
-                <span className={enableAxisLabelAI && axisLabels.z.synthesizedNegative ? "text-indigo-600 font-bold" : ""}>
-                  {(enableAxisLabelAI && axisLabels.z.synthesizedNegative) || axisLabels.z.negative}
-                </span>
-                <span className="text-blue-500 font-bold opacity-50">↔</span>
-                <span className={enableAxisLabelAI && axisLabels.z.synthesizedPositive ? "text-indigo-600 font-bold" : ""}>
-                  {(enableAxisLabelAI && axisLabels.z.synthesizedPositive) || axisLabels.z.positive}
-                </span>
-              </div>
-            </div>
-          </div>
+          </ScrollArea>
         </div>
       )}
     </>

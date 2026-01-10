@@ -1,17 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Download, Network, Trash2, Layers } from "lucide-react";
+import { Download, Network, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { IngestPanel } from "@/components/ingest/IngestPanel";
+import { IngestModal } from "@/components/ingest/IngestModal";
 import { AnalysisControlsAccordion } from "@/components/controls/AnalysisControlsAccordion";
 import { SearchBarAccordion } from "@/components/controls/SearchBarAccordion";
 import { GraphFiltersAccordion } from "@/components/controls/GraphFiltersAccordion";
 import { GraphCanvas3D } from "@/components/graph/GraphCanvas3D";
 import { InspectorPanel } from "@/components/inspector/InspectorPanel";
+import { FloatingDetailsPanel } from "@/components/inspector/FloatingDetailsPanel";
 import { CorpusSummary } from "@/components/inspector/CorpusSummary";
 import { CollapsibleSidebar } from "@/components/ui/collapsible-sidebar";
 import { useConceptSummarizer } from "@/hooks/useConceptSummarizer";
@@ -56,11 +58,14 @@ export default function HomePage() {
   // Ingest
   const [rawText, setRawText] = useState(DEFAULT_SAMPLE);
   const [jurorBlocks, setJurorBlocks] = useState<JurorBlock[]>(() => segmentByJuror(DEFAULT_SAMPLE));
+  const [ingestModalOpen, setIngestModalOpen] = useState(false);
+  const [ingestError, setIngestError] = useState<string | null>(null);
 
   // Analysis params
   const [kConcepts, setKConcepts] = useState(10);
-  const [minEdgeWeight, setMinEdgeWeight] = useState(0.12);
-  const [similarityThreshold, setSimilarityThreshold] = useState(0.55);
+  const [numDimensions, setNumDimensions] = useState(3);
+  const [minEdgeWeight, setMinEdgeWeight] = useState(0.02);
+  const [similarityThreshold, setSimilarityThreshold] = useState(0.35);
 
   // Adaptive mode state
   const [adaptiveMode, setAdaptiveMode] = useState(false);
@@ -79,14 +84,14 @@ export default function HomePage() {
   const [showNeutral, setShowNeutral] = useState(true);
 
   // Hybrid analysis weights
-  const [semanticWeight, setSemanticWeight] = useState(0.7);
-  const [frequencyWeight, setFrequencyWeight] = useState(0.3);
+  const [semanticWeight, setSemanticWeight] = useState(0.5);
+  const [frequencyWeight, setFrequencyWeight] = useState(0.5);
 
   // New algorithm state
-  const [clusteringMode, setClusteringMode] = useState<"kmeans" | "hierarchical" | "hybrid">("kmeans");
-  const [autoK, setAutoK] = useState(false);
+  const [clusteringMode, setClusteringMode] = useState<"kmeans" | "hierarchical" | "hybrid">("hierarchical");
+  const [autoK, setAutoK] = useState(true);
   const [clusterSeed, setClusterSeed] = useState(42);
-  const [softMembership, setSoftMembership] = useState(false);
+  const [softMembership, setSoftMembership] = useState(true);
   const [cutType, setCutType] = useState<"count" | "granularity">("count");
   const [granularityPercent, setGranularityPercent] = useState(50);
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
@@ -153,12 +158,14 @@ export default function HomePage() {
   // Log keywords when analysis completes
   useEffect(() => {
     if (analysis && analysis.stats.totalConcepts > 0) {
-      const conceptLabels = analysis.nodes
+      const allKeywords = analysis.nodes
         .filter((n) => n.type === "concept")
-        .slice(0, 10)
-        .map((n) => n.label)
-        .join(", ");
-      addLog("keyword", `Keywords extracted: ${conceptLabels}${analysis.stats.totalConcepts > 10 ? "..." : ""}`);
+        .map((n) => n.label);
+      addLog(
+        "keyword",
+        `Keywords extracted: ${allKeywords.length} keywords from ${analysis.stats.totalSentences} sentences`,
+        { keywords: allKeywords, sentenceCount: analysis.stats.totalSentences }
+      );
       addLog("analysis", `Analysis complete: ${analysis.stats.totalSentences} sentences, ${analysis.stats.totalConcepts} concepts`);
     }
   }, [analysis, addLog]);
@@ -172,36 +179,30 @@ export default function HomePage() {
   // Merge enhanced axis labels with analysis axis labels
   const displayAxisLabels = useMemo(() => {
     if (!analysis?.axisLabels) return undefined;
+    
+    const labels: Record<string, any> = { ...analysis.axisLabels };
+    
     if (enhancedLabels) {
-      return {
-        x: { 
-          ...analysis.axisLabels.x, 
-          synthesizedNegative: enhancedLabels.x.synthesizedNegative,
-          synthesizedPositive: enhancedLabels.x.synthesizedPositive
-        },
-        y: { 
-          ...analysis.axisLabels.y, 
-          synthesizedNegative: enhancedLabels.y.synthesizedNegative,
-          synthesizedPositive: enhancedLabels.y.synthesizedPositive
-        },
-        z: { 
-          ...analysis.axisLabels.z, 
-          synthesizedNegative: enhancedLabels.z.synthesizedNegative,
-          synthesizedPositive: enhancedLabels.z.synthesizedPositive
-        },
-      };
+      Object.keys(enhancedLabels).forEach(key => {
+        if (labels[key] && (enhancedLabels as any)[key]) {
+          labels[key] = {
+            ...labels[key],
+            synthesizedNegative: (enhancedLabels as any)[key].synthesizedNegative,
+            synthesizedPositive: (enhancedLabels as any)[key].synthesizedPositive
+          };
+        }
+      });
     }
-    return analysis.axisLabels;
+    
+    return labels as AnalysisResult["axisLabels"];
   }, [analysis?.axisLabels, enhancedLabels]);
 
-  // Update blocks when rawText changes
-  useEffect(() => {
-    setJurorBlocks(segmentByJuror(rawText));
-  }, [rawText]);
-
-  // Call segment API when blocks change
+  // Call segment API when rawText changes
   useEffect(() => {
     const segmentText = async () => {
+      // Set initial blocks immediately for quick feedback
+      setJurorBlocks(segmentByJuror(rawText));
+      
       addLog("api_request", "Segmenting input text...");
       try {
         const response = await fetch("/api/segment", {
@@ -222,7 +223,7 @@ export default function HomePage() {
       }
     };
     segmentText();
-  }, [rawText]);
+  }, [rawText, addLog]);
 
   // Call analyze API when blocks or params change
   useEffect(() => {
@@ -251,6 +252,7 @@ export default function HomePage() {
             softMembership,
             cutType,
             granularityPercent: cutType === "granularity" ? granularityPercent : undefined,
+            numDimensions,
             model: selectedModel,
           }),
         });
@@ -274,7 +276,7 @@ export default function HomePage() {
     };
 
     analyze();
-  }, [jurorBlocks, kConcepts, similarityThreshold, semanticWeight, frequencyWeight, clusteringMode, autoK, clusterSeed, softMembership, cutType, granularityPercent, selectedModel]);
+  }, [jurorBlocks, kConcepts, similarityThreshold, semanticWeight, frequencyWeight, clusteringMode, autoK, clusterSeed, softMembership, cutType, granularityPercent, numDimensions, selectedModel]);
 
   // Helper function to get node network (node + connected links + connected nodes)
   const getNodeNetwork = useCallback((nodeId: string, nodes: GraphNode[], links: GraphLink[]) => {
@@ -610,7 +612,13 @@ export default function HomePage() {
         width={400}
       >
         <div className="space-y-4">
-          <IngestPanel rawText={rawText} onTextChange={setRawText} jurorBlocks={jurorBlocks} />
+          <IngestPanel 
+            rawText={rawText} 
+            onTextChange={setRawText} 
+            jurorBlocks={jurorBlocks}
+            onOpenModal={() => setIngestModalOpen(true)}
+            ingestError={ingestError}
+          />
 
           <AnalysisControlsAccordion
             kConcepts={kConcepts}
@@ -632,10 +640,12 @@ export default function HomePage() {
             softMembership={softMembership}
             onSoftMembershipChange={setSoftMembership}
             cutType={cutType}
-            onCutTypeChange={setCutType}
-            granularityPercent={granularityPercent}
-            onGranularityPercentChange={setGranularityPercent}
-            selectedModel={selectedModel}
+                  onCutTypeChange={setCutType}
+                  granularityPercent={granularityPercent}
+                  onGranularityPercentChange={setGranularityPercent}
+                  numDimensions={numDimensions}
+                  onNumDimensionsChange={setNumDimensions}
+                  selectedModel={selectedModel}
             onModelChange={setSelectedModel}
           />
 
@@ -662,7 +672,7 @@ export default function HomePage() {
               </div>
             </div>
             
-            {/* Middle: Pipeline Controls and Graph Build Toggle */}
+            {/* Middle: Pipeline Controls */}
             <div className="flex items-center gap-4">
               {/* Pipeline Controls */}
               {analysis?.checkpoints && analysis.checkpoints.length > 0 && (
@@ -686,21 +696,6 @@ export default function HomePage() {
                   </span>
                 </div>
               )}
-              
-              {/* Graph Build Toggle (Axes) */}
-              <Button
-                variant={showAxes ? "default" : "outline"}
-                className={cn(
-                  "h-9 rounded-xl px-4 font-semibold shadow-sm transition-all active:scale-95 text-xs",
-                  showAxes 
-                    ? "bg-slate-800 hover:bg-slate-700 text-white" 
-                    : "border-slate-200 hover:bg-slate-50 hover:shadow-md"
-                )}
-                onClick={() => setShowAxes(!showAxes)}
-              >
-                <Layers className="mr-2 h-4 w-4" />
-                {showAxes ? "Hide Axes" : "Show Axes"}
-              </Button>
             </div>
             
             <div className="flex items-center gap-3">
@@ -729,20 +724,10 @@ export default function HomePage() {
         </header>
 
         {/* Graph Area with Console */}
-        <div
-          className={cn(
-            "flex flex-1 flex-col overflow-hidden",
-            !leftSidebarOpen && !rightSidebarOpen ? "p-0" : "p-8"
-          )}
-        >
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <Card
-              className={cn(
-                "flex flex-1 flex-col overflow-hidden border-slate-200 bg-white shadow-xl shadow-slate-200/50",
-                !leftSidebarOpen && !rightSidebarOpen ? "rounded-none" : "rounded-t-[2rem]"
-              )}
-            >
-              <CardContent className="flex flex-1 flex-col overflow-hidden p-0">
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex flex-1 flex-col overflow-hidden p-0">
+            <div className="flex flex-1 flex-col overflow-hidden relative bg-white">
+              <div className="flex flex-1 flex-col overflow-hidden p-0">
                 <GraphCanvas3D
                   nodes={filteredNodes}
                   links={filteredLinks}
@@ -767,25 +752,30 @@ export default function HomePage() {
                   onCheckpointIndexChange={setCheckpointIndex}
                   showAxes={showAxes}
                   onToggleAxes={setShowAxes}
+                  numDimensions={numDimensions}
                 />
-              </CardContent>
-            </Card>
+              </div>
 
-            {/* Bottom Integrated Inspector Panel */}
-            <InspectorPanel
-              analysis={analysis}
-              selectedNode={selectedNode}
-              selectedLink={selectedLink}
-              evidence={evidence}
-              jurorBlocks={jurorBlocks}
-            empty={emptyState}
-            insights={insights}
-            onFetchSummary={(id) => fetchSummary(id, addLog)}
-            logs={logs}
-          />
+              {/* Floating Details Panel */}
+              <FloatingDetailsPanel
+                selectedNode={selectedNode}
+                selectedLink={selectedLink}
+                analysis={analysis}
+                jurorBlocks={jurorBlocks}
+                insights={insights}
+                evidence={evidence}
+                onFetchSummary={(id) => fetchSummary(id, addLog)}
+                onClose={onDeselect}
+              />
+            </div>
           </div>
 
-          <div className="mt-4 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-400">
+          {/* Bottom Integrated Inspector Panel */}
+          <InspectorPanel
+            logs={logs}
+          />
+
+          <div className="flex-shrink-0 flex items-center justify-between bg-white border-t border-slate-100 px-8 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
             <div className="flex items-center gap-4">
               <span>Next.js Engine</span>
               <span className="h-1 w-1 rounded-full bg-slate-300"></span>
@@ -842,6 +832,15 @@ export default function HomePage() {
           <SearchBarAccordion value={search} onChange={setSearch} />
         </div>
       </CollapsibleSidebar>
+
+      {/* Ingest Modal - rendered at page level for full-screen overlay */}
+      <IngestModal
+        open={ingestModalOpen}
+        onOpenChange={setIngestModalOpen}
+        rawText={rawText}
+        onTextChange={setRawText}
+        jurorBlocks={jurorBlocks}
+      />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { 
   Brain, 
   BarChart3, 
@@ -12,13 +13,19 @@ import {
   Zap,
   Target,
   Workflow,
-  ChevronDown
+  ChevronDown,
+  ChevronUp,
+  Type,
+  Scale,
+  Sparkles,
+  Settings2
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
 
 interface AnalysisControlsProps {
   kConcepts: number;
@@ -45,6 +52,10 @@ interface AnalysisControlsProps {
   onCutTypeChange: (type: "count" | "granularity") => void;
   granularityPercent: number;
   onGranularityPercentChange: (value: number) => void;
+  
+  // Visualization Dimensions
+  numDimensions: number;
+  onNumDimensionsChange: (value: number) => void;
   
   // Model selection
   selectedModel: string;
@@ -74,9 +85,15 @@ export function AnalysisControls({
   onCutTypeChange,
   granularityPercent,
   onGranularityPercentChange,
+  numDimensions,
+  onNumDimensionsChange,
   selectedModel,
   onModelChange,
 }: AnalysisControlsProps) {
+  const [showClusteringSettings, setShowClusteringSettings] = useState(false);
+  const [showLensSettings, setShowLensSettings] = useState(false);
+  const [showNetworkSettings, setShowNetworkSettings] = useState(false);
+
   const models = [
     "GPT-5.1",
     "GPT-5",
@@ -86,23 +103,33 @@ export function AnalysisControls({
     "GPT-4o-mini"
   ];
 
+  // Helper to determine the current preset
+  const currentPreset = (() => {
+    const s = Math.round(semanticWeight * 10) / 10;
+    const f = Math.round(frequencyWeight * 10) / 10;
+    
+    if (s === 0.9 && f === 0.1) return "meaning";
+    if (s === 0.1 && f === 0.9) return "wording";
+    if (s === 0.5 && f === 0.5) return "balanced";
+    if (s === 0.9 && f === 0.9) return "precision";
+    return "custom";
+  })();
+
   return (
-    <div className="space-y-6">
-      {/* Model Selection */}
-      <div className="space-y-3">
+    <div className="space-y-4">
+      {/* Category: Language Model */}
+      <div className="space-y-2">
         <Label 
-          className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500 cursor-help"
-          title="Choose the AI model used for concept synthesis and axis label generation."
+          className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-900"
         >
-          <Brain className="h-3.5 w-3.5" />
+          <Brain className="h-3 w-3" />
           Language Model
-          <Info className="h-3 w-3 opacity-50" />
         </Label>
         <div className="relative group">
           <select 
             value={selectedModel}
             onChange={(e) => onModelChange(e.target.value)}
-            className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-100/50 px-4 py-2.5 text-xs font-bold uppercase tracking-tight text-slate-700 outline-none transition-all hover:border-slate-300 focus:ring-2 focus:ring-indigo-500/20"
+            className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-1.5 text-xs font-bold uppercase tracking-tight text-slate-700 outline-none transition-all hover:border-slate-300 focus:ring-2 focus:ring-indigo-500/20"
           >
             {models.map(m => (
               <option key={m} value={m}>{m}</option>
@@ -114,307 +141,419 @@ export function AnalysisControls({
         </div>
       </div>
 
-      {/* Clustering Mode Selector */}
-      <div className="space-y-3">
+      <Separator className="bg-slate-100/80" />
+
+      {/* Category: Clustering Engine */}
+      <div className="space-y-2">
         <Label 
-          className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500 cursor-help"
-          title="Choose the mathematical method for grouping sentences into themes."
+          className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-900"
         >
-          <Layers className="h-3.5 w-3.5" />
+          <Layers className="h-3 w-3" />
           Clustering Engine
-          <Info className="h-3 w-3 opacity-50" />
         </Label>
+        
         <Tabs value={clusteringMode} onValueChange={(v) => onClusteringModeChange(v as any)}>
-          <TabsList className="grid w-full grid-cols-3 bg-slate-100/50 p-1 border border-slate-200/60">
+          <TabsList className="grid w-full grid-cols-3 bg-slate-100/50 p-1 border border-slate-200/60 rounded-xl" style={{ height: 'auto' }}>
             <TabsTrigger 
               value="kmeans" 
-              className="flex items-center gap-1.5 py-2 transition-all duration-200"
+              className="flex items-center gap-1.5 py-1.5 transition-all duration-200"
             >
               <Dices className="h-3.5 w-3.5" />
               <span className="text-[10px] font-bold uppercase tracking-tight">K-Means</span>
             </TabsTrigger>
             <TabsTrigger 
               value="hierarchical" 
-              className="flex items-center gap-1.5 py-2 transition-all duration-200"
+              className="flex items-center gap-1.5 py-1.5 transition-all duration-200"
             >
               <GitMerge className="h-3.5 w-3.5" />
               <span className="text-[10px] font-bold uppercase tracking-tight">Tree</span>
             </TabsTrigger>
             <TabsTrigger 
               value="hybrid" 
-              className="flex items-center gap-1.5 py-2 transition-all duration-200"
+              className="flex items-center gap-1.5 py-1.5 transition-all duration-200"
             >
               <Zap className="h-3.5 w-3.5" />
               <span className="text-[10px] font-bold uppercase tracking-tight">Hybrid</span>
             </TabsTrigger>
           </TabsList>
         </Tabs>
+
+        {/* Clustering Settings Accordion */}
+        <div className="space-y-2">
+          <button 
+            onClick={() => setShowClusteringSettings(!showClusteringSettings)}
+            className="flex w-full items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-indigo-500 transition-colors py-0.5 px-1 border-b border-dashed border-slate-200"
+          >
+            <div className="flex items-center gap-1.5">
+              <Settings2 className="h-3 w-3" />
+              Advanced Engine Settings
+            </div>
+            {showClusteringSettings ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </button>
+
+          {showClusteringSettings && (
+            <div className="space-y-2.5 pt-0.5 animate-in fade-in slide-in-from-top-1 duration-200">
+              {/* Cut Type Toggle */}
+              {(clusteringMode === "hierarchical" || clusteringMode === "hybrid") && (
+                <div className="space-y-1.5">
+                  <Label className="text-[9px] font-bold uppercase text-slate-400">Cut Method</Label>
+                  <Tabs value={cutType} onValueChange={(v) => onCutTypeChange(v as "count" | "granularity")}>
+                    <TabsList className="grid w-full grid-cols-2 bg-slate-100/30 p-1 border border-slate-200/60 rounded-lg" style={{ height: 'auto' }}>
+                      <TabsTrigger value="count" className="py-1"><span className="text-[9px] font-bold uppercase">Cut by K</span></TabsTrigger>
+                      <TabsTrigger value="granularity" className="py-1"><span className="text-[9px] font-bold uppercase">Granularity</span></TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
+              )}
+
+              <div className="space-y-2.5 rounded-xl border border-slate-100 bg-slate-50/30 p-2.5">
+                {/* Auto-K Toggle */}
+                <div className="flex items-center justify-between group">
+                  <div className="space-y-0.5">
+                    <Label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                      <Target className="h-3 w-3 text-indigo-500" />
+                      Auto-K Discovery
+                    </Label>
+                  </div>
+                  <Switch checked={autoK} onCheckedChange={onAutoKChange} className="scale-75" />
+                </div>
+
+                <div className="h-px bg-slate-100" />
+
+                {/* Soft Membership Toggle */}
+                <div className="flex items-center justify-between group">
+                  <div className="space-y-0.5">
+                    <Label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                      <Fingerprint className="h-3 w-3 text-indigo-500" />
+                      Allow Overlap
+                    </Label>
+                  </div>
+                  <Switch checked={softMembership} onCheckedChange={onSoftMembershipChange} className="scale-75" />
+                </div>
+
+                <div className="h-px bg-slate-100" />
+
+                {/* Clustering Seed Slider */}
+                <div className="space-y-1 group">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                      <Dices className="h-3 w-3 text-indigo-500" />
+                      Solution Seed
+                    </Label>
+                    <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                      {clusterSeed}
+                    </Badge>
+                  </div>
+                  <Slider 
+                    value={[clusterSeed]} 
+                    min={1} 
+                    max={100} 
+                    step={1} 
+                    onValueChange={(v) => onClusterSeedChange(v[0])} 
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Cut Type Toggle - only show for hierarchical/hybrid modes */}
-      {(clusteringMode === "hierarchical" || clusteringMode === "hybrid") && (
-        <div className="space-y-3">
-          <Label 
-            className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500 cursor-help"
-            title="Determine how the conceptual hierarchy is split into distinct nodes."
-          >
-            <Maximize2 className="h-3.5 w-3.5" />
-            Cut Method
-            <Info className="h-3 w-3 opacity-50" />
+      <Separator className="bg-slate-100/80" />
+
+      {/* Category: Interpretation Lens */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-900">
+            <Sparkles className="h-3 w-3" />
+            Interpretation Lens
           </Label>
-          <Tabs value={cutType} onValueChange={(v) => onCutTypeChange(v as "count" | "granularity")}>
-            <TabsList className="grid w-full grid-cols-2 bg-slate-100/50 p-1 border border-slate-200/60">
-              <TabsTrigger 
-                value="count" 
-                className="flex items-center gap-1.5 py-2 transition-all duration-200"
-              >
-                <Target className="h-3.5 w-3.5" />
-                <span className="text-[10px] font-bold uppercase tracking-tight">Cut by K</span>
+          {currentPreset !== "custom" && (
+            <Badge variant="outline" className="h-4 text-[8px] uppercase border-indigo-200 text-indigo-500 font-bold bg-indigo-50/50 px-1.5">
+              {currentPreset}
+            </Badge>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          {/* Preset Tabs */}
+          <Tabs 
+            value={currentPreset} 
+            onValueChange={(v) => {
+              if (v === "meaning") { onSemanticWeightChange(0.9); onFrequencyWeightChange(0.1); }
+              else if (v === "wording") { onSemanticWeightChange(0.1); onFrequencyWeightChange(0.9); }
+              else if (v === "balanced") { onSemanticWeightChange(0.5); onFrequencyWeightChange(0.5); }
+              else if (v === "precision") { onSemanticWeightChange(0.9); onFrequencyWeightChange(0.9); }
+            }}
+          >
+            <TabsList className="grid w-full grid-cols-4 bg-slate-100/50 p-1 border border-slate-200/60 rounded-xl" style={{ height: 'auto' }}>
+              <TabsTrigger value="meaning" className="flex flex-col items-center gap-0.5 py-1.5 transition-all">
+                <Brain className="h-3 w-3" />
+                <span className="text-[8px] font-bold uppercase">Meaning</span>
               </TabsTrigger>
-              <TabsTrigger 
-                value="granularity" 
-                className="flex items-center gap-1.5 py-2 transition-all duration-200"
-              >
-                <Workflow className="h-3.5 w-3.5" />
-                <span className="text-[10px] font-bold uppercase tracking-tight">Granularity</span>
+              <TabsTrigger value="wording" className="flex flex-col items-center gap-0.5 py-1.5 transition-all">
+                <Type className="h-3 w-3" />
+                <span className="text-[8px] font-bold uppercase">Wording</span>
+              </TabsTrigger>
+              <TabsTrigger value="balanced" className="flex flex-col items-center gap-0.5 py-1.5 transition-all">
+                <Scale className="h-3 w-3" />
+                <span className="text-[8px] font-bold uppercase">Balanced</span>
+              </TabsTrigger>
+              <TabsTrigger value="precision" className="flex flex-col items-center gap-0.5 py-1.5 transition-all">
+                <Sparkles className="h-3 w-3" />
+                <span className="text-[8px] font-bold uppercase">Precision</span>
               </TabsTrigger>
             </TabsList>
           </Tabs>
-        </div>
-      )}
 
-      <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/30 p-4 shadow-sm">
-        {/* Auto-K Toggle */}
-        <div className="flex items-center justify-between group">
-          <div className="space-y-0.5">
-            <Label 
-              className="text-sm font-bold text-slate-700 flex items-center gap-1.5 cursor-help group-hover:text-slate-900 transition-colors"
-              title="Automatically calculate the mathematically optimal number of concepts based on data density."
+          {/* Lens Settings Accordion */}
+          <div className="space-y-2">
+            <button 
+              onClick={() => setShowLensSettings(!showLensSettings)}
+              className="flex w-full items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-indigo-500 transition-colors py-0.5 px-1 border-b border-dashed border-slate-200"
             >
-              <Target className="h-3.5 w-3.5 text-indigo-500" />
-              Auto-K Discovery
-              <Info className="h-3 w-3 opacity-50" />
-            </Label>
-            <p className="text-[10px] text-slate-500">Recommend optimal concept count</p>
-          </div>
-          <Switch checked={autoK} onCheckedChange={onAutoKChange} className="hover:scale-105 transition-transform" />
-        </div>
+              <div className="flex items-center gap-1.5">
+                <Settings2 className="h-3 w-3" />
+                Advanced Lens Settings
+              </div>
+              {showLensSettings ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            </button>
 
-        <div className="h-px bg-slate-200/50" />
+            {showLensSettings && (
+              <div className="space-y-3 pt-0.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-[11px] font-bold text-slate-700">Semantic weight</Label>
+                    <Badge variant="secondary" className="bg-indigo-100 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                      {Math.round(semanticWeight * 100)}%
+                    </Badge>
+                  </div>
+                  <Slider
+                    value={[semanticWeight]}
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    onValueChange={(v) => onSemanticWeightChange(v[0])}
+                  />
+                </div>
 
-        {/* Soft Membership Toggle */}
-        <div className="flex items-center justify-between group">
-          <div className="space-y-0.5">
-            <Label 
-              className="text-sm font-bold text-slate-700 flex items-center gap-1.5 cursor-help group-hover:text-slate-900 transition-colors"
-              title="Enable 'soft membership' where sentences can relate to multiple concepts simultaneously rather than just one."
-            >
-              <Fingerprint className="h-3.5 w-3.5 text-indigo-500" />
-              Allow Overlap
-              <Info className="h-3 w-3 opacity-50" />
-            </Label>
-            <p className="text-[10px] text-slate-500">Sentences can belong to 2+ concepts</p>
-          </div>
-          <Switch checked={softMembership} onCheckedChange={onSoftMembershipChange} className="hover:scale-105 transition-transform" />
-        </div>
-
-        <div className="h-px bg-slate-200/50" />
-
-        {/* Clustering Seed Slider */}
-        <div className="space-y-3 group">
-          <div className="flex items-center justify-between">
-            <Label 
-              className="text-sm font-bold text-slate-700 flex items-center gap-1.5 cursor-help group-hover:text-slate-900 transition-colors"
-              title="Adjust the 'random seed' used to initialize clusters. Changing this will give you a different but reproducible arrangement for the same data."
-            >
-              <Dices className="h-3.5 w-3.5 text-indigo-500" />
-              Solution Seed
-              <Info className="h-3 w-3 opacity-50" />
-            </Label>
-            <Badge variant="secondary" className="bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 ring-1 ring-indigo-200/50">
-              {clusterSeed}
-            </Badge>
-          </div>
-          <div className="space-y-1">
-            <Slider 
-              value={[clusterSeed]} 
-              min={1} 
-              max={100} 
-              step={1} 
-              onValueChange={(v) => onClusterSeedChange(v[0])} 
-              className="py-1.5"
-            />
-            <p className="text-[8px] text-slate-400 italic font-medium">Pick a number to lock in a specific clustering arrangement.</p>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-[11px] font-bold text-slate-700">Frequency weight</Label>
+                    <Badge variant="secondary" className="bg-emerald-100 px-1.5 py-0 text-[9px] font-bold text-emerald-700">
+                      {Math.round(frequencyWeight * 100)}%
+                    </Badge>
+                  </div>
+                  <Slider
+                    value={[frequencyWeight]}
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    onValueChange={(v) => onFrequencyWeightChange(v[0])}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Hybrid Analysis Weights */}
-      <div className="rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50/50 to-white p-4 shadow-sm">
-        <div className="mb-4 flex items-center gap-2">
-          <div className="rounded-lg bg-indigo-100 p-1.5">
-            <Brain className="h-4 w-4 text-indigo-600" />
-          </div>
-          <span className="text-xs font-bold uppercase tracking-wider text-indigo-700">
-            Feature Weights
-          </span>
+      <Separator className="bg-slate-100/80" />
+
+      {/* Category: Network Logic */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-900">
+            <Workflow className="h-3 w-3" />
+            Network Logic
+          </Label>
+          <Badge variant="outline" className="h-4 text-[8px] uppercase border-slate-200 text-slate-500 font-bold bg-slate-50 px-1.5">
+            {(() => {
+              if (minEdgeWeight === 0.25 && similarityThreshold === 0.75) return "Summary";
+              if (minEdgeWeight === 0.12 && similarityThreshold === 0.55) return "Standard";
+              if (minEdgeWeight === 0.06 && similarityThreshold === 0.45) return "Discover";
+              if (minEdgeWeight === 0.02 && similarityThreshold === 0.35) return "Full Web";
+              return "Custom";
+            })()}
+          </Badge>
         </div>
 
-        <div className="space-y-5">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label 
-                className="text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-help"
-                title="Focus on the underlying meaning and intent of the feedback (e.g., grouping 'too dark' with 'insufficient light')."
-              >
-                Semantic weight
-                <Info className="h-3 w-3 opacity-50" />
-              </Label>
-              <Badge variant="secondary" className="bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700 ring-1 ring-indigo-200/50">
-                {Math.round(semanticWeight * 100)}%
-              </Badge>
-            </div>
-            <Slider
-              value={[semanticWeight]}
-              min={0}
-              max={1}
-              step={0.05}
-              onValueChange={(v) => onSemanticWeightChange(v[0])}
-              className="py-2"
-            />
-          </div>
+        <div className="space-y-2">
+          {/* Preset Tabs */}
+          <Tabs 
+            value={(() => {
+              if (minEdgeWeight === 0.25 && similarityThreshold === 0.75) return "summary";
+              if (minEdgeWeight === 0.12 && similarityThreshold === 0.55) return "standard";
+              if (minEdgeWeight === 0.06 && similarityThreshold === 0.45) return "discover";
+              if (minEdgeWeight === 0.02 && similarityThreshold === 0.35) return "full";
+              return "custom";
+            })()} 
+            onValueChange={(v) => {
+              if (v === "summary") { onMinEdgeWeightChange(0.25); onSimilarityThresholdChange(0.75); }
+              else if (v === "standard") { onMinEdgeWeightChange(0.12); onSimilarityThresholdChange(0.55); }
+              else if (v === "discover") { onMinEdgeWeightChange(0.06); onSimilarityThresholdChange(0.45); }
+              else if (v === "full") { onMinEdgeWeightChange(0.02); onSimilarityThresholdChange(0.35); }
+            }}
+          >
+            <TabsList className="grid w-full grid-cols-4 bg-slate-100/50 p-1 border border-slate-200/60 rounded-xl" style={{ height: 'auto' }}>
+              <TabsTrigger value="summary" className="py-1.5"><span className="text-[9px] font-bold uppercase">Summary</span></TabsTrigger>
+              <TabsTrigger value="standard" className="py-1.5"><span className="text-[9px] font-bold uppercase">Standard</span></TabsTrigger>
+              <TabsTrigger value="discover" className="py-1.5"><span className="text-[9px] font-bold uppercase">Discover</span></TabsTrigger>
+              <TabsTrigger value="full" className="py-1.5"><span className="text-[9px] font-bold uppercase">Full</span></TabsTrigger>
+            </TabsList>
+          </Tabs>
 
+          {/* Network Settings Accordion */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label 
-                className="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-help"
-                title="Focus on specific technical terminology and literal word usage (e.g., exact matches for 'sun path' or 'CLT')."
-              >
-                Frequency weight
-                <Info className="h-3 w-3 opacity-50" />
-              </Label>
-              <Badge variant="secondary" className="bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200/50">
-                {Math.round(frequencyWeight * 100)}%
-              </Badge>
-            </div>
-            <Slider
-              value={[frequencyWeight]}
-              min={0}
-              max={1}
-              step={0.05}
-              onValueChange={(v) => onFrequencyWeightChange(v[0])}
-              className="py-2"
-            />
+            <button 
+              onClick={() => setShowNetworkSettings(!showNetworkSettings)}
+              className="flex w-full items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-indigo-500 transition-colors py-0.5 px-1 border-b border-dashed border-slate-200"
+            >
+              <div className="flex items-center gap-1.5">
+                <Settings2 className="h-3 w-3" />
+                Advanced Network Settings
+              </div>
+              {showNetworkSettings ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            </button>
+
+            {showNetworkSettings && (
+              <div className="space-y-4 pt-0.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-[11px] font-bold text-slate-700">Link Density</Label>
+                    <Badge variant="secondary" className="bg-slate-100 px-1.5 py-0 text-[9px] font-bold text-slate-700">
+                      {Math.round((0.35 - minEdgeWeight) / (0.35 - 0.02) * 100)}%
+                    </Badge>
+                  </div>
+                  <div className="space-y-1">
+                    <Slider
+                      value={[minEdgeWeight]}
+                      min={0.02}
+                      max={0.35}
+                      step={0.01}
+                      onValueChange={(v) => onMinEdgeWeightChange(v[0])}
+                    />
+                    <div className="flex justify-between text-[7px] font-bold uppercase tracking-widest text-slate-400">
+                      <span>Minimalist</span>
+                      <span>Exploratory</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-[11px] font-bold text-slate-700">Similarity Bar</Label>
+                    <Badge variant="secondary" className="bg-slate-100 px-1.5 py-0 text-[9px] font-bold text-slate-700">
+                      {Math.round((similarityThreshold - 0.35) / (0.9 - 0.35) * 100)}%
+                    </Badge>
+                  </div>
+                  <div className="space-y-1">
+                    <Slider
+                      value={[similarityThreshold]}
+                      min={0.35}
+                      max={0.9}
+                      step={0.01}
+                      onValueChange={(v) => onSimilarityThresholdChange(v[0])}
+                    />
+                    <div className="flex justify-between text-[7px] font-bold uppercase tracking-widest text-slate-400">
+                      <span>Broad</span>
+                      <span>Strict</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
+      <Separator className="bg-slate-100/80" />
+
+      {/* Category: Visualization Dimensions */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <Label 
+            className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-900"
+          >
+            <Maximize2 className="h-3 w-3" />
+            Visualization Dimensions
+          </Label>
+          <Badge variant="outline" className="bg-slate-50 text-[10px] font-bold border-slate-200">
+            {numDimensions} Axis
+          </Badge>
+        </div>
+        
+        <div className="space-y-3 px-1">
+          <Slider 
+            value={[numDimensions]} 
+            onValueChange={([v]) => onNumDimensionsChange(v)} 
+            min={2} 
+            max={10} 
+            step={1} 
+            className="py-2"
+          />
+          <div className="relative h-3 w-full text-[9px] font-bold uppercase text-slate-400">
+            <span className="absolute left-0">2D</span>
+            <span className="absolute -translate-x-1/2" style={{ left: '12.5%' }}>3D</span>
+            <span className="absolute -translate-x-1/2" style={{ left: '37.5%' }}>5D</span>
+            <span className="absolute right-0">10D</span>
+          </div>
+        </div>
+      </div>
+
+      <Separator className="bg-slate-100/80" />
+
+      {/* Manual Controls (K / Granularity) */}
       {!autoK && (
-        <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          {/* Show K slider when cutType is "count" or not in hierarchical/hybrid mode */}
-          {(cutType === "count" || (clusteringMode !== "hierarchical" && clusteringMode !== "hybrid")) && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label 
-                  className="text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-help"
-                  title="Set the exact number of concept nodes (themes) you want the system to generate."
-                >
-                  Manual Concepts (k)
-                  <Info className="h-3 w-3 opacity-50" />
-                </Label>
-                <Badge variant="secondary" className="bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 ring-1 ring-slate-200/50">
-                  {kConcepts}
-                </Badge>
-              </div>
-              <Slider 
-                value={[kConcepts]} 
-                min={4} 
-                max={30} 
-                step={1} 
-                onValueChange={(v) => onKConceptsChange(v[0])} 
-                className="py-2"
-              />
-            </div>
-          )}
+        <div className="space-y-2">
+          <Label className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-900">
+            <Target className="h-3 w-3" />
+            Manual Concept Control
+          </Label>
           
-          {/* Show granularity slider when cutType is "granularity" and in hierarchical/hybrid mode */}
-          {cutType === "granularity" && (clusteringMode === "hierarchical" || clusteringMode === "hybrid") && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label 
-                  className="text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-help"
-                  title="Adjust how broad (high granularity) or specific (low granularity) the resulting concepts should be."
-                >
-                  Granularity
-                  <Info className="h-3 w-3 opacity-50" />
-                </Label>
-                <Badge variant="secondary" className="bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 ring-1 ring-slate-200/50">
-                  {granularityPercent}%
-                </Badge>
-              </div>
-              <div className="space-y-1">
-                <p className="text-[10px] text-slate-500">0% = fine clusters, 100% = broad clusters</p>
+          <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50/30 p-2.5">
+            {/* Show K slider when cutType is "count" or not in hierarchical/hybrid mode */}
+            {(cutType === "count" || (clusteringMode !== "hierarchical" && clusteringMode !== "hybrid")) && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[11px] font-bold text-slate-700">Manual Concepts (k)</Label>
+                  <Badge variant="secondary" className="bg-slate-100 px-1.5 py-0 text-[9px] font-bold text-slate-700">
+                    {kConcepts}
+                  </Badge>
+                </div>
                 <Slider 
-                  value={[granularityPercent]} 
-                  min={0} 
-                  max={100} 
+                  value={[kConcepts]} 
+                  min={4} 
+                  max={30} 
                   step={1} 
-                  onValueChange={(v) => onGranularityPercentChange(v[0])} 
-                  className="py-2"
+                  onValueChange={(v) => onKConceptsChange(v[0])} 
                 />
               </div>
-            </div>
-          )}
+            )}
+            
+            {/* Show granularity slider when cutType is "granularity" and in hierarchical/hybrid mode */}
+            {cutType === "granularity" && (clusteringMode === "hierarchical" || clusteringMode === "hybrid") && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[11px] font-bold text-slate-700">Granularity</Label>
+                  <Badge variant="secondary" className="bg-slate-100 px-1.5 py-0 text-[9px] font-bold text-slate-700">
+                    {granularityPercent}%
+                  </Badge>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[8px] text-slate-400 uppercase tracking-tighter">0% fine / 100% broad</p>
+                  <Slider 
+                    value={[granularityPercent]} 
+                    min={0} 
+                    max={100} 
+                    step={1} 
+                    onValueChange={(v) => onGranularityPercentChange(v[0])} 
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
-
-      <div className="space-y-6 pt-2">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label 
-              className="text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-help"
-              title="Control the visibility of connections between jurors and concepts. Higher values filter out weak connections."
-            >
-              Link Density
-              <Info className="h-3 w-3 opacity-50" />
-            </Label>
-            <Badge variant="secondary" className="bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 ring-1 ring-slate-200/50">
-              {minEdgeWeight.toFixed(2)}
-            </Badge>
-          </div>
-          <Slider
-            value={[minEdgeWeight]}
-            min={0.02}
-            max={0.35}
-            step={0.01}
-            onValueChange={(v) => onMinEdgeWeightChange(v[0])}
-            className="py-2"
-          />
-        </div>
-
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label 
-              className="text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-help"
-              title="Set the minimum mathematical similarity required to draw a 'similarity link' between two jurors or two concepts."
-            >
-              Similarity Cutoff
-              <Info className="h-3 w-3 opacity-50" />
-            </Label>
-            <Badge variant="secondary" className="bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 ring-1 ring-slate-200/50">
-              {similarityThreshold.toFixed(2)}
-            </Badge>
-          </div>
-          <Slider
-            value={[similarityThreshold]}
-            min={0.35}
-            max={0.9}
-            step={0.01}
-            onValueChange={(v) => onSimilarityThresholdChange(v[0])}
-            className="py-2"
-          />
-        </div>
-      </div>
     </div>
   );
 }

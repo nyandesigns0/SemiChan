@@ -118,7 +118,7 @@ export function CollapsibleSidebar({
       >
         {/* Sidebar content container - Scrollable */}
         <div className="h-full overflow-y-auto overflow-x-hidden scrollbar-hide focus:outline-none">
-          <div className="min-h-full p-8 pt-24">{children}</div>
+          <div className="min-h-full p-8">{children}</div>
         </div>
       </aside>
     </>

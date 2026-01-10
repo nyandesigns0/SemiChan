@@ -12,6 +12,7 @@ import { Node3D } from "./Node3D";
 import { Link3D } from "./Link3D";
 import { Graph3DControls } from "./Graph3DControls";
 import { GraphLegend } from "./GraphLegend";
+import { generateSymmetricAxisDirections, AxisDirection } from "@/lib/graph/dimensionality-reduction";
 import type { GraphNode, GraphLink } from "@/types/graph";
 import type { AnalysisCheckpoint, AnalysisResult } from "@/types/analysis";
 import type { OrbitControls as OrbitControlsType } from "three-stdlib";
@@ -41,6 +42,7 @@ interface GraphCanvas3DProps {
   onCheckpointIndexChange?: (index: number) => void;
   showAxes?: boolean;
   onToggleAxes?: (show: boolean) => void;
+  numDimensions?: number;
 }
 
 // Camera controller component to handle reset
@@ -72,6 +74,21 @@ function AxesHelper({ visible }: { visible: boolean }) {
   return <axesHelper args={[10]} />;
 }
 
+// Helper to generate axis colors
+export function getAxisColors(numDimensions: number): string[] {
+  const colors: string[] = [];
+  // For 3 dimensions, use standard RGB colors
+  if (numDimensions === 3) {
+    return ["#ef4444", "#22c55e", "#3b82f6"]; // Red, Green, Blue
+  }
+  
+  for (let i = 0; i < numDimensions; i++) {
+    const hue = (i / numDimensions) * 360;
+    colors.push(`hsl(${hue}, 70%, 50%)`);
+  }
+  return colors;
+}
+
 // Axis end labels component - memoized to prevent unnecessary re-renders
 const DynamicAxisLabel = ({ 
   position, 
@@ -79,14 +96,16 @@ const DynamicAxisLabel = ({
   subLabel, 
   colorClass, 
   textColorClass, 
-  borderColorClass 
+  borderColorClass,
+  customColor
 }: { 
   position: [number, number, number]; 
   label: string; 
   subLabel?: string;
-  colorClass: string;
-  textColorClass: string;
-  borderColorClass: string;
+  colorClass?: string; 
+  textColorClass?: string; 
+  borderColorClass?: string;
+  customColor?: string;
 }) => {
   const [isVisible, setIsVisible] = useState(true);
   const { camera } = useThree();
@@ -109,18 +128,34 @@ const DynamicAxisLabel = ({
   return (
     <Html position={position} center distanceFactor={15} pointerEvents="none">
       <div 
-        className="flex flex-col items-center gap-1 transition-opacity duration-300" 
+        className={cn(
+          "flex flex-col items-center gap-1 transition-opacity duration-300",
+          !customColor && colorClass
+        )}
         style={{ 
           opacity: isVisible ? 1 : 0,
           pointerEvents: "none",
           userSelect: "none"
         }}
       >
-        <div className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold text-white shadow-sm border border-white/20", colorClass)}>
+        <div 
+          className={cn(
+            "px-1.5 py-0.5 rounded text-[10px] font-bold text-white shadow-sm border border-white/20",
+            !customColor && colorClass
+          )}
+          style={customColor ? { backgroundColor: customColor } : {}}
+        >
           {isVisible ? label : " "}
         </div>
         {subLabel && (
-          <div className={cn("px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold shadow-sm border whitespace-nowrap", textColorClass, borderColorClass)}>
+          <div 
+            className={cn(
+              "px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold shadow-sm border whitespace-nowrap",
+              !customColor && (textColorClass || "text-slate-600"),
+              !customColor && (borderColorClass || "border-slate-100")
+            )}
+            style={customColor ? { color: customColor, borderColor: customColor + "40" } : {}}
+          >
             {isVisible ? subLabel : " "}
           </div>
         )}
@@ -129,23 +164,28 @@ const DynamicAxisLabel = ({
   );
 };
 
-const AxisEndLabels = memo(function AxisEndLabels({ 
+const MultiAxisLabels = memo(function MultiAxisLabels({ 
   visible, 
   axisLabels, 
-  enableAI 
+  enableAI,
+  numDimensions,
+  axisDirections
 }: { 
   visible: boolean; 
   axisLabels?: AnalysisResult["axisLabels"];
   enableAI?: boolean;
+  numDimensions: number;
+  axisDirections: AxisDirection[];
 }) {
-  if (!visible) return null;
+  if (!visible || !axisLabels) return null;
   const size = 10;
   const offset = 0.8;
+  const axisColors = getAxisColors(numDimensions);
   
   // Helper to get display label
-  const getLabel = (axis: "x" | "y" | "z", end: "negative" | "positive") => {
-    if (!axisLabels) return "";
-    const data = axisLabels[axis];
+  const getLabel = (axisIdx: string, end: "negative" | "positive") => {
+    const data = axisLabels[axisIdx];
+    if (!data) return "";
     if (enableAI) {
       return end === "negative" 
         ? data.synthesizedNegative || data.negative 
@@ -156,62 +196,77 @@ const AxisEndLabels = memo(function AxisEndLabels({
   
   return (
     <group>
-      {/* X Axis */}
-      <DynamicAxisLabel 
-        position={[size + offset, 0, 0]} 
-        label="X+" 
-        subLabel={getLabel("x", "positive")}
-        colorClass="bg-red-500/90"
-        textColorClass="text-red-600"
-        borderColorClass="border-red-100"
-      />
-      <DynamicAxisLabel 
-        position={[-(size + offset), 0, 0]} 
-        label="X-" 
-        subLabel={getLabel("x", "negative")}
-        colorClass="bg-red-500/90"
-        textColorClass="text-red-600"
-        borderColorClass="border-red-100"
-      />
-      
-      {/* Y Axis */}
-      <DynamicAxisLabel 
-        position={[0, size + offset, 0]} 
-        label="Y+" 
-        subLabel={getLabel("y", "positive")}
-        colorClass="bg-green-500/90"
-        textColorClass="text-green-600"
-        borderColorClass="border-green-100"
-      />
-      <DynamicAxisLabel 
-        position={[0, -(size + offset), 0]} 
-        label="Y-" 
-        subLabel={getLabel("y", "negative")}
-        colorClass="bg-green-500/90"
-        textColorClass="text-green-600"
-        borderColorClass="border-green-100"
-      />
-      
-      {/* Z Axis */}
-      <DynamicAxisLabel 
-        position={[0, 0, size + offset]} 
-        label="Z+" 
-        subLabel={getLabel("z", "positive")}
-        colorClass="bg-blue-500/90"
-        textColorClass="text-blue-600"
-        borderColorClass="border-blue-100"
-      />
-      <DynamicAxisLabel 
-        position={[0, 0, -(size + offset)]} 
-        label="Z-" 
-        subLabel={getLabel("z", "negative")}
-        colorClass="bg-blue-500/90"
-        textColorClass="text-blue-600"
-        borderColorClass="border-blue-100"
-      />
+      {axisDirections.map((dir, i) => {
+        const axisIdx = i.toString();
+        const color = axisColors[i];
+        
+        return (
+          <group key={axisIdx}>
+            <DynamicAxisLabel 
+              position={[dir.x * (size + offset), dir.y * (size + offset), dir.z * (size + offset)]} 
+              label={`${i + 1}+`} 
+              subLabel={getLabel(axisIdx, "positive")}
+              customColor={color}
+            />
+            <DynamicAxisLabel 
+              position={[-dir.x * (size + offset), -dir.y * (size + offset), -dir.z * (size + offset)]} 
+              label={`${i + 1}-`} 
+              subLabel={getLabel(axisIdx, "negative")}
+              customColor={color}
+            />
+          </group>
+        );
+      })}
     </group>
   );
 });
+
+// New Component for rendering axis lines
+function MultiAxisHelper({ 
+  visible, 
+  numDimensions, 
+  axisDirections 
+}: { 
+  visible: boolean; 
+  numDimensions: number; 
+  axisDirections: AxisDirection[] 
+}) {
+  if (!visible) return null;
+  const size = 10;
+  const axisColors = getAxisColors(numDimensions);
+
+  return (
+    <group>
+      {axisDirections.map((dir, i) => (
+        <primitive 
+          key={i}
+          object={new THREE.ArrowHelper(
+            new THREE.Vector3(dir.x, dir.y, dir.z),
+            new THREE.Vector3(0, 0, 0),
+            size,
+            axisColors[i],
+            0.5,
+            0.2
+          )}
+        />
+      ))}
+      {/* Also render the negative directions */}
+      {axisDirections.map((dir, i) => (
+        <primitive 
+          key={`neg-${i}`}
+          object={new THREE.ArrowHelper(
+            new THREE.Vector3(-dir.x, -dir.y, -dir.z),
+            new THREE.Vector3(0, 0, 0),
+            size,
+            axisColors[i],
+            0.5,
+            0.2
+          )}
+        />
+      ))}
+    </group>
+  );
+}
 
 // Scene content
 function SceneContent({
@@ -230,6 +285,7 @@ function SceneContent({
   insights = {},
   axisLabels,
   enableAxisLabelAI,
+  numDimensions = 3,
 }: {
   nodes: GraphNode[];
   links: GraphLink[];
@@ -246,6 +302,7 @@ function SceneContent({
   insights?: Record<string, ConceptInsight>;
   axisLabels?: AnalysisResult["axisLabels"];
   enableAxisLabelAI?: boolean;
+  numDimensions?: number;
 }) {
   // Create node lookup map
   const nodeMap = useMemo(() => {
@@ -255,6 +312,12 @@ function SceneContent({
     }
     return map;
   }, [nodes]);
+
+  // Generate axis directions
+  const axisDirections = useMemo(() => 
+    generateSymmetricAxisDirections(numDimensions), 
+    [numDimensions]
+  );
 
   return (
     <>
@@ -297,8 +360,14 @@ function SceneContent({
       )}
       
       {/* Axes */}
-      <AxesHelper visible={showAxes} />
-      <AxisEndLabels visible={showAxes} axisLabels={axisLabels} enableAI={enableAxisLabelAI} />
+      <MultiAxisHelper visible={showAxes} numDimensions={numDimensions} axisDirections={axisDirections} />
+      <MultiAxisLabels 
+        visible={showAxes} 
+        axisLabels={axisLabels} 
+        enableAI={enableAxisLabelAI} 
+        numDimensions={numDimensions}
+        axisDirections={axisDirections}
+      />
       
       {/* Links */}
       {links.map((link) => (
@@ -352,6 +421,7 @@ export function GraphCanvas3D({
   onCheckpointIndexChange,
   showAxes: showAxesProp = false,
   onToggleAxes,
+  numDimensions = 3,
 }: GraphCanvas3DProps) {
   const controlsRef = useRef<OrbitControlsType>(null);
   const [showGrid, setShowGrid] = useState(true);
@@ -382,7 +452,7 @@ export function GraphCanvas3D({
 
   return (
     <>
-      <div className="relative h-full w-full overflow-hidden rounded-2xl border bg-gradient-to-br from-slate-50 to-slate-100">
+      <div className="relative h-full w-full overflow-hidden bg-gradient-to-br from-slate-50 to-slate-100">
         {empty ? (
           <div className="flex h-full items-center justify-center p-10 text-center">
             <div className="max-w-md">
@@ -417,6 +487,7 @@ export function GraphCanvas3D({
                   insights={insights}
                   axisLabels={axisLabels}
                   enableAxisLabelAI={enableAxisLabelAI}
+                  numDimensions={numDimensions}
                 />
               </Suspense>
             </Canvas>
@@ -431,6 +502,7 @@ export function GraphCanvas3D({
               axisLabels={axisLabels}
               enableAxisLabelAI={enableAxisLabelAI}
               onToggleAxisLabelAI={onToggleAxisLabelAI}
+              numDimensions={numDimensions}
             />
             
             {/* Instructions */}
@@ -449,6 +521,7 @@ export function GraphCanvas3D({
         analysis={analysis}
         filteredNodesCount={filteredNodesCount}
         filteredLinksCount={filteredLinksCount}
+        numDimensions={numDimensions}
       />
     </>
   );

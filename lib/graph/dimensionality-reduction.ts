@@ -2,8 +2,56 @@ import { createPRNG } from "@/lib/analysis/kmeans";
 
 /**
  * Principal Component Analysis (PCA) for dimensionality reduction
- * Reduces high-dimensional vectors to 3D coordinates for visualization
+ * Reduces high-dimensional vectors to N-dimensional axes projected into 3D space
  */
+
+export interface AxisDirection {
+  x: number;
+  y: number;
+  z: number;
+}
+
+/**
+ * Generate symmetric axis directions in 3D space for N dimensions.
+ * For 2D and 3D, uses standard orthogonal axes.
+ * For N > 3, uses a Fibonacci sphere distribution for near-uniformity.
+ */
+export function generateSymmetricAxisDirections(numDimensions: number): AxisDirection[] {
+  // Special cases for 2 and 3 dimensions to maintain standard behavior
+  if (numDimensions === 2) {
+    return [
+      { x: 1, y: 0, z: 0 },
+      { x: 0, y: 1, z: 0 }
+    ];
+  }
+  if (numDimensions === 3) {
+    return [
+      { x: 1, y: 0, z: 0 },
+      { x: 0, y: 1, z: 0 },
+      { x: 0, y: 0, z: 1 }
+    ];
+  }
+
+  // Fibonacci sphere algorithm for relatively even distribution
+  const directions: AxisDirection[] = [];
+  const phi = Math.PI * (3 - Math.sqrt(5)); // Golden angle
+
+  for (let i = 0; i < numDimensions; i++) {
+    const y = 1 - (i / (numDimensions - 1)) * 2; // y goes from 1 to -1
+    const radius = Math.sqrt(Math.max(0, 1 - y * y)); // radius at y
+
+    const theta = phi * i;
+
+    const x = Math.cos(theta) * radius;
+    const z = Math.sin(theta) * radius;
+
+    // Normalize
+    const mag = Math.sqrt(x * x + y * y + z * z) || 1;
+    directions.push({ x: x / mag, y: y / mag, z: z / mag });
+  }
+
+  return directions;
+}
 
 /**
  * Compute the mean vector across all vectors
@@ -112,26 +160,40 @@ function powerIteration(
 }
 
 /**
- * Project vectors onto principal components to get 3D coordinates
+ * Project vectors onto principal components to get N-dimensional coordinates
  */
-function projectOntoComponents(
+function projectToND(
   centered: Float64Array[],
   components: Float64Array[]
-): { x: number; y: number; z: number }[] {
+): number[][] {
   return centered.map((v) => {
-    const coords = components.map((pc) => {
+    return components.map((pc) => {
       let dot = 0;
       for (let i = 0; i < v.length; i++) {
         dot += v[i] * pc[i];
       }
       return dot;
     });
-    
-    return {
-      x: coords[0] ?? 0,
-      y: coords[1] ?? 0,
-      z: coords[2] ?? 0,
-    };
+  });
+}
+
+/**
+ * Project N-dimensional coordinates to 3D space using axis directions
+ */
+function projectNDTo3D(
+  ndCoords: number[][],
+  axisDirections: AxisDirection[]
+): { x: number; y: number; z: number }[] {
+  return ndCoords.map((coords) => {
+    let x = 0, y = 0, z = 0;
+    for (let i = 0; i < coords.length; i++) {
+      const val = coords[i];
+      const dir = axisDirections[i] || { x: 0, y: 0, z: 0 };
+      x += val * dir.x;
+      y += val * dir.y;
+      z += val * dir.z;
+    }
+    return { x, y, z };
   });
 }
 
@@ -170,41 +232,60 @@ function normalizeCoordinates(
 }
 
 /**
- * Reduce high-dimensional vectors to 3D coordinates using PCA
+ * Reduce high-dimensional vectors to N-dimensional coordinates projected to 3D using PCA
  * 
  * @param vectors - Array of high-dimensional vectors
+ * @param numDimensions - Number of principal components to use (2-10)
  * @param scale - Scale factor for the output coordinates (default 10)
- * @returns Array of 3D coordinates
+ * @returns Object containing 3D coordinates and raw N-D PC values
  */
-export function reduceTo3D(
+export function reduceToND(
   vectors: Float64Array[],
+  numDimensions: number = 3,
   scale: number = 10,
   seed: number = 42
-): { x: number; y: number; z: number }[] {
+): { coords: { x: number; y: number; z: number }[], pcValues: number[][] } {
   if (vectors.length === 0) {
-    return [];
+    return { coords: [], pcValues: [] };
   }
   
   if (vectors.length === 1) {
-    return [{ x: 0, y: 0, z: 0 }];
+    return { 
+      coords: [{ x: 0, y: 0, z: 0 }], 
+      pcValues: [new Array(numDimensions).fill(0)] 
+    };
   }
   
   // Compute mean and center data
   const mean = computeMean(vectors);
   const centered = centerVectors(vectors, mean);
   
-  // Find top 3 principal components using power iteration
-  const components = powerIteration(centered, 3, 100, seed);
+  // Find top N principal components using power iteration
+  const components = powerIteration(centered, numDimensions, 100, seed);
   
   if (components.length === 0) {
-    return vectors.map(() => ({ x: 0, y: 0, z: 0 }));
+    return { 
+      coords: vectors.map(() => ({ x: 0, y: 0, z: 0 })), 
+      pcValues: vectors.map(() => new Array(numDimensions).fill(0)) 
+    };
   }
   
-  // Project onto components
-  const coords = projectOntoComponents(centered, components);
+  // 1. Get N-dimensional coordinates
+  const ndCoords = projectToND(centered, components);
   
-  // Normalize to fit display range
-  return normalizeCoordinates(coords, scale);
+  // 2. Generate axis directions for 3D projection
+  const axisDirections = generateSymmetricAxisDirections(numDimensions);
+  
+  // 3. Project N-D to 3D
+  const coords3D = projectNDTo3D(ndCoords, axisDirections);
+  
+  // 4. Normalize to fit display range
+  const normalizedCoords = normalizeCoordinates(coords3D, scale);
+  
+  return {
+    coords: normalizedCoords,
+    pcValues: ndCoords
+  };
 }
 
 /**
@@ -217,16 +298,19 @@ export function computeNode3DPositions(
   conceptCentroids: Float64Array[],
   jurorList: string[],
   conceptIds: string[],
+  numDimensions: number = 3,
   scale: number = 10,
   seed: number = 42
-): Map<string, { x: number; y: number; z: number }> {
+): { positions: Map<string, { x: number; y: number; z: number }>; conceptPcValues: Map<string, number[]> } {
   const positions = new Map<string, { x: number; y: number; z: number }>();
-  const rand = createPRNG(seed + 1); // Offset seed for variety
+  const conceptPcValues = new Map<string, number[]>();
   
-  // First, get 3D positions for concepts from centroids
-  const conceptCoords = reduceTo3D(conceptCentroids, scale, seed);
+  // First, get N-D positions for concepts from centroids
+  const { coords: conceptCoords, pcValues: conceptRawPcValues } = reduceToND(conceptCentroids, numDimensions, scale, seed);
+  
   for (let i = 0; i < conceptIds.length; i++) {
     positions.set(conceptIds[i], conceptCoords[i] ?? { x: 0, y: 0, z: 0 });
+    conceptPcValues.set(conceptIds[i], conceptRawPcValues[i] ?? []);
   }
   
   // For jurors, compute weighted average of their concept positions
@@ -259,7 +343,7 @@ export function computeNode3DPositions(
     }
   }
   
-  return positions;
+  return { positions, conceptPcValues };
 }
 
 

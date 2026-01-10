@@ -58,6 +58,42 @@ You can control the "Interpretation Lens" using the Feature Weight sliders:
 
 ---
 
+## Understanding Network Logic: Density and Strictness
+
+You can control how "busy" or "clean" the visualization is using the Network Logic settings:
+
+### 1. Link Density (Filtering "Noise")
+*   **What it is:** Controls the visibility of connections between jurors and concepts.
+*   **Minimalist (0%):** Only shows a juror's primary focus. Clears out the background noise.
+*   **Exploratory (100%):** Shows every minor interest and secondary comment, creating a complex web.
+*   **When to use:** Use **Minimalist** for clean presentations; use **Exploratory** when hunting for unexpected patterns.
+
+### 2. Similarity Bar (The "Strictness" Bar)
+*   **What it is:** Sets the bar for how similar two jurors or concepts must be to be connected.
+*   **Broad (0%):** Connects anything with even a vague resemblance. 
+*   **Strict (100%):** Only connects things that are nearly identical in their feedback.
+*   **When to use:** Use **Broad** to see general "neighborhoods" of ideas; use **Strict** to find people who are in total agreement.
+
+---
+
+## The Interpretation Presets
+
+We provide quick presets to help you jump between common analytical perspectives:
+
+### Interpretation Lens (Meaning vs. Wording)
+*   **Meaning:** Focuses on conceptual alignment (90% Semantic).
+*   **Wording:** Focuses on technical terminology (90% Frequency).
+*   **Balanced:** Equal parts intent and literal wording.
+*   **Precision:** High-density mode for finding exact duplicates in both meaning and phrasing.
+
+### Network Logic (The Structural View)
+*   **Summary:** High strictness, high filtering. Only the core, undeniable themes remain.
+*   **Standard:** The balanced "Golden Mean" for most data.
+*   **Discover:** Low filtering; reveals subtle secondary links.
+*   **Full Web:** Raw data view; every nuance and tiny connection is visible.
+
+---
+
 ## Understanding the 3D Space: Axis Labels
 
 In the 3D graph visualization, nodes are positioned using Principal Component Analysis (PCA), which reduces high-dimensional semantic vectors to three spatial coordinates (X, Y, Z). The axes represent the **primary dimensions of variation** in your corpus.

@@ -1,13 +1,15 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import type { AnalysisResult } from "@/types/analysis";
+import type { LogEntry } from "@/components/inspector/InspectorConsole";
 
 import { DEFAULT_MODEL } from "@/constants/nlp-constants";
 
-export interface EnhancedAxisLabels {
-  x: { negative: string; positive: string; synthesizedNegative: string; synthesizedPositive: string };
-  y: { negative: string; positive: string; synthesizedNegative: string; synthesizedPositive: string };
-  z: { negative: string; positive: string; synthesizedNegative: string; synthesizedPositive: string };
-}
+export type EnhancedAxisLabels = Record<string, { 
+  negative: string; 
+  positive: string; 
+  synthesizedNegative: string; 
+  synthesizedPositive: string 
+}>;
 
 /**
  * Hook to enhance axis labels with AI synthesis in the background
@@ -17,7 +19,7 @@ export function useAxisLabelEnhancer(
   analysis: AnalysisResult | null, 
   enabled: boolean = false,
   selectedModel: string = DEFAULT_MODEL,
-  onAddLog?: (type: string, msg: string) => void
+  onAddLog?: (type: LogEntry["type"], msg: string, data?: any) => void
 ) {
   const [enhancedLabels, setEnhancedLabels] = useState<EnhancedAxisLabels | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -25,55 +27,46 @@ export function useAxisLabelEnhancer(
   // Reset enhanced labels when analysis changes
   useEffect(() => {
     setEnhancedLabels(null);
-  }, [analysis?.axisLabels?.x.negative]); // Use a stable property to detect new analysis
+  }, [analysis?.axisLabels?.["0"]?.negative]); // Use a stable property to detect new analysis
 
   useEffect(() => {
-    if (!enabled || !analysis?.axisLabels || enhancedLabels) {
+    if (!enabled || !analysis || !analysis.axisLabels || enhancedLabels) {
       setIsLoading(false);
       return;
     }
 
     // Skip if synthesized labels already exist in the analysis object
-    if (
-      analysis.axisLabels.x.synthesizedNegative &&
-      analysis.axisLabels.x.synthesizedPositive &&
-      analysis.axisLabels.y.synthesizedNegative &&
-      analysis.axisLabels.y.synthesizedPositive &&
-      analysis.axisLabels.z.synthesizedNegative &&
-      analysis.axisLabels.z.synthesizedPositive
-    ) {
-      setEnhancedLabels({
-        x: {
-          negative: analysis.axisLabels.x.negative,
-          positive: analysis.axisLabels.x.positive,
-          synthesizedNegative: analysis.axisLabels.x.synthesizedNegative,
-          synthesizedPositive: analysis.axisLabels.x.synthesizedPositive,
-        },
-        y: {
-          negative: analysis.axisLabels.y.negative,
-          positive: analysis.axisLabels.y.positive,
-          synthesizedNegative: analysis.axisLabels.y.synthesizedNegative,
-          synthesizedPositive: analysis.axisLabels.y.synthesizedPositive,
-        },
-        z: {
-          negative: analysis.axisLabels.z.negative,
-          positive: analysis.axisLabels.z.positive,
-          synthesizedNegative: analysis.axisLabels.z.synthesizedNegative,
-          synthesizedPositive: analysis.axisLabels.z.synthesizedPositive,
-        },
+    const allSynthesized = Object.values(analysis.axisLabels).every(
+      axis => axis.synthesizedNegative && axis.synthesizedPositive
+    );
+
+    if (allSynthesized) {
+      const enhanced: EnhancedAxisLabels = {};
+      Object.entries(analysis.axisLabels).forEach(([key, axis]) => {
+        enhanced[key] = {
+          negative: axis.negative,
+          positive: axis.positive,
+          synthesizedNegative: axis.synthesizedNegative!,
+          synthesizedPositive: axis.synthesizedPositive!,
+        };
       });
+      setEnhancedLabels(enhanced);
       setIsLoading(false);
       return;
     }
+
+    const analysisSnapshot = analysis;
+    const axisLabels = analysisSnapshot.axisLabels!;
 
     // Enhance in background
     setIsLoading(true);
     console.log(`[Axis Labels] Enhancing labels using model: ${selectedModel}`);
     if (onAddLog) onAddLog("api_request", `Enhancing axis labels with AI using ${selectedModel}...`);
+    
     const enhanceLabels = async () => {
       try {
         const getConceptContext = (id: string) => {
-          const concept = analysis.concepts.find(c => c.id === id);
+          const concept = analysisSnapshot.concepts.find(c => c.id === id);
           if (!concept) return { keywords: [], sentences: [] };
           return {
             keywords: concept.topTerms,
@@ -81,30 +74,21 @@ export function useAxisLabelEnhancer(
           };
         };
 
+        const axisLabelsRequest: any = {};
+        Object.entries(axisLabels).forEach(([key, axis]) => {
+          axisLabelsRequest[key] = {
+            negative: axis.negative,
+            positive: axis.positive,
+            negativeContext: getConceptContext(axis.negativeId),
+            positiveContext: getConceptContext(axis.positiveId)
+          };
+        });
+
         const response = await fetch("/api/analyze/axis-labels", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            axisLabels: {
-              x: { 
-                negative: analysis.axisLabels.x.negative, 
-                positive: analysis.axisLabels.x.positive,
-                negativeContext: getConceptContext(analysis.axisLabels.x.negativeId),
-                positiveContext: getConceptContext(analysis.axisLabels.x.positiveId)
-              },
-              y: { 
-                negative: analysis.axisLabels.y.negative, 
-                positive: analysis.axisLabels.y.positive,
-                negativeContext: getConceptContext(analysis.axisLabels.y.negativeId),
-                positiveContext: getConceptContext(analysis.axisLabels.y.positiveId)
-              },
-              z: { 
-                negative: analysis.axisLabels.z.negative, 
-                positive: analysis.axisLabels.z.positive,
-                negativeContext: getConceptContext(analysis.axisLabels.z.negativeId),
-                positiveContext: getConceptContext(analysis.axisLabels.z.positiveId)
-              },
-            },
+            axisLabels: axisLabelsRequest,
             model: selectedModel,
           }),
         });
@@ -128,4 +112,3 @@ export function useAxisLabelEnhancer(
 
   return { enhancedLabels, isLoading };
 }
-

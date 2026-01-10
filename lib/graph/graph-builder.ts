@@ -40,18 +40,20 @@ export async function buildAnalysis(
     cutType?: "count" | "granularity";
     granularityPercent?: number;
     seed?: number;
+    numDimensions?: number;
   } = {}
 ): Promise<AnalysisResult> {
   const {
-    clusteringMode = "kmeans",
-    autoK = false,
+    clusteringMode = "hierarchical",
+    autoK = true,
     kMin = 4,
     kMax = 20,
-    softMembership = false,
+    softMembership = true,
     softTopN = 2,
     cutType = "count",
     granularityPercent = 50,
     seed = 42,
+    numDimensions = 3,
   } = options;
 
   const checkpoints: AnalysisCheckpoint[] = [];
@@ -262,11 +264,12 @@ export async function buildAnalysis(
   }
 
   // Compute 3D positions
-  const positions3D = computeNode3DPositions(
+  const { positions: positions3D, conceptPcValues } = computeNode3DPositions(
     jurorVectors,
     centroids,
     jurorList,
     conceptIds,
+    numDimensions,
     10, // scale
     seed
   );
@@ -306,6 +309,7 @@ export async function buildAnalysis(
       x: pos.x,
       y: pos.y,
       z: pos.z,
+      pcValues: conceptPcValues.get(c.id),
     });
   }
 
@@ -345,7 +349,7 @@ export async function buildAnalysis(
   links.push(...conceptSimilarityLinks);
 
   // Compute axis labels from 3D node positions
-  const axisLabels = labelAxes(nodes);
+  const axisLabels = labelAxes(nodes, numDimensions, conceptPcValues);
 
   // Final Checkpoint
   checkpoints.push({

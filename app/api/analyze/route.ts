@@ -33,6 +33,7 @@ export async function POST(request: NextRequest) {
       cutType,
       granularityPercent,
       clusterSeed,
+      numDimensions,
       model
     } = body;
 
@@ -109,7 +110,8 @@ export async function POST(request: NextRequest) {
         softTopN,
         cutType,
         granularityPercent,
-        seed: clusterSeed
+        seed: clusterSeed,
+        numDimensions: numDimensions || 3,
       }
     );
 

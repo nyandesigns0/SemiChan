@@ -17,6 +17,8 @@ export interface AnalyzeRequest {
   semanticWeight?: number;
   /** Weight for frequency/BM25 vectors (0.0-1.0, default 0.3) */
   frequencyWeight?: number;
+  /** Number of dimensions for visualization (2-10, default 3) */
+  numDimensions?: number;
   
   // New clustering options
   clusteringMode?: "kmeans" | "hierarchical" | "hybrid";
@@ -43,20 +45,22 @@ export interface TokenUsage {
 }
 
 export interface AxisLabelsRequest {
-  axisLabels: {
-    x: { negative: string; positive: string; negativeContext: { keywords: string[], sentences: string[] }; positiveContext: { keywords: string[], sentences: string[] } };
-    y: { negative: string; positive: string; negativeContext: { keywords: string[], sentences: string[] }; positiveContext: { keywords: string[], sentences: string[] } };
-    z: { negative: string; positive: string; negativeContext: { keywords: string[], sentences: string[] }; positiveContext: { keywords: string[], sentences: string[] } };
-  };
+  axisLabels: Record<string, { 
+    negative: string; 
+    positive: string; 
+    negativeContext: { keywords: string[], sentences: string[] }; 
+    positiveContext: { keywords: string[], sentences: string[] } 
+  }>;
   model?: string;
 }
 
 export interface AxisLabelsResponse {
-  axisLabels: {
-    x: { negative: string; positive: string; synthesizedNegative: string; synthesizedPositive: string };
-    y: { negative: string; positive: string; synthesizedNegative: string; synthesizedPositive: string };
-    z: { negative: string; positive: string; synthesizedNegative: string; synthesizedPositive: string };
-  };
+  axisLabels: Record<string, { 
+    negative: string; 
+    positive: string; 
+    synthesizedNegative: string; 
+    synthesizedPositive: string 
+  }>;
   usage?: TokenUsage;
 }
 

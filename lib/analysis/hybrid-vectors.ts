@@ -4,8 +4,8 @@ import type { BM25Model, SentenceEmbeddingResult, HybridAnalysisParams } from "@
  * Default weights for hybrid analysis
  */
 export const DEFAULT_HYBRID_PARAMS: HybridAnalysisParams = {
-  semanticWeight: 0.7,
-  frequencyWeight: 0.3,
+  semanticWeight: 0.5,
+  frequencyWeight: 0.5,
 };
 
 /**

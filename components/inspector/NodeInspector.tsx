@@ -3,8 +3,9 @@
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Brain, Fingerprint, Users, MessageSquare } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { extractKeyphrases } from "@/lib/nlp/keyphrase-extractor";
 import { stanceColor } from "@/lib/utils/stance-utils";
 import type { GraphNode } from "@/types/graph";
@@ -30,7 +31,7 @@ function SentenceList({ sentences, conceptId }: { sentences: SentenceRecord[], c
   }
 
   return (
-    <ScrollArea className="h-[400px] w-full pr-4">
+    <ScrollArea className="h-[300px] w-full pr-4">
       <div className="space-y-2">
         {sentences.map((s) => {
           // Find the specific weight for this concept if it exists
@@ -90,7 +91,6 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
     const semanticTerms = analysis.jurorTopTerms?.[jurorName] || [];
     
     // Create sets for quick lookup
-    const keyphraseSet = new Set(keyphrases.map(kp => kp.toLowerCase()));
     const semanticSet = new Set(semanticTerms.map(st => st.toLowerCase()));
     
     // Helper function to check for partial matches (shared words)
@@ -114,13 +114,10 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
       processed.add(lower);
       
       if (semanticSet.has(lower)) {
-        // Exact match
         allTerms.push({ term: kp, matchType: 'exact-match' });
       } else if (hasPartialMatch(kp, semanticTerms)) {
-        // Partial match
         allTerms.push({ term: kp, matchType: 'partial-match' });
       } else {
-        // Keyphrase only
         allTerms.push({ term: kp, matchType: 'keyphrase-only' });
       }
     });
@@ -132,10 +129,8 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
       processed.add(lower);
       
       if (hasPartialMatch(st, keyphrases)) {
-        // Partial match
         allTerms.push({ term: st, matchType: 'partial-match' });
       } else {
-        // Semantic only
         allTerms.push({ term: st, matchType: 'semantic-only' });
       }
     });
@@ -143,12 +138,27 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
     const jurorSentences = analysis.sentences.filter(s => s.juror === jurorName);
 
     return (
-      <div className="flex flex-col gap-4 w-full pb-4">
-        <div className="flex flex-row gap-4 items-start w-full">
-          <div className="flex-1 min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <Tabs defaultValue="concepts" className="w-full">
+        <TabsList className="grid w-full grid-cols-3 mb-4">
+          <TabsTrigger value="concepts" className="text-[10px] uppercase font-bold">
+            <Brain className="h-3 w-3 mr-1.5" />
+            Concepts
+          </TabsTrigger>
+          <TabsTrigger value="fingerprint" className="text-[10px] uppercase font-bold">
+            <Fingerprint className="h-3 w-3 mr-1.5" />
+            Fingerprint
+          </TabsTrigger>
+          <TabsTrigger value="sentences" className="text-[10px] uppercase font-bold">
+            <MessageSquare className="h-3 w-3 mr-1.5" />
+            Sentences
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="concepts" className="space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-800">Top concepts</h3>
-              <Badge variant="outline" className="bg-slate-50 text-slate-500 font-medium text-xs">Distribution</Badge>
+              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-tight">Top concepts</h3>
+              <Badge variant="outline" className="bg-slate-50 text-slate-500 font-medium text-[9px]">Distribution</Badge>
             </div>
             <div className="h-[200px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -157,8 +167,8 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
                   <YAxis 
                     type="category" 
                     dataKey="name" 
-                    tick={{ fontSize: 11, fontWeight: 600, fill: '#475569' }} 
-                    width={120}
+                    tick={{ fontSize: 10, fontWeight: 600, fill: '#475569' }} 
+                    width={80}
                     axisLine={false}
                     tickLine={false}
                   />
@@ -170,59 +180,59 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
                     dataKey="value" 
                     fill="#3b82f6" 
                     radius={[0, 4, 4, 0]}
-                    barSize={18}
+                    barSize={14}
                   />
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <p className="mt-3 text-xs text-slate-500 italic">
+            <p className="mt-2 text-[9px] text-slate-500 italic">
               Relative emphasis based on global semantic themes.
             </p>
           </div>
+        </TabsContent>
 
-          {analysis.jurorTopTerms && analysis.jurorTopTerms[jurorName] && (
-            <div className="flex-[2] min-w-0 rounded-2xl border-2 border-slate-200 bg-slate-50/30 p-4 shadow-md">
-              <div className="mb-3 flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-black text-blue-900 uppercase tracking-tight">Keyphrases</h3>
-                  <p className="text-[10px] text-blue-600 font-bold opacity-70">Linguistics analysis</p>
-                </div>
-                <div className="text-right">
-                  <h3 className="text-sm font-black text-red-900 uppercase tracking-tight">Semantic Fingerprint</h3>
-                  <p className="text-[10px] text-red-600 font-bold opacity-70">Top terms from high-dimensional vector</p>
-                </div>
+        <TabsContent value="fingerprint" className="space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/30 p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h3 className="text-xs font-black text-blue-900 uppercase tracking-tight">Keyphrases</h3>
+                <p className="text-[9px] text-blue-600 font-bold opacity-70">Linguistics analysis</p>
               </div>
-            <div className="flex flex-wrap gap-2 p-1">
-              {allTerms.map(({ term, matchType }) => {
-                  let badgeClasses = 'text-xs px-2.5 py-1 font-medium';
-                  if (matchType === 'keyphrase-only') {
-                    badgeClasses += ' text-blue-700 border-blue-300 bg-blue-50';
-                  } else if (matchType === 'semantic-only') {
-                    badgeClasses += ' text-red-700 border-red-300 bg-red-50';
-                  } else if (matchType === 'exact-match') {
-                    badgeClasses += ' text-purple-100 border-purple-400 bg-purple-700';
-                  } else if (matchType === 'partial-match') {
-                    badgeClasses += ' text-purple-900 border-purple-300 bg-purple-200';
-                  }
-                  return (
-                    <Badge key={term} className={badgeClasses}>
-                      {term}
-                    </Badge>
-                  );
-                })}
+              <div className="text-right">
+                <h3 className="text-xs font-black text-red-900 uppercase tracking-tight">Semantic Fingerprint</h3>
+                <p className="text-[9px] text-red-600 font-bold opacity-70">Hybrid vectors</p>
               </div>
             </div>
-          )}
-        </div>
+            <div className="flex flex-wrap gap-1.5">
+              {allTerms.map(({ term, matchType }) => {
+                let badgeClasses = 'text-[10px] px-2 py-0.5 font-medium';
+                if (matchType === 'keyphrase-only') {
+                  badgeClasses += ' text-blue-700 border-blue-300 bg-blue-50';
+                } else if (matchType === 'semantic-only') {
+                  badgeClasses += ' text-red-700 border-red-300 bg-red-50';
+                } else if (matchType === 'exact-match') {
+                  badgeClasses += ' text-purple-100 border-purple-400 bg-purple-700';
+                } else if (matchType === 'partial-match') {
+                  badgeClasses += ' text-purple-900 border-purple-300 bg-purple-200';
+                }
+                return (
+                  <Badge key={term} className={badgeClasses}>
+                    {term}
+                  </Badge>
+                );
+              })}
+            </div>
+          </div>
+        </TabsContent>
 
-        <div className="w-full">
-          <div className="mb-3">
-            <h3 className="text-base font-black text-slate-900 uppercase tracking-tight">Associated Sentences</h3>
-            <p className="text-[10px] text-slate-500 font-medium">Full list of evidence linked to this juror</p>
+        <TabsContent value="sentences" className="space-y-4">
+          <div className="mb-2">
+            <h3 className="text-xs font-black text-slate-900 uppercase tracking-tight">Evidence List</h3>
+            <p className="text-[9px] text-slate-500 font-medium">Full juror feedback segments</p>
           </div>
           <SentenceList sentences={jurorSentences} />
-        </div>
-      </div>
+        </TabsContent>
+      </Tabs>
     );
   } else {
     const cid = node.id;
@@ -232,16 +242,14 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
       .sort((a, b) => b.value - a.value)
       .slice(0, 10);
 
-    const topTerms = Array.isArray(node.meta?.topTerms) ? node.meta.topTerms.slice(0, 14) : [];
+    const topTerms = Array.isArray(node.meta?.topTerms) ? node.meta.topTerms.slice(0, 20) : [];
     
-    // Include sentences that are either primary matches or have soft membership in this concept
     const conceptSentences = analysis.sentences
       .filter(s => {
         const isPrimary = s.conceptId === cid;
         const hasSoftMatch = s.conceptMembership?.some(m => m.conceptId === cid);
         return isPrimary || hasSoftMatch;
       })
-      // Sort by weight for this specific concept
       .sort((a, b) => {
         const weightA = a.conceptMembership?.find(m => m.conceptId === cid)?.weight || (a.conceptId === cid ? 1 : 0);
         const weightB = b.conceptMembership?.find(m => m.conceptId === cid)?.weight || (b.conceptId === cid ? 1 : 0);
@@ -249,99 +257,107 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
       });
 
     return (
-      <div className="flex flex-col gap-4 w-full pb-4">
-        {/* First Row: AI Concept Insight (left) and Semantic Fingerprint (right) */}
-        <div className="flex flex-row gap-4 items-start w-full">
-          {/* AI Concept Insight */}
-          <div className="flex-1 min-w-0 rounded-2xl border-2 border-indigo-100 bg-gradient-to-r from-indigo-50/50 to-purple-50/50 p-4 shadow-md">
+      <Tabs defaultValue="insight" className="w-full">
+        <TabsList className="grid w-full grid-cols-4 mb-4">
+          <TabsTrigger value="insight" className="text-[10px] uppercase font-bold px-1">
+            <Brain className="h-3 w-3 mr-1" />
+            Insight
+          </TabsTrigger>
+          <TabsTrigger value="fingerprint" className="text-[10px] uppercase font-bold px-1">
+            <Fingerprint className="h-3 w-3 mr-1" />
+            Terms
+          </TabsTrigger>
+          <TabsTrigger value="contributors" className="text-[10px] uppercase font-bold px-1">
+            <Users className="h-3 w-3 mr-1" />
+            Jurors
+          </TabsTrigger>
+          <TabsTrigger value="sentences" className="text-[10px] uppercase font-bold px-1">
+            <MessageSquare className="h-3 w-3 mr-1" />
+            Text
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="insight" className="space-y-4">
+          <div className="rounded-2xl border-2 border-indigo-100 bg-gradient-to-r from-indigo-50/50 to-purple-50/50 p-4 shadow-sm">
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-2">
                 <div className="rounded-lg bg-indigo-600 p-1.5 text-white shadow-lg shadow-indigo-200">
-                  <Badge variant="outline" className="border-none p-0 text-white text-[9px]">
-                    AI
-                  </Badge>
+                  <Badge variant="outline" className="border-none p-0 text-white text-[9px]">AI</Badge>
                 </div>
                 <div>
-                  <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wider">Concept Insight</h3>
-                  <p className="text-[9px] text-indigo-500 font-medium">Synthesized from juror feedback</p>
+                  <h3 className="text-[10px] font-bold text-indigo-900 uppercase tracking-wider">Concept Insight</h3>
+                  <p className="text-[8px] text-indigo-500 font-medium">Synthesized from feedback</p>
                 </div>
               </div>
               {insight?.isLoadingSummary && (
-                <Badge variant="secondary" className="animate-pulse bg-indigo-100 text-indigo-700 border-none text-[9px]">
-                  Analyzing...
-                </Badge>
+                <Badge variant="secondary" className="animate-pulse bg-indigo-100 text-indigo-700 border-none text-[8px]">Analyzing...</Badge>
               )}
             </div>
 
             <div className="space-y-3">
               <div>
-                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Generated Title</div>
+                <div className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Title</div>
                 {insight?.isLoadingLabel ? (
                   <div className="h-6 w-full animate-pulse rounded-lg bg-slate-200" />
                 ) : (
-                  <div className="text-lg font-black text-slate-900 tracking-tight">
+                  <div className="text-base font-black text-slate-900 tracking-tight leading-tight">
                     {insight?.shortLabel || node.label}
                   </div>
                 )}
               </div>
 
               <div>
-                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">One-Line Synthesis</div>
+                <div className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Synthesis</div>
                 {insight?.isLoadingSummary ? (
-                  <div className="space-y-2">
-                    <div className="h-4 w-full animate-pulse rounded-full bg-slate-200" />
-                    <div className="h-4 w-2/3 animate-pulse rounded-full bg-slate-200" />
+                  <div className="space-y-1.5">
+                    <div className="h-3 w-full animate-pulse rounded-full bg-slate-200" />
+                    <div className="h-3 w-2/3 animate-pulse rounded-full bg-slate-200" />
                   </div>
                 ) : insight?.summary ? (
-                  <p className="text-sm text-slate-700 leading-relaxed font-medium">
+                  <p className="text-xs text-slate-700 leading-relaxed font-medium">
                     {insight.summary}
                   </p>
                 ) : (
-                  <div className="py-1.5">
+                  <div>
                     <Button 
                       variant="outline" 
-                      size="sm"
-                      className="group px-4 py-1.5 border-indigo-200 bg-white/50 text-indigo-600 hover:bg-indigo-600 hover:text-white transition-all shadow-sm h-auto"
+                      className="group px-3 py-1 border-indigo-200 bg-white/50 text-indigo-600 hover:bg-indigo-600 hover:text-white transition-all shadow-sm h-auto text-[10px]"
                       onClick={() => onFetchSummary?.(node.id)}
                     >
                       <Sparkles className="mr-1.5 h-3 w-3 transition-transform group-hover:rotate-12" />
-                      <span className="text-[10px] font-bold">Synthesize with AI</span>
+                      Synthesize
                     </Button>
-                    <p className="mt-1.5 text-[9px] text-slate-400 font-medium italic">
-                      Requires OpenAI API call to generate professional architectural summary.
-                    </p>
                   </div>
                 )}
               </div>
             </div>
           </div>
+        </TabsContent>
 
-          {/* Semantic Fingerprint */}
-          <div className="flex-1 min-w-0 rounded-2xl border-2 border-purple-100 bg-purple-50/20 p-4 shadow-md">
+        <TabsContent value="fingerprint" className="space-y-4">
+          <div className="rounded-2xl border border-purple-100 bg-purple-50/20 p-4 shadow-sm">
             <div className="mb-3">
-              <h3 className="text-sm font-black text-purple-900 uppercase tracking-tight">Semantic Fingerprint</h3>
-              <p className="text-[10px] text-purple-600 font-medium">Top terms from centroid vector</p>
+              <h3 className="text-xs font-black text-purple-900 uppercase tracking-tight">Semantic Fingerprint</h3>
+              <p className="text-[9px] text-purple-600 font-medium">Top terms from cluster centroid</p>
             </div>
-            <div className="flex flex-wrap gap-2 p-1">
+            <div className="flex flex-wrap gap-1.5">
               {topTerms.map((t) => (
                 <Badge 
                   key={String(t)} 
-                  className="text-xs px-2.5 py-1 font-medium text-purple-700 border-purple-200"
+                  className="text-[10px] px-2 py-0.5 font-medium text-purple-700 border-purple-200"
                 >
                   {String(t)}
                 </Badge>
               ))}
             </div>
           </div>
-        </div>
+        </TabsContent>
 
-        {/* Second Row: Top Contributors (left) and Associated Sentences (right) */}
-        <div className="flex flex-row gap-4 items-start w-full">
-          {/* Top Contributors */}
-          <div className="flex-1 min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <TabsContent value="contributors" className="space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-800">Top contributors</h3>
-              <Badge variant="outline" className="bg-slate-50 text-slate-500 text-[10px]">Distribution</Badge>
+              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-tight">Top contributors</h3>
+              <Badge variant="outline" className="bg-slate-50 text-slate-500 text-[9px]">Distribution</Badge>
             </div>
             <div className="h-[200px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -350,8 +366,8 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
                   <YAxis 
                     type="category" 
                     dataKey="name" 
-                    tick={{ fontSize: 11, fontWeight: 600, fill: '#475569' }} 
-                    width={120}
+                    tick={{ fontSize: 10, fontWeight: 600, fill: '#475569' }} 
+                    width={80}
                     axisLine={false}
                     tickLine={false}
                   />
@@ -363,24 +379,23 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
                     dataKey="value" 
                     fill="#8b5cf6" 
                     radius={[0, 4, 4, 0]}
-                    barSize={18}
+                    barSize={14}
                   />
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <p className="mt-2 text-[10px] text-slate-500 italic">Jurors most strongly connected to this concept.</p>
+            <p className="mt-2 text-[9px] text-slate-500 italic">Jurors most strongly connected to this concept.</p>
           </div>
+        </TabsContent>
 
-          {/* Associated Sentences */}
-          <div className="flex-1 min-w-0">
-            <div className="mb-3">
-              <h3 className="text-base font-black text-slate-900 uppercase tracking-tight">Associated Sentences</h3>
-              <p className="text-[10px] text-slate-500 font-medium">Full list of evidence linked to this concept (including soft matches)</p>
-            </div>
-            <SentenceList sentences={conceptSentences} conceptId={cid} />
+        <TabsContent value="sentences" className="space-y-4">
+          <div className="mb-2">
+            <h3 className="text-xs font-black text-slate-900 uppercase tracking-tight">Associated Sentences</h3>
+            <p className="text-[9px] text-slate-500 font-medium">Full list of evidence (including soft matches)</p>
           </div>
-        </div>
-      </div>
+          <SentenceList sentences={conceptSentences} conceptId={cid} />
+        </TabsContent>
+      </Tabs>
     );
   }
 }

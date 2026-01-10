@@ -4,6 +4,7 @@ import { useRef, useState, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Text, Billboard } from "@react-three/drei";
 import * as THREE from "three";
+import { getAxisColors } from "./GraphCanvas3D";
 import type { GraphNode, NodeType } from "@/types/graph";
 import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
 
@@ -58,6 +59,42 @@ const nodeColors: Record<NodeType, NodeColorScheme> = {
   },
 };
 
+// Helper to mix colors based on PC values
+function mixAxisColors(pcValues: number[] | undefined): string {
+  if (!pcValues || pcValues.length === 0) return "#8b5cf6"; // Default concept color
+  
+  const numDimensions = pcValues.length;
+  const axisColors = getAxisColors(numDimensions);
+  
+  // 1. Normalize PC values (absolute values)
+  const absPC = pcValues.map(Math.abs);
+  const maxPC = Math.max(...absPC);
+  if (maxPC === 0) return "#8b5cf6";
+  const normalized = absPC.map(v => v / maxPC);
+  
+  // 2. Identify strong axes (top 3)
+  const indexed = normalized.map((val, i) => ({ val, i }));
+  indexed.sort((a, b) => b.val - a.val);
+  const topIndices = indexed.slice(0, 3).filter(x => x.val > 0.1);
+  
+  if (topIndices.length === 0) return "#8b5cf6";
+  
+  // 3. Mix colors
+  let r = 0, g = 0, b = 0;
+  let totalWeight = 0;
+  
+  topIndices.forEach(({ val, i }) => {
+    const color = new THREE.Color(axisColors[i]);
+    r += color.r * val;
+    g += color.g * val;
+    b += color.b * val;
+    totalWeight += val;
+  });
+  
+  const finalColor = new THREE.Color(r / totalWeight, g / totalWeight, b / totalWeight);
+  return `#${finalColor.getHexString()}`;
+}
+
 export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insight }: Node3DProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
@@ -73,10 +110,19 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
   const colors = nodeColors[node.type as NodeType] ?? defaultNodeColors;
   const isVisible = opacity > 0;
   let color: string;
+  
+  // Custom axis-based color for concept nodes
+  const conceptAxisColor = useMemo(() => {
+    if (node.type === "concept" && node.pcValues) {
+      return mixAxisColors(node.pcValues);
+    }
+    return null;
+  }, [node.type, node.pcValues]);
+
   if (opacity === 0) {
     color = "#e2e8f0"; // Very light gray - no hover effect when not visible
   } else {
-    const baseColor = isSelected ? colors.selected : hovered ? colors.hover : colors.base;
+    const baseColor = conceptAxisColor ?? (isSelected ? colors.selected : hovered ? colors.hover : colors.base);
     // If opacity is 0.7 (connected node), lighten the color
     if (opacity === 0.7) {
       // Lighten the color by mixing with white (50% original, 50% white)

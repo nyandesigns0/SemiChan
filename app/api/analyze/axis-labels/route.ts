@@ -29,14 +29,14 @@ RULES:
 
     // Build prompts for each axis
     const synthesizeAxis = async (
-      axis: "x" | "y" | "z", 
+      axisIdx: string, 
       negative: string, 
       positive: string, 
       negContext: { keywords: string[], sentences: string[] },
       posContext: { keywords: string[], sentences: string[] },
       modelName: string
     ): Promise<{ negative: string; positive: string; usage: any }> => {
-      const userPrompt = `The ${axis.toUpperCase()}-axis represents a spectrum of variation.
+      const userPrompt = `Axis ${axisIdx} represents a spectrum of variation.
 
 NEGATIVE END POLE:
 Title: "${negative}"
@@ -88,38 +88,39 @@ Respond with JSON:
       };
     };
 
-    // Synthesize all three axes
-    const xRes = await synthesizeAxis("x", axisLabels.x.negative, axisLabels.x.positive, axisLabels.x.negativeContext, axisLabels.x.positiveContext, model);
-    const yRes = await synthesizeAxis("y", axisLabels.y.negative, axisLabels.y.positive, axisLabels.y.negativeContext, axisLabels.y.positiveContext, model);
-    const zRes = await synthesizeAxis("z", axisLabels.z.negative, axisLabels.z.positive, axisLabels.z.negativeContext, axisLabels.z.positiveContext, model);
+    // Synthesize all axes in parallel
+    const axisKeys = Object.keys(axisLabels);
+    const results = await Promise.all(
+      axisKeys.map(key => 
+        synthesizeAxis(
+          key, 
+          axisLabels[key].negative, 
+          axisLabels[key].positive, 
+          axisLabels[key].negativeContext, 
+          axisLabels[key].positiveContext, 
+          model
+        )
+      )
+    );
 
-    const totalUsage = {
-      prompt_tokens: (xRes.usage?.prompt_tokens || 0) + (yRes.usage?.prompt_tokens || 0) + (zRes.usage?.prompt_tokens || 0),
-      completion_tokens: (xRes.usage?.completion_tokens || 0) + (yRes.usage?.completion_tokens || 0) + (zRes.usage?.completion_tokens || 0),
-      total_tokens: (xRes.usage?.total_tokens || 0) + (yRes.usage?.total_tokens || 0) + (zRes.usage?.total_tokens || 0)
-    };
+    const totalUsage = results.reduce((acc, res) => ({
+      prompt_tokens: acc.prompt_tokens + (res.usage?.prompt_tokens || 0),
+      completion_tokens: acc.completion_tokens + (res.usage?.completion_tokens || 0),
+      total_tokens: acc.total_tokens + (res.usage?.total_tokens || 0)
+    }), { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 });
+
+    const responseAxisLabels: Record<string, any> = {};
+    axisKeys.forEach((key, i) => {
+      responseAxisLabels[key] = {
+        negative: axisLabels[key].negative,
+        positive: axisLabels[key].positive,
+        synthesizedNegative: results[i].negative,
+        synthesizedPositive: results[i].positive
+      };
+    });
 
     const responseData: AxisLabelsResponse = {
-      axisLabels: {
-        x: {
-          negative: axisLabels.x.negative,
-          positive: axisLabels.x.positive,
-          synthesizedNegative: xRes.negative,
-          synthesizedPositive: xRes.positive
-        },
-        y: {
-          negative: axisLabels.y.negative,
-          positive: axisLabels.y.positive,
-          synthesizedNegative: yRes.negative,
-          synthesizedPositive: yRes.positive
-        },
-        z: {
-          negative: axisLabels.z.negative,
-          positive: axisLabels.z.positive,
-          synthesizedNegative: zRes.negative,
-          synthesizedPositive: zRes.positive
-        }
-      },
+      axisLabels: responseAxisLabels as any,
       usage: totalUsage
     };
 

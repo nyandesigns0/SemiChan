@@ -30,6 +30,10 @@ interface AnalysisControlsAccordionProps {
   granularityPercent: number;
   onGranularityPercentChange: (value: number) => void;
 
+  // Visualization Dimensions
+  numDimensions: number;
+  onNumDimensionsChange: (value: number) => void;
+
   // Model selection
   selectedModel: string;
   onModelChange: (model: string) => void;
@@ -58,6 +62,8 @@ export function AnalysisControlsAccordion({
   onCutTypeChange,
   granularityPercent,
   onGranularityPercentChange,
+  numDimensions,
+  onNumDimensionsChange,
   selectedModel,
   onModelChange,
 }: AnalysisControlsAccordionProps) {
@@ -83,7 +89,7 @@ export function AnalysisControlsAccordion({
       </button>
 
       {isExpanded && (
-        <div className="border-t border-slate-100 p-4">
+        <div className="border-t border-slate-100 p-3 pt-2">
           <AnalysisControls
             kConcepts={kConcepts}
             onKConceptsChange={onKConceptsChange}
@@ -107,6 +113,8 @@ export function AnalysisControlsAccordion({
             onCutTypeChange={onCutTypeChange}
             granularityPercent={granularityPercent}
             onGranularityPercentChange={onGranularityPercentChange}
+            numDimensions={numDimensions}
+            onNumDimensionsChange={onNumDimensionsChange}
             selectedModel={selectedModel}
             onModelChange={onModelChange}
           />
