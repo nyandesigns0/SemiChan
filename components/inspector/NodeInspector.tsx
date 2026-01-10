@@ -25,9 +25,57 @@ export function NodeInspector({ node, analysis, jurorBlocks }: NodeInspectorProp
 
     const keyphrases = extractKeyphrases(jurorBlocks.find((b) => b.juror === jurorName)?.text ?? "");
     const semanticTerms = analysis.jurorTopTerms?.[jurorName] || [];
-    const overlappingTerms = new Set(
-      keyphrases.filter((kp) => semanticTerms.some((st) => st.toLowerCase() === kp.toLowerCase()))
-    );
+    
+    // Create sets for quick lookup
+    const keyphraseSet = new Set(keyphrases.map(kp => kp.toLowerCase()));
+    const semanticSet = new Set(semanticTerms.map(st => st.toLowerCase()));
+    
+    // Helper function to check for partial matches (shared words)
+    const hasPartialMatch = (term: string, otherList: string[]): boolean => {
+      const termWords = term.toLowerCase().split(/\s+/);
+      return otherList.some(other => {
+        const otherWords = other.toLowerCase().split(/\s+/);
+        const sharedWords = termWords.filter(w => otherWords.includes(w));
+        return sharedWords.length > 0 && term.toLowerCase() !== other.toLowerCase();
+      });
+    };
+    
+    // Combine all terms and determine their match type
+    const allTerms: Array<{ term: string; matchType: 'keyphrase-only' | 'semantic-only' | 'exact-match' | 'partial-match' }> = [];
+    const processed = new Set<string>();
+    
+    // Process keyphrases
+    keyphrases.forEach((kp) => {
+      const lower = kp.toLowerCase();
+      if (processed.has(lower)) return;
+      processed.add(lower);
+      
+      if (semanticSet.has(lower)) {
+        // Exact match
+        allTerms.push({ term: kp, matchType: 'exact-match' });
+      } else if (hasPartialMatch(kp, semanticTerms)) {
+        // Partial match
+        allTerms.push({ term: kp, matchType: 'partial-match' });
+      } else {
+        // Keyphrase only
+        allTerms.push({ term: kp, matchType: 'keyphrase-only' });
+      }
+    });
+    
+    // Process semantic terms (skip exact matches already added)
+    semanticTerms.forEach((st) => {
+      const lower = st.toLowerCase();
+      if (processed.has(lower)) return;
+      processed.add(lower);
+      
+      if (hasPartialMatch(st, keyphrases)) {
+        // Partial match
+        allTerms.push({ term: st, matchType: 'partial-match' });
+      } else {
+        // Semantic only
+        allTerms.push({ term: st, matchType: 'semantic-only' });
+      }
+    });
 
     return (
       <div className="flex flex-row gap-6 items-start w-full">
@@ -66,41 +114,32 @@ export function NodeInspector({ node, analysis, jurorBlocks }: NodeInspectorProp
           </p>
         </div>
 
-        <div className="flex-1 min-w-0 rounded-2xl border border-blue-100 bg-blue-50/30 p-5 shadow-sm">
-          <div className="mb-4">
-            <h3 className="text-base font-black text-blue-900 uppercase tracking-tight">Keyphrases</h3>
-            <p className="text-xs text-blue-600 font-bold opacity-70">Linguistics analysis</p>
-          </div>
-          <div className="flex flex-wrap gap-3 content-start p-1">
-            {keyphrases.map((p) => (
-              <Badge 
-                key={p} 
-                className={`term-badge text-blue-700 border-blue-200 ${
-                  overlappingTerms.has(p) ? 'bg-amber-100 border-amber-300' : ''
-                }`}
-              >
-                {p}
-              </Badge>
-            ))}
-          </div>
-        </div>
-
         {analysis.jurorTopTerms && analysis.jurorTopTerms[jurorName] && (
-          <div className="flex-1 min-w-0 rounded-2xl border-2 border-indigo-100 bg-indigo-50/20 p-5 shadow-md">
-            <div className="mb-4">
-              <h3 className="text-lg font-black text-indigo-900 uppercase tracking-tight">Semantic Fingerprint</h3>
-              <p className="text-xs text-indigo-600 font-medium">High-dimensional juror-concept centroids</p>
+          <div className="flex-[2] min-w-0 rounded-2xl border-2 border-slate-200 bg-slate-50/30 p-5 shadow-md">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-black text-blue-900 uppercase tracking-tight">Keyphrases</h3>
+                <p className="text-xs text-blue-600 font-bold opacity-70">Linguistics analysis</p>
+              </div>
+              <div className="text-right">
+                <h3 className="text-base font-black text-red-900 uppercase tracking-tight">Semantic Fingerprint</h3>
+                <p className="text-xs text-red-600 font-bold opacity-70">High-dimensional centroids</p>
+              </div>
             </div>
             <div className="flex flex-wrap gap-3 p-1">
-              {analysis.jurorTopTerms[jurorName].map((term) => {
-                const isOverlapping = keyphrases.some((kp) => kp.toLowerCase() === term.toLowerCase());
+              {allTerms.map(({ term, matchType }) => {
+                let badgeClasses = 'term-badge';
+                if (matchType === 'keyphrase-only') {
+                  badgeClasses += ' text-blue-700 border-blue-300 bg-blue-50';
+                } else if (matchType === 'semantic-only') {
+                  badgeClasses += ' text-red-700 border-red-300 bg-red-50';
+                } else if (matchType === 'exact-match') {
+                  badgeClasses += ' text-purple-100 border-purple-400 bg-purple-700';
+                } else if (matchType === 'partial-match') {
+                  badgeClasses += ' text-purple-900 border-purple-300 bg-purple-200';
+                }
                 return (
-                  <Badge 
-                    key={term} 
-                    className={`term-badge text-indigo-700 border-indigo-200 ${
-                      isOverlapping ? 'bg-amber-100 border-amber-300' : ''
-                    }`}
-                  >
+                  <Badge key={term} className={badgeClasses}>
                     {term}
                   </Badge>
                 );
