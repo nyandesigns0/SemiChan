@@ -123,7 +123,10 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick }: No
       {/* Node sphere */}
       <mesh
         ref={meshRef}
-        onClick={(e) => handleClick(e.nativeEvent as MouseEvent)}
+        onClick={(e) => {
+          e.stopPropagation();
+          handleClick(e.nativeEvent as MouseEvent);
+        }}
         onPointerOver={() => setHovered(true)}
         onPointerOut={() => setHovered(false)}
       >

@@ -404,18 +404,22 @@ export default function HomePage() {
           }
           return newSet;
         });
+        // For shift-click, we keep the last clicked node in the inspector
+        setSelectedNodeId(n.id);
+        setSelectedLinkId(null);
       } else {
         // Single click: replace selection or deselect
         setAdaptiveSelectedNodeIds((prev) => {
           if (prev.size === 1 && prev.has(n.id)) {
+            setSelectedNodeId(null); // Deselect from inspector too
             return new Set();
           }
+          setSelectedNodeId(n.id); // Set for inspector
           return new Set([n.id]);
         });
         setAdaptiveSelectedLinkIds(new Set());
+        setSelectedLinkId(null);
       }
-      setSelectedNodeId(null); // Clear manual selection
-      setSelectedLinkId(null);
     } else {
       // Existing behavior: toggle selection for inspector
       setSelectedLinkId(null);
@@ -438,18 +442,22 @@ export default function HomePage() {
           }
           return newSet;
         });
+        // For shift-click, keep link in inspector
+        setSelectedLinkId(l.id);
+        setSelectedNodeId(null);
       } else {
         // Single click: replace selection or deselect
         setAdaptiveSelectedLinkIds((prev) => {
           if (prev.size === 1 && prev.has(l.id)) {
+            setSelectedLinkId(null); // Deselect from inspector
             return new Set();
           }
+          setSelectedLinkId(l.id); // Set for inspector
           return new Set([l.id]);
         });
         setAdaptiveSelectedNodeIds(new Set());
+        setSelectedNodeId(null);
       }
-      setSelectedNodeId(null);
-      setSelectedLinkId(null);
     } else {
       // Existing behavior
       setSelectedNodeId(null);

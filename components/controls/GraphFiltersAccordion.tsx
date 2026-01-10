@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronUp, LayoutGrid } from "lucide-react";
+import { ChevronDown, ChevronUp, LayoutGrid, Circle, Link2, Users } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils/cn";
 
 interface GraphFiltersAccordionProps {
@@ -103,60 +104,86 @@ export function GraphFiltersAccordion({
             <Switch checked={adaptiveMode} onCheckedChange={onAdaptiveModeChange} />
           </div>
 
-          {/* Separator */}
-          <div className="mb-4 space-y-3">
-            <div className="border-b border-slate-200" />
-            <h3 className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-              {adaptiveMode ? "Adaptive Filters" : "Complete Filters"}
+          <div className="mb-6 space-y-3">
+            <Separator className="bg-slate-200" />
+            <h3 className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-1">
+              {adaptiveMode ? "Adaptive Mode Filters" : "Complete Graph Filters"}
             </h3>
           </div>
 
-          {/* Manual Toggles - Two Column Grid */}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-            {/* Node Type Filters */}
-            {nodeFilters.map((filter) => (
-              <div
-                key={filter.label}
-                className={cn(
-                  "flex items-center justify-between rounded-xl border-2 px-3 py-2 transition-all",
-                  filter.checked ? "border-slate-100 bg-white shadow-sm" : "border-transparent bg-slate-50 opacity-60"
-                )}
-              >
-                <Label className="text-xs font-bold text-slate-700">{filter.label}</Label>
-                <Switch checked={filter.checked} onCheckedChange={filter.onChange} />
+          <div className="flex flex-col space-y-6">
+            {/* Node Type Filters Section */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 px-1 text-slate-500">
+                <Users className="h-3 w-3" />
+                <span className="text-[10px] font-bold uppercase tracking-tight">Nodes</span>
               </div>
-            ))}
+              <div className="flex flex-col gap-2">
+                {nodeFilters.map((filter) => (
+                  <div
+                    key={filter.label}
+                    className={cn(
+                      "flex items-center justify-between rounded-xl border-2 px-3 py-2 transition-all",
+                      filter.checked ? "border-slate-100 bg-white shadow-sm" : "border-transparent bg-slate-50 opacity-60"
+                    )}
+                  >
+                    <Label className="text-xs font-bold text-slate-700">{filter.label}</Label>
+                    <Switch checked={filter.checked} onCheckedChange={filter.onChange} />
+                  </div>
+                ))}
+              </div>
+            </div>
 
-            {/* Link Type Filters */}
-            {linkFilters.map((filter) => (
-              <div
-                key={filter.label}
-                className={cn(
-                  "flex items-center justify-between rounded-xl border-2 px-3 py-2 transition-all",
-                  filter.checked ? "border-slate-100 bg-white shadow-sm" : "border-transparent bg-slate-50 opacity-60"
-                )}
-              >
-                <Label className="text-xs font-bold text-slate-700">{filter.label}</Label>
-                <Switch checked={filter.checked} onCheckedChange={filter.onChange} />
-              </div>
-            ))}
+            <Separator className="bg-slate-100" />
 
-            {/* Stance Filters */}
-            {stanceFilters.map((filter) => (
-              <div
-                key={filter.label}
-                className={cn(
-                  "flex items-center justify-between rounded-xl border-2 px-3 py-2 transition-all",
-                  filter.checked ? "border-slate-100 bg-white shadow-sm" : "border-transparent bg-slate-50 opacity-60"
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  <div className={cn("h-2 w-2 rounded-full", filter.color)} />
-                  <Label className="text-xs font-bold text-slate-700">{filter.label}</Label>
-                </div>
-                <Switch checked={filter.checked} onCheckedChange={filter.onChange} />
+            {/* Link Type Filters Section */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 px-1 text-slate-500">
+                <Link2 className="h-3 w-3" />
+                <span className="text-[10px] font-bold uppercase tracking-tight">Links</span>
               </div>
-            ))}
+              <div className="flex flex-col gap-2">
+                {linkFilters.map((filter) => (
+                  <div
+                    key={filter.label}
+                    className={cn(
+                      "flex items-center justify-between rounded-xl border-2 px-3 py-2 transition-all",
+                      filter.checked ? "border-slate-100 bg-white shadow-sm" : "border-transparent bg-slate-50 opacity-60"
+                    )}
+                  >
+                    <Label className="text-xs font-bold text-slate-700">{filter.label}</Label>
+                    <Switch checked={filter.checked} onCheckedChange={filter.onChange} />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <Separator className="bg-slate-100" />
+
+            {/* Stance Filters Section */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 px-1 text-slate-500">
+                <Circle className="h-3 w-3" />
+                <span className="text-[10px] font-bold uppercase tracking-tight">Stances (Juror-Concept)</span>
+              </div>
+              <div className="flex flex-col gap-2">
+                {stanceFilters.map((filter) => (
+                  <div
+                    key={filter.label}
+                    className={cn(
+                      "flex items-center justify-between rounded-xl border-2 px-3 py-2 transition-all",
+                      filter.checked ? "border-slate-100 bg-white shadow-sm" : "border-transparent bg-slate-50 opacity-60"
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={cn("h-2 w-2 rounded-full", filter.color)} />
+                      <Label className="text-xs font-bold text-slate-700">{filter.label}</Label>
+                    </div>
+                    <Switch checked={filter.checked} onCheckedChange={filter.onChange} />
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}

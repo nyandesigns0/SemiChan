@@ -84,7 +84,7 @@ export function Link3D({ link, nodes, isSelected, opacity, onClick }: Link3DProp
   const isVisible = opacity > 0;
   let color = baseColor;
   if (opacity === 0) {
-    color = "#e2e8f0"; // Very light gray
+    color = hovered ? "#64748b" : "#e2e8f0"; // Darker slate on hover when grayed out
   } else if (isSelected) {
     color = "#fbbf24";
   } else if (hovered) {
@@ -96,18 +96,18 @@ export function Link3D({ link, nodes, isSelected, opacity, onClick }: Link3DProp
   
   // Link opacity: keep at 1.0 for color visibility, except when grayed out
   const linkOpacity = opacity === 0
-    ? (isSelected ? 0.4 : 0.25)
+    ? (isSelected ? 0.4 : (hovered ? 0.6 : 0.25)) // Increased opacity on hover when grayed out
     : 1.0;
 
   // Line width based on weight
   const lineWidth = Math.max(1, Math.min(4, link.weight * 10));
   
-  // Only apply hover/select width increase when visible
+  // Apply hover/select width increase
+  // Note: For grayed out elements, we follow the node behavior of not changing size on hover
   const finalLineWidth = isVisible && (isSelected || hovered) ? lineWidth * 1.5 : lineWidth;
   
   return (
     <group
-      onClick={(e) => onClick(link, e.nativeEvent as MouseEvent)}
       onPointerOver={() => setHovered(true)}
       onPointerOut={() => setHovered(false)}
     >
@@ -117,6 +117,10 @@ export function Link3D({ link, nodes, isSelected, opacity, onClick }: Link3DProp
         lineWidth={finalLineWidth}
         opacity={linkOpacity}
         transparent={linkOpacity < 1}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick(link, e.nativeEvent as MouseEvent);
+        }}
       />
       
       {/* Invisible wider line for easier clicking */}
@@ -126,6 +130,10 @@ export function Link3D({ link, nodes, isSelected, opacity, onClick }: Link3DProp
         lineWidth={10}
         transparent
         opacity={0}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick(link, e.nativeEvent as MouseEvent);
+        }}
       />
     </group>
   );
