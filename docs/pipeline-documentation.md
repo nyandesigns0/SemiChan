@@ -29,31 +29,28 @@ graph TD
     Centroids --> Labeling[9. Concept Labeling<br/>Extract Top N-grams from Centroids]
     Labeling --> ConceptNodes[9.1 Concept Nodes<br/>Large Nodes with Labels]
     
-    Centroids --> PCA[13. Concept 3D Positioning<br/>PCA Dimensionality Reduction]
-    PCA --> ConceptPos[13.1 Concept 3D Positions]
-    ConceptPos --> ConceptNodes
+    Centroids --> ConceptSim[12.4 Concept Similarity Calculation<br/>Cosine Similarity]
+    ConceptSim --> ConceptConceptLinks[12.5 Concept-Concept Links<br/>Purple Color<br/>Related Themes]
     
     Assignments --> JurorMapping[11. Juror-Concept Mapping<br/>Count Sentences per Concept<br/>Normalize per Juror]
     StancePath --> JurorMapping
     JurorBlocks --> JurorMapping
     
     JurorMapping --> JurorConceptLinks[12.1 Juror-Concept Links<br/>Weight = Normalized Count<br/>Color = Dominant Stance<br/>Green: Praise, Red: Critique<br/>Orange: Suggestion, Gray: Neutral]
-    JurorMapping --> JurorVectors[11.2 Juror Concept Vectors<br/>Distribution of Interest]
     
-    JurorVectors --> JurorHighDim[11.5 High-Dimensional Juror Vectors<br/>Weighted Average of Centroids]
-    Centroids --> JurorHighDim
+    Centroids --> Positioning3D[13. 3D Position Calculation<br/>Concepts: PCA Projection<br/>Jurors: Weighted Average of Concept Positions]
     
-    JurorHighDim --> JurorTopTerms[11.6 Juror Top Terms Extraction<br/>Extracted from High-Dim Vectors]
-    JurorHighDim --> JurorPositioning[11.7 Juror 3D Positioning<br/>PCA Projection]
+    Positioning3D --> ConceptPos[13.1 Concept 3D Positions]
+    Positioning3D --> JurorPos[13.2 Juror 3D Positions]
+    ConceptPos --> ConceptNodes
+    JurorPos --> JurorNodes[11.1 Juror Nodes<br/>Small Nodes with Top Terms]
     
-    JurorTopTerms --> JurorNodes[11.1 Juror Nodes<br/>Small Nodes]
-    JurorPositioning --> JurorNodes
+    Centroids --> JurorHighDim[11.5 High-Dimensional Vectors and Top Terms<br/>Weighted Average of Centroids<br/>Extract Top Terms from Vectors]
+    JurorMapping --> JurorHighDim
+    JurorHighDim --> JurorNodes
     
-    JurorVectors --> JurorSim[12.2 Juror Similarity Calculation<br/>Cosine Similarity]
+    JurorMapping --> JurorSim[12.2 Juror Similarity Calculation<br/>Cosine Similarity]
     JurorSim --> JurorJurorLinks[12.3 Juror-Juror Links<br/>Indigo Color<br/>Similar Interests]
-    
-    Centroids --> ConceptSim[12.4 Concept Similarity Calculation<br/>Cosine Similarity]
-    ConceptSim --> ConceptConceptLinks[12.5 Concept-Concept Links<br/>Purple Color<br/>Related Themes]
     
     ConceptNodes --> Assembly[14. Graph Assembly<br/>Combine All Elements]
     JurorNodes --> Assembly
@@ -340,7 +337,7 @@ The hierarchical approach builds a complete dendrogram once, then cuts it based 
 
 **Technical Detail:** Once clusters are formed, the system analyzes the "Frequency" portion of each hybrid centroid to identify the n-grams with the highest collective weights. It extracts the top 2 to 4 n-grams and semantic terms, performs a deduplication check to ensure labels like "light" and "light conditions" don't both appear, and joins the remaining high-value terms using a bullet separator (" · "). This results in a human-readable label that summarizes the dominant architectural theme of that specific cluster.
 
-**Location:** `lib/analysis/hybrid-concept-labeler.ts` (`hybridLabelCluster`)
+**Location:** `lib/analysis/hybrid-concept-labeler.ts` (`hybridLabelCluster`), called from `lib/graph/graph-builder.ts` (lines 157-178)
 
 ### Explanation
 The labeler looks at the "Frequency" portion of the hybrid centroid to pick out the most important BM25 n-grams. It joins the top 2-4 terms with " · " to create a readable label.
@@ -376,48 +373,22 @@ If Sarah Broadstock has 10 sentences and 3 are in the "Lighting" concept, her we
 
 ---
 
-## Step 11.5: High-Dimensional Juror Vector Computation
-**Plain Language:** For each juror, we compute a high-dimensional vector that represents their overall thematic focus by combining the concept centroids they care about.
+## Step 11.5: High-Dimensional Juror Vectors and Top Terms Extraction
+**Plain Language:** For each juror, we compute a high-dimensional vector representing their thematic focus and extract the most important terms that describe what they care about.
 
-**Technical Detail:** While the juror-concept mapping (Step 11) produces normalized weights indicating how much each juror emphasizes each concept, this step computes the implicit high-dimensional representation of each juror's thematic focus. For each juror, the system calculates a weighted average of all concept centroids, where the weights come from the normalized juror-concept mapping. Specifically, for each juror, it computes: $V_{juror} = \Sigma(weight[concept] \times centroid[concept])$ across all concepts. The resulting vector is then L2-normalized to unit length. This high-dimensional juror vector represents the juror's position in the same semantic space as the concept centroids, effectively capturing what themes they care about most in the same vector space used for clustering.
+**Technical Detail:** This combined step performs two related operations in a single loop for efficiency. First, for each juror, the system calculates a weighted average of all concept centroids using the normalized juror-concept weights from Step 11, then L2-normalizes the result to create a high-dimensional vector: $V_{juror} = Normalize(\Sigma_{c \in concepts} weight_{juror}[c] \times centroid[c])$. This vector represents the juror's position in the same semantic space as the concept centroids. Second, using the same `getClusterTopTerms()` function applied to concept centroids (Step 10), the system extracts the top 12 terms from each juror's high-dimensional vector by analyzing both the semantic portion (384 dimensions) and the frequency portion (n-gram vocabulary). These terms provide a human-readable summary of each juror's thematic interests, displayed in the inspector panel when a juror node is selected.
 
-**Location:** `lib/graph/graph-builder.ts` (lines 223-258)
+**Location:** `lib/graph/graph-builder.ts` (lines 223-258), `lib/analysis/hybrid-concept-labeler.ts` (`getClusterTopTerms`)
 
 ### Explanation
-This step makes explicit the implicit high-dimensional representation of each juror. Conceptually, this is the same computation that happens when juror 3D positions are calculated (Step 13), but here we compute it in the original high-dimensional space rather than the reduced 3D space. The weighted average combines the semantic and frequency information from all concepts a juror discussed, creating a comprehensive vector representation of their interests.
+This step makes explicit the high-dimensional representation of each juror by combining their concept interests into a single vector, then extracts meaningful terms from that vector. The weighted average combines semantic and frequency information from all concepts a juror discussed, creating a comprehensive representation of their interests. The term extraction uses the same methodology as concept labeling (Step 10), ensuring consistency in how themes are identified.
 
 **Formula:** $V_{juror} = Normalize(\Sigma_{c \in concepts} weight_{juror}[c] \times centroid[c])$
 
 ### Example Tracking
-*   **Sarah Broadstock:** Her high-dimensional vector is computed as $0.333 \times centroid[concept:2] + 0.667 \times centroid[concept:0]$ (assuming she also discussed another concept). The vector captures her focus on "daylight" and "sun path" themes combined with other concepts she mentioned.
-*   **Sandra Baggerman:** Her high-dimensional vector is computed as $0.666 \times centroid[concept:2] + 0.334 \times centroid[concept:5]$ (assuming another concept). The vector emphasizes "light conditions" and "serene atmosphere" themes.
-*   **State (High-Dimensional Juror Vectors):** Each juror now has an associated high-dimensional hybrid vector (same dimensionality as concept centroids, typically 384 + n-gram vocabulary size) representing their combined thematic focus.
-
----
-
-## Step 11.6: Juror Top Terms Extraction
-**Plain Language:** From each juror's high-dimensional vector, we extract the most important terms that describe what themes they care about.
-
-**Technical Detail:** Using the same term extraction process applied to concept centroids (Step 10), the system analyzes each juror's high-dimensional vector to identify the n-grams and semantic terms with the highest weights. The system uses the `getClusterTopTerms()` function, which extracts terms from both the semantic portion (384 dimensions) and the frequency portion (n-gram vocabulary) of the hybrid vector. The top 12 terms are extracted per juror, with deduplication logic to prevent overlapping terms like "light" and "light conditions" from both appearing. These terms provide a human-readable summary of each juror's thematic interests, displayed in the inspector panel when a juror node is selected.
-
-**Location:** `lib/graph/graph-builder.ts` (lines 254-256), `lib/analysis/hybrid-concept-labeler.ts` (`getClusterTopTerms`)
-
-### Explanation
-This step applies the same labeling methodology used for concepts (Step 10) to juror vectors. By analyzing the frequency portion of the high-dimensional juror vector, the system identifies which n-grams and semantic themes are most strongly associated with that juror's combined interests. This provides a textual representation of what the juror cares about, complementing the numerical weights from Step 11.
-
-### Example Tracking
-*   **Sarah Broadstock:** From her high-dimensional vector, the system extracts top terms like `["daylight", "sun path", "careful attention", "site response", "circulation"]`, reflecting her emphasis on solar orientation and spatial planning concepts.
-*   **Sandra Baggerman:** From her high-dimensional vector, the system extracts top terms like `["light conditions", "serene atmosphere", "indirect lighting", "geometry", "shadows"]`, reflecting her focus on lighting quality and spatial atmosphere.
-*   **State (Juror Top Terms):** A `Record<string, string[]>` mapping juror names to arrays of top terms, stored in the `AnalysisResult.jurorTopTerms` field and displayed in the UI inspector panel.
-
----
-
-## Step 11.7: Juror 3D Position Calculation
-**Plain Language:** For each person, we calculate their 3D location based on their high-dimensional thematic vector.
-
-**Technical Detail:** Each juror is positioned in the 3D semantic space by applying dimensionality reduction to their high-dimensional vector (Step 11.5). This projects the complex mixture of concepts they care about into the same (x, y, z) coordinate system used by the concepts. While the implementation uses a weighted-average shortcut for efficiency, it is conceptually a direct PCA projection of the juror's semantic fingerprint.
-
-**Location:** `lib/graph/dimensionality-reduction.ts` (`computeNode3DPositions`)
+*   **Sarah Broadstock:** Her high-dimensional vector is computed as $0.333 \times centroid[concept:2] + 0.667 \times centroid[concept:0]$ (assuming she also discussed another concept), then top terms like `["daylight", "sun path", "careful attention", "site response", "circulation"]` are extracted from this vector.
+*   **Sandra Baggerman:** Her high-dimensional vector is computed as $0.666 \times centroid[concept:2] + 0.334 \times centroid[concept:5]$ (assuming another concept), then top terms like `["light conditions", "serene atmosphere", "indirect lighting", "geometry", "shadows"]` are extracted.
+*   **State (Juror High-Dimensional Vectors and Top Terms):** Each juror now has an associated high-dimensional hybrid vector (same dimensionality as concept centroids, typically 384 + n-gram vocabulary size) and a `Record<string, string[]>` mapping juror names to arrays of top terms, stored in `AnalysisResult.jurorTopTerms`.
 
 ---
 
@@ -426,11 +397,11 @@ This step applies the same labeling methodology used for concepts (Step 10) to j
 
 **Technical Detail:** This step synthesizes the outputs of the juror flow to create the final `GraphNode` objects. Each node contains:
 - **Identifier:** The juror's name (Step 2.1)
-- **Position:** The (x, y, z) coordinates calculated in Step 11.7
-- **Thematic Summary:** The top terms extracted from their high-dimensional vector in Step 11.6
+- **Position:** The (x, y, z) coordinates calculated in Step 13.2
+- **Thematic Summary:** The top terms extracted from their high-dimensional vector in Step 11.5
 - **Metadata:** Sizing information based on their total sentence count
 
-**Location:** `lib/graph/graph-builder.ts` (lines 234-247)
+**Location:** `lib/graph/graph-builder.ts` (lines 271-283)
 
 ---
 
@@ -439,7 +410,7 @@ This step applies the same labeling methodology used for concepts (Step 10) to j
 
 **Technical Detail:** The system generates three types of graph links: `jurorConcept` links represent direct mentions and are assigned a dominant "stance" (praise, critique, etc.) based on the majority stance of the supporting sentences; `jurorJuror` links are created if the cosine similarity between two jurors' concept vectors exceeds a user-defined threshold; and `conceptConcept` links are similarly created based on the similarity between cluster centroids. Each link is assigned a `weight` and a set of `evidenceIds` that allow the UI to show the specific sentences justifying the connection.
 
-**Location:** `lib/graph/projections.ts`, `lib/graph/graph-builder.ts` (lines 271-333)
+**Location:** `lib/graph/projections.ts`, `lib/graph/graph-builder.ts` (lines 307-340)
 
 ### Explanation
 Links are created if the weight exceeds a threshold. "Juror-Juror" links are created if two jurors talk about the same concepts in similar proportions (computed via cosine similarity of their concept vectors).
@@ -452,22 +423,31 @@ Links are created if the weight exceeds a threshold. "Juror-Juror" links are cre
 
 ---
 
-## Step 13: Concept 3D Position Calculation
-**Plain Language:** Concept nodes are placed in a 3D space so that similar items are close together.
+## Step 13: 3D Position Calculation
+**Plain Language:** All nodes (concepts and jurors) are placed in a 3D space so that similar items are close together.
 
-**Technical Detail:** The system uses a custom Principal Component Analysis (PCA) implementation to project high-dimensional concept centroids into a 3D coordinate system. It uses the Power Iteration method to find the top three eigenvectors of the covariance matrix, which represent the directions of maximum variance in the data.
+**Technical Detail:** The `computeNode3DPositions()` function computes 3D coordinates for both concept and juror nodes in a single unified process. The function first calculates concept positions using PCA projection, then derives juror positions as weighted averages of the concept positions.
+
+**Location:** `lib/graph/dimensionality-reduction.ts` (`computeNode3DPositions`), called from `lib/graph/graph-builder.ts` (lines 260-267)
 
 ### Step 13.1: Concept 3D Positions
-Concept nodes are placed at the PCA-projected coordinates of their high-dimensional centroids. Each centroid is projected onto the top three principal components to obtain (x, y, z) coordinates.
+Concept nodes are placed at the PCA-projected coordinates of their high-dimensional centroids. The system uses a custom Principal Component Analysis (PCA) implementation with the Power Iteration method to find the top three eigenvectors of the covariance matrix, which represent the directions of maximum variance in the data. Each centroid is projected onto these top three principal components to obtain (x, y, z) coordinates.
 
 **Location:** `lib/graph/dimensionality-reduction.ts` (`reduceTo3D`)
 
+### Step 13.2: Juror 3D Positions
+Juror nodes are positioned using a weighted average of the concept 3D positions, where the weights come from the normalized juror-concept mapping (Step 11). For each juror, the system computes: $Position_{juror} = \frac{\Sigma(weight[concept] \times position[concept])}{\Sigma(weight[concept])}$ across all concepts the juror discussed. This positions each juror in the semantic neighborhood of their primary concerns, effectively placing them near the concepts they emphasized most in their feedback.
+
+**Location:** `lib/graph/dimensionality-reduction.ts` (`computeNode3DPositions`, lines 227-250)
+
 ### Explanation
-Concept nodes are placed directly using PCA on their centroids. This serves as the primary "anchor" for the 3D visualization, establishing the semantic landscape that jurors will then be mapped into.
+The unified positioning approach ensures that both concept and juror nodes exist in the same coordinate system. Concepts serve as semantic anchors established through PCA projection, while jurors are positioned relative to those anchors based on their interest patterns. This creates a coherent spatial representation where jurors "float" near the themes they discussed most.
 
 ### Example Tracking
 *   **Concept 2 (13.1 - PCA Projection):** The centroid `[0.012, -0.045, 0.089, ...]` (384+ dimensions) is projected onto the top 3 principal components, resulting in 3D coordinates like `{ x: 1.45, y: -2.12, z: 0.88 }`.
-*   **State:** Every concept `GraphNode` now has `x`, `y`, and `z` properties populated for the WebGL renderer.
+*   **Sarah Broadstock (13.2 - Weighted Average):** Her position is computed as a weighted average of concept positions, primarily influenced by Concept 2's position due to her 0.333 weight on that concept.
+*   **Sandra Baggerman (13.2 - Weighted Average):** Her position is computed as a weighted average, with stronger influence from Concept 2 (0.666 weight) than other concepts.
+*   **State:** Every `GraphNode` (both concept and juror) now has `x`, `y`, and `z` properties populated for the WebGL renderer.
 
 ---
 
@@ -484,5 +464,5 @@ The final object contains all jurors, concepts, sentence records, and graph elem
 ### Example Tracking
 *   **Simulation Data:** All nodes (Jurors and Concepts) and links are bundled into a final data package.
 *   **Final Output:** The `AnalysisResult` JSON is sent to the browser to render the 3D interaction.
-*   **Interaction:** Clicking "Sarah Broadstock" in the UI now highlights the concept "daylight · light conditions" and reveals her specific sentence as evidence. The inspector panel displays her thematic focus summary (from Step 11.6) and her 3D proximity to themes (Step 11.7).
+*   **Interaction:** Clicking "Sarah Broadstock" in the UI now highlights the concept "daylight · light conditions" and reveals her specific sentence as evidence. The inspector panel displays her thematic focus summary (from Step 11.5) and her 3D proximity to themes (Step 13.2).
 *   **State:** Final `AnalysisResult` JSON containing the complete mapped network of 7 jurors and 10 themes, including `jurorTopTerms` with high-dimensional vector-derived term summaries for each juror (Step 11.1).
