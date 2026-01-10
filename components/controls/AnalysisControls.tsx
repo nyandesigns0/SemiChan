@@ -11,7 +11,8 @@ import {
   GitMerge, 
   Zap,
   Target,
-  Workflow
+  Workflow,
+  ChevronDown
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -44,6 +45,10 @@ interface AnalysisControlsProps {
   onCutTypeChange: (type: "count" | "granularity") => void;
   granularityPercent: number;
   onGranularityPercentChange: (value: number) => void;
+  
+  // Model selection
+  selectedModel: string;
+  onModelChange: (model: string) => void;
 }
 
 export function AnalysisControls({
@@ -69,9 +74,46 @@ export function AnalysisControls({
   onCutTypeChange,
   granularityPercent,
   onGranularityPercentChange,
+  selectedModel,
+  onModelChange,
 }: AnalysisControlsProps) {
+  const models = [
+    "GPT-5.1",
+    "GPT-5",
+    "GPT-4.1",
+    "GPT-4.1 mini",
+    "GPT-4.1-nano",
+    "GPT-4o-mini"
+  ];
+
   return (
     <div className="space-y-6">
+      {/* Model Selection */}
+      <div className="space-y-3">
+        <Label 
+          className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500 cursor-help"
+          title="Choose the AI model used for concept synthesis and axis label generation."
+        >
+          <Brain className="h-3.5 w-3.5" />
+          Language Model
+          <Info className="h-3 w-3 opacity-50" />
+        </Label>
+        <div className="relative group">
+          <select 
+            value={selectedModel}
+            onChange={(e) => onModelChange(e.target.value)}
+            className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-100/50 px-4 py-2.5 text-xs font-bold uppercase tracking-tight text-slate-700 outline-none transition-all hover:border-slate-300 focus:ring-2 focus:ring-indigo-500/20"
+          >
+            {models.map(m => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+          <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 group-hover:text-slate-600">
+            <ChevronDown className="h-3.5 w-3.5" />
+          </div>
+        </div>
+      </div>
+
       {/* Clustering Mode Selector */}
       <div className="space-y-3">
         <Label 

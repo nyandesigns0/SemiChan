@@ -1,83 +1,32 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 import { Terminal } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
-import type { GraphNode, GraphLink } from "@/types/graph";
-import type { AnalysisResult } from "@/types/analysis";
-import type { JurorBlock } from "@/types/nlp";
-import type { SentenceRecord } from "@/types/analysis";
 
-interface InspectorConsoleProps {
-  analysis: AnalysisResult | null;
-  selectedNode: GraphNode | null;
-  selectedLink: GraphLink | null;
-  evidence: SentenceRecord[];
-  jurorBlocks: JurorBlock[];
-  empty: boolean;
-  isEmbedded?: boolean;
-}
-
-interface LogEntry {
+export interface LogEntry {
   id: string;
   timestamp: Date;
-  type: "node" | "link" | "keyword" | "analysis" | "info";
+  type: "node" | "link" | "keyword" | "analysis" | "info" | "api_request" | "api_response" | "api_error";
   message: string;
   data?: unknown;
 }
 
+interface InspectorConsoleProps {
+  logs: LogEntry[];
+  isEmbedded?: boolean;
+}
+
 export function InspectorConsole({
-  analysis,
-  selectedNode,
-  selectedLink,
+  logs,
   isEmbedded = false,
 }: InspectorConsoleProps) {
-  const [logs, setLogs] = useState<LogEntry[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
 
   // Scroll to bottom when new logs are added
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
-
-  // Add log entry helper
-  const addLog = useCallback((type: LogEntry["type"], message: string, data?: unknown) => {
-    const entry: LogEntry = {
-      id: `${Date.now()}-${Math.random()}`,
-      timestamp: new Date(),
-      type,
-      message,
-      data,
-    };
-    setLogs((prev) => [...prev, entry]);
-  }, []);
-
-  // Log node selection
-  useEffect(() => {
-    if (selectedNode) {
-      addLog("node", `Selected node: ${selectedNode.label} (${selectedNode.type})`, selectedNode);
-    }
-  }, [selectedNode, addLog]);
-
-  // Log link selection
-  useEffect(() => {
-    if (selectedLink) {
-      addLog("link", `Selected link: ${selectedLink.kind}`, selectedLink);
-    }
-  }, [selectedLink, addLog]);
-
-  // Log keywords when analysis completes
-  useEffect(() => {
-    if (analysis && analysis.stats.totalConcepts > 0) {
-      const conceptLabels = analysis.nodes
-        .filter((n) => n.type === "concept")
-        .slice(0, 10)
-        .map((n) => n.label)
-        .join(", ");
-      addLog("keyword", `Keywords extracted: ${conceptLabels}${analysis.stats.totalConcepts > 10 ? "..." : ""}`);
-      addLog("analysis", `Analysis complete: ${analysis.stats.totalSentences} sentences, ${analysis.stats.totalConcepts} concepts`);
-    }
-  }, [analysis, addLog]);
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -93,6 +42,12 @@ export function InspectorConsole({
         return "🔑";
       case "analysis":
         return "⚙";
+      case "api_request":
+        return "↑";
+      case "api_response":
+        return "↓";
+      case "api_error":
+        return "⚠";
       default:
         return "ℹ";
     }
@@ -108,6 +63,12 @@ export function InspectorConsole({
         return "text-emerald-400";
       case "analysis":
         return "text-orange-400";
+      case "api_request":
+        return "text-cyan-400";
+      case "api_response":
+        return "text-indigo-400";
+      case "api_error":
+        return "text-red-400";
       default:
         return "text-slate-500";
     }

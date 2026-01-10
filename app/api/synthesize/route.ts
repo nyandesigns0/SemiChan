@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { ConceptBrief, SynthesisResponse } from "@/types/api";
+import type { SynthesizeRequest, SynthesisResponse } from "@/types/api";
+
+import { DEFAULT_MODEL } from "@/constants/nlp-constants";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
@@ -9,8 +11,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const brief: ConceptBrief = await request.json();
-    const { label_seed, top_ngrams, evidence_sentences, stance_mix } = brief;
+    const body: SynthesizeRequest = await request.json();
+    const { label_seed, top_ngrams, evidence_sentences, stance_mix, model = DEFAULT_MODEL } = body;
 
     const systemPrompt = `You are an expert architectural critic and theorist. 
 Your task is to synthesize juror feedback into a professional architectural concept.
@@ -43,13 +45,12 @@ Respond in this JSON format:
         "Authorization": `Bearer ${OPENAI_API_KEY}`
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: model.toLowerCase().replace(/\s+/g, "-"),
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt }
         ],
-        response_format: { type: "json_object" },
-        temperature: 0.7
+        response_format: { type: "json_object" }
       })
     });
 
@@ -60,6 +61,7 @@ Respond in this JSON format:
 
     const data = await response.json();
     const result = JSON.parse(data.choices[0].message.content);
+    const usage = data.usage;
 
     // --- QUALITY GATES ---
     let finalTitle = result.concept_title;
@@ -90,7 +92,8 @@ Respond in this JSON format:
     const synthesis: SynthesisResponse = {
       concept_title: finalTitle,
       concept_one_liner: finalOneLiner,
-      is_fallback: isFallback
+      is_fallback: isFallback,
+      usage
     };
 
     return NextResponse.json(synthesis);

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import type { AnalysisResult } from "@/types/analysis";
 
+import { DEFAULT_MODEL } from "@/constants/nlp-constants";
+
 export interface EnhancedAxisLabels {
   x: { negative: string; positive: string; synthesizedNegative: string; synthesizedPositive: string };
   y: { negative: string; positive: string; synthesizedNegative: string; synthesizedPositive: string };
@@ -11,7 +13,12 @@ export interface EnhancedAxisLabels {
  * Hook to enhance axis labels with AI synthesis in the background
  * Returns enhanced labels when ready, or undefined if not yet available
  */
-export function useAxisLabelEnhancer(analysis: AnalysisResult | null, enabled: boolean = false) {
+export function useAxisLabelEnhancer(
+  analysis: AnalysisResult | null, 
+  enabled: boolean = false,
+  selectedModel: string = DEFAULT_MODEL,
+  onAddLog?: (type: string, msg: string) => void
+) {
   const [enhancedLabels, setEnhancedLabels] = useState<EnhancedAxisLabels | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -61,6 +68,8 @@ export function useAxisLabelEnhancer(analysis: AnalysisResult | null, enabled: b
 
     // Enhance in background
     setIsLoading(true);
+    console.log(`[Axis Labels] Enhancing labels using model: ${selectedModel}`);
+    if (onAddLog) onAddLog("api_request", `Enhancing axis labels with AI using ${selectedModel}...`);
     const enhanceLabels = async () => {
       try {
         const getConceptContext = (id: string) => {
@@ -96,22 +105,26 @@ export function useAxisLabelEnhancer(analysis: AnalysisResult | null, enabled: b
                 positiveContext: getConceptContext(analysis.axisLabels.z.positiveId)
               },
             },
+            model: selectedModel,
           }),
         });
 
         if (!response.ok) throw new Error("Axis labels API failed");
 
-        const data = await response.json();
+        const data: any = await response.json();
+        console.log(`[Axis Labels] Enhancement successful`, data);
+        if (onAddLog) onAddLog("api_response", `Axis labels enhanced successfully`, { ...data, model: selectedModel });
         setEnhancedLabels(data.axisLabels);
       } catch (error) {
-        console.error("Error enhancing axis labels:", error);
+        console.error("[Axis Labels] Error:", error);
+        if (onAddLog) onAddLog("api_error", `Axis label enhancement failed`);
       } finally {
         setIsLoading(false);
       }
     };
 
     enhanceLabels();
-  }, [analysis, enabled, enhancedLabels]);
+  }, [analysis, enabled, enhancedLabels, selectedModel]);
 
   return { enhancedLabels, isLoading };
 }

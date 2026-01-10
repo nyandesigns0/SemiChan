@@ -16,7 +16,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils/cn";
 import { NodeInspector } from "./NodeInspector";
 import { LinkInspector } from "./LinkInspector";
-import { InspectorConsole } from "./InspectorConsole";
+import { InspectorConsole, type LogEntry } from "./InspectorConsole";
 import { SchemaExplanation } from "@/components/schema/SchemaExplanation";
 import type { GraphNode, GraphLink } from "@/types/graph";
 import type { AnalysisResult } from "@/types/analysis";
@@ -33,6 +33,7 @@ interface InspectorPanelProps {
   empty: boolean;
   insights?: Record<string, ConceptInsight>;
   onFetchSummary?: (conceptId: string) => void;
+  logs: LogEntry[];
 }
 
 type TabType = "console" | "details" | "schema";
@@ -50,6 +51,7 @@ export function InspectorPanel({
   empty,
   insights = {},
   onFetchSummary,
+  logs,
 }: InspectorPanelProps) {
   const [activeTab, setActiveTab] = useState<TabType>("console");
   const [height, setHeight] = useState(DEFAULT_HEIGHT);
@@ -140,7 +142,7 @@ export function InspectorPanel({
             onClick={() => { setActiveTab("console"); setIsCollapsed(false); }}
             icon={<Terminal className="h-3.5 w-3.5" />}
             label="Console"
-            count={0} // We'll need to pass log count here later if possible
+            count={logs.length}
           />
           <TabButton
             active={activeTab === "details"}
@@ -184,12 +186,7 @@ export function InspectorPanel({
         <div className="flex-1 overflow-hidden bg-slate-50/30">
           {activeTab === "console" && (
             <InspectorConsole
-              analysis={analysis}
-              selectedNode={selectedNode}
-              selectedLink={selectedLink}
-              evidence={evidence}
-              jurorBlocks={jurorBlocks}
-              empty={empty}
+              logs={logs}
               isEmbedded={true}
             />
           )}

@@ -32,7 +32,8 @@ export async function POST(request: NextRequest) {
       softTopN,
       cutType,
       granularityPercent,
-      clusterSeed
+      clusterSeed,
+      model
     } = body;
 
     if (!blocks || !Array.isArray(blocks)) {

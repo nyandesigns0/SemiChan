@@ -163,6 +163,17 @@ export const SUGGESTION_PATTERNS = [
   /\bwould have\b/i,
 ];
 
+export const SUPPORTED_MODELS = [
+  "GPT-5.1",
+  "GPT-5",
+  "GPT-4.1",
+  "GPT-4.1 mini",
+  "GPT-4.1-nano",
+  "GPT-4o-mini",
+];
+
+export const DEFAULT_MODEL = "GPT-4.1 mini";
+
 export const DEFAULT_SAMPLE = `
 Sarah Broadstock
 Starting with the concave roof, this team's design analysed the light levels to coincide room types with desirable light levels.

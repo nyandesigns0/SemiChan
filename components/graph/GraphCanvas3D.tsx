@@ -94,9 +94,9 @@ function AxisEndLabels({
   return (
     <group>
       {/* X Axis */}
-      <Html position={[size + offset, 0, 0]} center distanceFactor={15}>
+      <Html position={[size + offset, 0, 0]} center distanceFactor={15} occlude="blended" pointerEvents="none">
         <div className="flex flex-col items-center gap-1">
-          <div className="px-1.5 py-0.5 rounded bg-red-500/90 text-[10px] font-bold text-white shadow-sm pointer-events-none select-none border border-white/20">X+</div>
+          <div className="px-1.5 py-0.5 rounded bg-red-500/90 text-[10px] font-bold text-white shadow-sm select-none border border-white/20">X+</div>
           {axisLabels && (
             <div className="px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold text-red-600 shadow-sm border border-red-100 whitespace-nowrap">
               {getLabel("x", "positive")}
@@ -104,9 +104,9 @@ function AxisEndLabels({
           )}
         </div>
       </Html>
-      <Html position={[-(size + offset), 0, 0]} center distanceFactor={15}>
+      <Html position={[-(size + offset), 0, 0]} center distanceFactor={15} occlude="blended" pointerEvents="none">
         <div className="flex flex-col items-center gap-1">
-          <div className="px-1.5 py-0.5 rounded bg-red-500/90 text-[10px] font-bold text-white shadow-sm pointer-events-none select-none border border-white/20">X-</div>
+          <div className="px-1.5 py-0.5 rounded bg-red-500/90 text-[10px] font-bold text-white shadow-sm select-none border border-white/20">X-</div>
           {axisLabels && (
             <div className="px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold text-red-600 shadow-sm border border-red-100 whitespace-nowrap">
               {getLabel("x", "negative")}
@@ -116,9 +116,9 @@ function AxisEndLabels({
       </Html>
       
       {/* Y Axis */}
-      <Html position={[0, size + offset, 0]} center distanceFactor={15}>
+      <Html position={[0, size + offset, 0]} center distanceFactor={15} occlude="blended" pointerEvents="none">
         <div className="flex flex-col items-center gap-1">
-          <div className="px-1.5 py-0.5 rounded bg-green-500/90 text-[10px] font-bold text-white shadow-sm pointer-events-none select-none border border-white/20">Y+</div>
+          <div className="px-1.5 py-0.5 rounded bg-green-500/90 text-[10px] font-bold text-white shadow-sm select-none border border-white/20">Y+</div>
           {axisLabels && (
             <div className="px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold text-green-600 shadow-sm border border-green-100 whitespace-nowrap">
               {getLabel("y", "positive")}
@@ -126,9 +126,9 @@ function AxisEndLabels({
           )}
         </div>
       </Html>
-      <Html position={[0, -(size + offset), 0]} center distanceFactor={15}>
+      <Html position={[0, -(size + offset), 0]} center distanceFactor={15} occlude="blended" pointerEvents="none">
         <div className="flex flex-col items-center gap-1">
-          <div className="px-1.5 py-0.5 rounded bg-green-500/90 text-[10px] font-bold text-white shadow-sm pointer-events-none select-none border border-white/20">Y-</div>
+          <div className="px-1.5 py-0.5 rounded bg-green-500/90 text-[10px] font-bold text-white shadow-sm select-none border border-white/20">Y-</div>
           {axisLabels && (
             <div className="px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold text-green-600 shadow-sm border border-green-100 whitespace-nowrap">
               {getLabel("y", "negative")}
@@ -138,9 +138,9 @@ function AxisEndLabels({
       </Html>
       
       {/* Z Axis */}
-      <Html position={[0, 0, size + offset]} center distanceFactor={15}>
+      <Html position={[0, 0, size + offset]} center distanceFactor={15} occlude="blended" pointerEvents="none">
         <div className="flex flex-col items-center gap-1">
-          <div className="px-1.5 py-0.5 rounded bg-blue-500/90 text-[10px] font-bold text-white shadow-sm pointer-events-none select-none border border-white/20">Z+</div>
+          <div className="px-1.5 py-0.5 rounded bg-blue-500/90 text-[10px] font-bold text-white shadow-sm select-none border border-white/20">Z+</div>
           {axisLabels && (
             <div className="px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold text-blue-600 shadow-sm border border-blue-100 whitespace-nowrap">
               {getLabel("z", "positive")}
@@ -148,9 +148,9 @@ function AxisEndLabels({
           )}
         </div>
       </Html>
-      <Html position={[0, 0, -(size + offset)]} center distanceFactor={15}>
+      <Html position={[0, 0, -(size + offset)]} center distanceFactor={15} occlude="blended" pointerEvents="none">
         <div className="flex flex-col items-center gap-1">
-          <div className="px-1.5 py-0.5 rounded bg-blue-500/90 text-[10px] font-bold text-white shadow-sm pointer-events-none select-none border border-white/20">Z-</div>
+          <div className="px-1.5 py-0.5 rounded bg-blue-500/90 text-[10px] font-bold text-white shadow-sm select-none border border-white/20">Z-</div>
           {axisLabels && (
             <div className="px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold text-blue-600 shadow-sm border border-blue-100 whitespace-nowrap">
               {getLabel("z", "negative")}

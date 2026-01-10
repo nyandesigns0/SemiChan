@@ -28,10 +28,36 @@ export interface AnalyzeRequest {
   cutType?: "count" | "granularity";
   granularityPercent?: number;
   clusterSeed?: number;
+  /** LLM model to use for analysis (e.g., GPT-4o) */
+  model?: string;
 }
 
 export interface AnalyzeResponse {
   analysis: AnalysisResult;
+}
+
+export interface TokenUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
+export interface AxisLabelsRequest {
+  axisLabels: {
+    x: { negative: string; positive: string; negativeContext: { keywords: string[], sentences: string[] }; positiveContext: { keywords: string[], sentences: string[] } };
+    y: { negative: string; positive: string; negativeContext: { keywords: string[], sentences: string[] }; positiveContext: { keywords: string[], sentences: string[] } };
+    z: { negative: string; positive: string; negativeContext: { keywords: string[], sentences: string[] }; positiveContext: { keywords: string[], sentences: string[] } };
+  };
+  model?: string;
+}
+
+export interface AxisLabelsResponse {
+  axisLabels: {
+    x: { negative: string; positive: string; synthesizedNegative: string; synthesizedPositive: string };
+    y: { negative: string; positive: string; synthesizedNegative: string; synthesizedPositive: string };
+    z: { negative: string; positive: string; synthesizedNegative: string; synthesizedPositive: string };
+  };
+  usage?: TokenUsage;
 }
 
 export interface ConceptBrief {
@@ -47,8 +73,13 @@ export interface ConceptBrief {
   };
 }
 
+export interface SynthesizeRequest extends ConceptBrief {
+  model?: string;
+}
+
 export interface SynthesisResponse {
   concept_title: string;
   concept_one_liner: string;
   is_fallback: boolean;
+  usage?: TokenUsage;
 }

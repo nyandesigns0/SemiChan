@@ -29,6 +29,10 @@ interface AnalysisControlsAccordionProps {
   onCutTypeChange: (type: "count" | "granularity") => void;
   granularityPercent: number;
   onGranularityPercentChange: (value: number) => void;
+
+  // Model selection
+  selectedModel: string;
+  onModelChange: (model: string) => void;
 }
 
 export function AnalysisControlsAccordion({
@@ -54,6 +58,8 @@ export function AnalysisControlsAccordion({
   onCutTypeChange,
   granularityPercent,
   onGranularityPercentChange,
+  selectedModel,
+  onModelChange,
 }: AnalysisControlsAccordionProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -101,6 +107,8 @@ export function AnalysisControlsAccordion({
             onCutTypeChange={onCutTypeChange}
             granularityPercent={granularityPercent}
             onGranularityPercentChange={onGranularityPercentChange}
+            selectedModel={selectedModel}
+            onModelChange={onModelChange}
           />
         </div>
       )}

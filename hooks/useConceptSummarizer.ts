@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import type { AnalysisResult } from "@/types/analysis";
-import type { ConceptBrief, SynthesisResponse } from "@/types/api";
+import type { ConceptBrief, SynthesizeRequest, SynthesisResponse } from "@/types/api";
 import { generateShortLabel } from "@/lib/nlp/summarizer";
+
+import { DEFAULT_MODEL } from "@/constants/nlp-constants";
 
 export interface ConceptInsight {
   shortLabel?: string;
@@ -10,7 +12,7 @@ export interface ConceptInsight {
   isLoadingSummary: boolean;
 }
 
-export function useConceptSummarizer(analysis: AnalysisResult | null) {
+export function useConceptSummarizer(analysis: AnalysisResult | null, selectedModel: string = DEFAULT_MODEL) {
   const [insights, setInsights] = useState<Record<string, ConceptInsight>>({});
 
   // Reset insights when analysis changes
@@ -57,7 +59,7 @@ export function useConceptSummarizer(analysis: AnalysisResult | null) {
     });
   }, [analysis]);
 
-  const fetchSummary = useCallback(async (conceptId: string) => {
+  const fetchSummary = useCallback(async (conceptId: string, onAddLog?: (type: string, msg: string) => void) => {
     if (!analysis || !insights[conceptId] || insights[conceptId].summary || insights[conceptId].isLoadingSummary) {
       return;
     }
@@ -82,13 +84,14 @@ export function useConceptSummarizer(analysis: AnalysisResult | null) {
       suggestion: counts.suggestion / total,
       neutral: counts.neutral / total,
     };
-
-    const brief: ConceptBrief = {
+    
+    const requestBody: SynthesizeRequest = {
       id: conceptId,
       label_seed: insights[conceptId].shortLabel || concept.label,
       top_ngrams: concept.topTerms,
       evidence_sentences: concept.representativeSentences || [],
-      stance_mix
+      stance_mix,
+      model: selectedModel
     };
 
     setInsights((prev) => ({
@@ -99,16 +102,21 @@ export function useConceptSummarizer(analysis: AnalysisResult | null) {
       },
     }));
 
+    console.log(`[Synthesis] Requesting synthesis for concept ${conceptId} using model: ${selectedModel}`, requestBody);
+    if (onAddLog) onAddLog("api_request", `Synthesizing concept: ${requestBody.label_seed} using ${selectedModel}`);
+
     try {
       const response = await fetch("/api/synthesize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(brief),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) throw new Error("Synthesis API failed");
 
       const data: SynthesisResponse = await response.json();
+      console.log(`[Synthesis] Received response for ${conceptId}:`, data);
+      if (onAddLog) onAddLog("api_response", `Synthesis complete: ${data.concept_title}`, { ...data, model: selectedModel });
       
       setInsights((prev) => ({
         ...prev,
@@ -120,18 +128,19 @@ export function useConceptSummarizer(analysis: AnalysisResult | null) {
         },
       }));
     } catch (error) {
-      console.error(`Error synthesizing concept ${conceptId}:`, error);
+      console.error(`[Synthesis] Error synthesizing concept ${conceptId}:`, error);
+      if (onAddLog) onAddLog("api_error", `Synthesis failed for ${requestBody.label_seed}`);
       // Fallback: Generate a simple summary locally if API fails
       setInsights((prev) => ({
         ...prev,
         [conceptId]: {
           ...prev[conceptId],
-          summary: `Thematic focus on ${brief.label_seed.toLowerCase()}.`,
+          summary: `Thematic focus on ${requestBody.label_seed.toLowerCase()}.`,
           isLoadingSummary: false,
         },
       }));
     }
-  }, [analysis, insights]);
+  }, [analysis, insights, selectedModel]);
 
   return { insights, fetchSummary };
 }

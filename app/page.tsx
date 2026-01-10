@@ -19,11 +19,14 @@ import { useAxisLabelEnhancer } from "@/hooks/useAxisLabelEnhancer";
 import { segmentByJuror } from "@/lib/segmentation/juror-segmenter";
 import { downloadJson } from "@/lib/utils/download";
 import { cn } from "@/lib/utils/cn";
-import { DEFAULT_SAMPLE } from "@/constants/nlp-constants";
+import { DEFAULT_SAMPLE, DEFAULT_MODEL } from "@/constants/nlp-constants";
+import { calculateCost, formatCost } from "@/lib/utils/api-utils";
 import type { JurorBlock } from "@/types/nlp";
 import type { AnalysisResult, SentenceRecord } from "@/types/analysis";
 import type { GraphNode, GraphLink } from "@/types/graph";
 import type { Stance } from "@/types/nlp";
+import type { LogEntry } from "@/components/inspector/InspectorConsole";
+import type { TokenUsage } from "@/types/api";
 
 export default function HomePage() {
   // Sidebar state with localStorage persistence
@@ -86,6 +89,7 @@ export default function HomePage() {
   const [softMembership, setSoftMembership] = useState(false);
   const [cutType, setCutType] = useState<"count" | "granularity">("count");
   const [granularityPercent, setGranularityPercent] = useState(50);
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   const [search, setSearch] = useState("");
 
   // Selection
@@ -99,11 +103,65 @@ export default function HomePage() {
   // AI Axis Labels toggle
   const [enableAxisLabelAI, setEnableAxisLabelAI] = useState(false);
 
+  // Console logging state
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const addLog = useCallback((type: LogEntry["type"], message: string, data?: any) => {
+    let finalMessage = message;
+    
+    // Add cost info if available in data
+    if (data?.usage && data?.model) {
+      const cost = calculateCost(data.model, data.usage);
+      finalMessage += ` [Cost: ${formatCost(cost)}]`;
+    }
+
+    const entry: LogEntry = {
+      id: `${Date.now()}-${Math.random()}`,
+      timestamp: new Date(),
+      type,
+      message: finalMessage,
+      data,
+    };
+    setLogs((prev) => [...prev, entry]);
+  }, []);
+
+  // Log node selection
+  useEffect(() => {
+    if (selectedNodeId && analysis) {
+      const node = analysis.nodes.find(n => n.id === selectedNodeId);
+      if (node) {
+        addLog("node", `Selected node: ${node.label} (${node.type})`, node);
+      }
+    }
+  }, [selectedNodeId, analysis, addLog]);
+
+  // Log link selection
+  useEffect(() => {
+    if (selectedLinkId && analysis) {
+      const link = analysis.links.find(l => l.id === selectedLinkId);
+      if (link) {
+        addLog("link", `Selected link: ${link.kind}`, link);
+      }
+    }
+  }, [selectedLinkId, analysis, addLog]);
+
+  // Log keywords when analysis completes
+  useEffect(() => {
+    if (analysis && analysis.stats.totalConcepts > 0) {
+      const conceptLabels = analysis.nodes
+        .filter((n) => n.type === "concept")
+        .slice(0, 10)
+        .map((n) => n.label)
+        .join(", ");
+      addLog("keyword", `Keywords extracted: ${conceptLabels}${analysis.stats.totalConcepts > 10 ? "..." : ""}`);
+      addLog("analysis", `Analysis complete: ${analysis.stats.totalSentences} sentences, ${analysis.stats.totalConcepts} concepts`);
+    }
+  }, [analysis, addLog]);
+
   // Concept Summarization
-  const { insights, fetchSummary } = useConceptSummarizer(analysis);
+  const { insights, fetchSummary } = useConceptSummarizer(analysis, selectedModel);
   
   // Axis Label Enhancement
-  const { enhancedLabels } = useAxisLabelEnhancer(analysis, enableAxisLabelAI);
+  const { enhancedLabels } = useAxisLabelEnhancer(analysis, enableAxisLabelAI, selectedModel, addLog);
   
   // Merge enhanced axis labels with analysis axis labels
   const displayAxisLabels = useMemo(() => {
@@ -138,6 +196,7 @@ export default function HomePage() {
   // Call segment API when blocks change
   useEffect(() => {
     const segmentText = async () => {
+      addLog("api_request", "Segmenting input text...");
       try {
         const response = await fetch("/api/segment", {
           method: "POST",
@@ -146,10 +205,14 @@ export default function HomePage() {
         });
         if (response.ok) {
           const data = await response.json();
+          addLog("api_response", `Text segmented into ${data.blocks.length} juror blocks`);
           setJurorBlocks(data.blocks);
+        } else {
+          addLog("api_error", "Segmentation failed");
         }
       } catch (error) {
         console.error("Error segmenting text:", error);
+        addLog("api_error", "Network error during segmentation");
       }
     };
     segmentText();
@@ -164,6 +227,8 @@ export default function HomePage() {
       }
 
       setLoadingAnalysis(true);
+      console.log(`[Analysis] Starting analysis with model: ${selectedModel}`, { kConcepts, clusteringMode });
+      addLog("api_request", `Starting analysis (k=${kConcepts}, mode=${clusteringMode})`);
       try {
         const response = await fetch("/api/analyze", {
           method: "POST",
@@ -180,14 +245,22 @@ export default function HomePage() {
             softMembership,
             cutType,
             granularityPercent: cutType === "granularity" ? granularityPercent : undefined,
+            model: selectedModel,
           }),
         });
         if (response.ok) {
           const data = await response.json();
+          console.log(`[Analysis] Analysis successful`, data);
+          addLog("api_response", `Analysis complete`, data);
           setAnalysis(data.analysis);
+        } else {
+          const errorData = await response.json();
+          console.error(`[Analysis] Analysis failed`, errorData);
+          addLog("api_error", `Analysis failed: ${errorData.error || response.statusText}`);
         }
       } catch (error) {
-        console.error("Error analyzing:", error);
+        console.error("[Analysis] Network error:", error);
+        addLog("api_error", `Network error during analysis`);
         setAnalysis(null);
       } finally {
         setLoadingAnalysis(false);
@@ -195,7 +268,7 @@ export default function HomePage() {
     };
 
     analyze();
-  }, [jurorBlocks, kConcepts, similarityThreshold, semanticWeight, frequencyWeight, clusteringMode, autoK, clusterSeed, softMembership, cutType, granularityPercent]);
+  }, [jurorBlocks, kConcepts, similarityThreshold, semanticWeight, frequencyWeight, clusteringMode, autoK, clusterSeed, softMembership, cutType, granularityPercent, selectedModel]);
 
   // Helper function to get node network (node + connected links + connected nodes)
   const getNodeNetwork = useCallback((nodeId: string, nodes: GraphNode[], links: GraphLink[]) => {
@@ -556,6 +629,8 @@ export default function HomePage() {
             onCutTypeChange={setCutType}
             granularityPercent={granularityPercent}
             onGranularityPercentChange={setGranularityPercent}
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
           />
 
         </div>
@@ -680,10 +755,11 @@ export default function HomePage() {
               selectedLink={selectedLink}
               evidence={evidence}
               jurorBlocks={jurorBlocks}
-              empty={emptyState}
-              insights={insights}
-              onFetchSummary={fetchSummary}
-            />
+            empty={emptyState}
+            insights={insights}
+            onFetchSummary={(id) => fetchSummary(id, addLog)}
+            logs={logs}
+          />
           </div>
 
           <div className="mt-4 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-400">

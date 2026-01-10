@@ -1,22 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { AxisLabelsRequest, AxisLabelsResponse } from "@/types/api";
+
+import { DEFAULT_MODEL } from "@/constants/nlp-constants";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-
-export interface AxisLabelsRequest {
-  axisLabels: {
-    x: { negative: string; positive: string; negativeContext: { keywords: string[], sentences: string[] }; positiveContext: { keywords: string[], sentences: string[] } };
-    y: { negative: string; positive: string; negativeContext: { keywords: string[], sentences: string[] }; positiveContext: { keywords: string[], sentences: string[] } };
-    z: { negative: string; positive: string; negativeContext: { keywords: string[], sentences: string[] }; positiveContext: { keywords: string[], sentences: string[] } };
-  };
-}
-
-export interface AxisLabelsResponse {
-  axisLabels: {
-    x: { negative: string; positive: string; synthesizedNegative: string; synthesizedPositive: string };
-    y: { negative: string; positive: string; synthesizedNegative: string; synthesizedPositive: string };
-    z: { negative: string; positive: string; synthesizedNegative: string; synthesizedPositive: string };
-  };
-}
 
 export async function POST(request: NextRequest) {
   if (!OPENAI_API_KEY) {
@@ -25,7 +12,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body: AxisLabelsRequest = await request.json();
-    const { axisLabels } = body;
+    const { axisLabels, model = DEFAULT_MODEL } = body;
 
     const systemPrompt = `You are an expert at analyzing semantic relationships and dimensions of variation in textual data.
 
@@ -46,8 +33,9 @@ RULES:
       negative: string, 
       positive: string, 
       negContext: { keywords: string[], sentences: string[] },
-      posContext: { keywords: string[], sentences: string[] }
-    ): Promise<{ negative: string; positive: string }> => {
+      posContext: { keywords: string[], sentences: string[] },
+      modelName: string
+    ): Promise<{ negative: string; positive: string; usage: any }> => {
       const userPrompt = `The ${axis.toUpperCase()}-axis represents a spectrum of variation.
 
 NEGATIVE END POLE:
@@ -77,13 +65,12 @@ Respond with JSON:
           "Authorization": `Bearer ${OPENAI_API_KEY}`
         },
         body: JSON.stringify({
-          model: "gpt-4o-mini",
+          model: modelName.toLowerCase().replace(/\s+/g, "-"),
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt }
           ],
-          response_format: { type: "json_object" },
-          temperature: 0.7
+          response_format: { type: "json_object" }
         })
       });
 
@@ -96,39 +83,47 @@ Respond with JSON:
       const result = JSON.parse(data.choices[0].message.content);
       return {
         negative: result.negative_keyword || negative,
-        positive: result.positive_keyword || positive
+        positive: result.positive_keyword || positive,
+        usage: data.usage
       };
     };
 
     // Synthesize all three axes
-    const xSynthesized = await synthesizeAxis("x", axisLabels.x.negative, axisLabels.x.positive, axisLabels.x.negativeContext, axisLabels.x.positiveContext);
-    const ySynthesized = await synthesizeAxis("y", axisLabels.y.negative, axisLabels.y.positive, axisLabels.y.negativeContext, axisLabels.y.positiveContext);
-    const zSynthesized = await synthesizeAxis("z", axisLabels.z.negative, axisLabels.z.positive, axisLabels.z.negativeContext, axisLabels.z.positiveContext);
+    const xRes = await synthesizeAxis("x", axisLabels.x.negative, axisLabels.x.positive, axisLabels.x.negativeContext, axisLabels.x.positiveContext, model);
+    const yRes = await synthesizeAxis("y", axisLabels.y.negative, axisLabels.y.positive, axisLabels.y.negativeContext, axisLabels.y.positiveContext, model);
+    const zRes = await synthesizeAxis("z", axisLabels.z.negative, axisLabels.z.positive, axisLabels.z.negativeContext, axisLabels.z.positiveContext, model);
 
-    const response: AxisLabelsResponse = {
+    const totalUsage = {
+      prompt_tokens: (xRes.usage?.prompt_tokens || 0) + (yRes.usage?.prompt_tokens || 0) + (zRes.usage?.prompt_tokens || 0),
+      completion_tokens: (xRes.usage?.completion_tokens || 0) + (yRes.usage?.completion_tokens || 0) + (zRes.usage?.completion_tokens || 0),
+      total_tokens: (xRes.usage?.total_tokens || 0) + (yRes.usage?.total_tokens || 0) + (zRes.usage?.total_tokens || 0)
+    };
+
+    const responseData: AxisLabelsResponse = {
       axisLabels: {
         x: {
           negative: axisLabels.x.negative,
           positive: axisLabels.x.positive,
-          synthesizedNegative: xSynthesized.negative,
-          synthesizedPositive: xSynthesized.positive
+          synthesizedNegative: xRes.negative,
+          synthesizedPositive: xRes.positive
         },
         y: {
           negative: axisLabels.y.negative,
           positive: axisLabels.y.positive,
-          synthesizedNegative: ySynthesized.negative,
-          synthesizedPositive: ySynthesized.positive
+          synthesizedNegative: yRes.negative,
+          synthesizedPositive: yRes.positive
         },
         z: {
           negative: axisLabels.z.negative,
           positive: axisLabels.z.positive,
-          synthesizedNegative: zSynthesized.negative,
-          synthesizedPositive: zSynthesized.positive
+          synthesizedNegative: zRes.negative,
+          synthesizedPositive: zRes.positive
         }
-      }
+      },
+      usage: totalUsage
     };
 
-    return NextResponse.json(response);
+    return NextResponse.json(responseData);
 
   } catch (error) {
     console.error("Axis Labels API Error:", error);
