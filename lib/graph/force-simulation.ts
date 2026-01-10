@@ -10,10 +10,10 @@ export function useForceGraph(nodes: GraphNode[], links: GraphLink[], width: num
     if (!enabled) return;
     if (!nodes.length) return;
 
-    // Initialize positions
+    // Initialize positions to the center instead of a random cloud
     for (const n of nodes) {
-      if (typeof n.x !== "number") n.x = width / 2 + (Math.random() - 0.5) * 50;
-      if (typeof n.y !== "number") n.y = height / 2 + (Math.random() - 0.5) * 50;
+      if (typeof n.x !== "number") n.x = width / 2;
+      if (typeof n.y !== "number") n.y = height / 2;
     }
 
     const sim = forceSimulation(nodes)

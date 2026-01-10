@@ -70,7 +70,6 @@ export async function buildAnalysis(
   const effectiveSentences = sentences.filter((s) => jurors.length === 0 || s.juror !== "Unattributed");
   
   // CHECKPOINT 1: Sentences extracted
-  const checkpointRand = createPRNG(seed - 1);
   checkpoints.push({
     id: "sentences",
     label: "Sentences Extracted",
@@ -80,9 +79,10 @@ export async function buildAnalysis(
       label: s.sentence.slice(0, 30) + "...",
       size: 10,
       meta: { juror: s.juror },
-      x: (checkpointRand() - 0.5) * 10,
-      y: (checkpointRand() - 0.5) * 10,
-      z: (checkpointRand() - 0.5) * 10,
+      // Use a deterministic layout (e.g., a simple line or grid)
+      x: (i % 10) * 2,
+      y: Math.floor(i / 10) * 2,
+      z: 0,
     })),
     links: [],
   });

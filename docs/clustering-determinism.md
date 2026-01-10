@@ -1,51 +1,34 @@
-# Seeded Determinism in Clustering and Layout
+# Seeded Determinism and Strictness in Clustering and Layout
 
-This document explains the technical resolution for the non-deterministic behavior observed in the conceptual clustering and 3D graph layout.
+This document explains the technical resolution for non-deterministic behavior and the implementation of a "strict and faithful" mathematical pipeline in SemiChan.
 
-## The Problem
-Users observed that toggling "Auto-K Discovery" or re-running the analysis with the same parameters would result in a different graph configuration every time. Even if the underlying data hadn't changed, the bubbles (concepts) would move to different positions, the graph would rotate/flip, and the clusters themselves occasionally shifted.
+## The Goal
+The SemiChan pipeline is designed to be a reliable analytical instrument. Every visual element in the graph must be a direct, reproducible consequence of the underlying data and the user's parameters. We have removed all "artificially induced" factors, such as visualization jitters or random initializations, to ensure absolute faithfulness to the data.
 
 ## Investigation & Root Causes
-Through runtime debugging and instrumentation, three distinct sources of randomness were identified:
+Three distinct sources of variation were identified and eliminated:
 
-### 1. K-Means Initialization
-While the K-Means algorithm in `lib/analysis/kmeans.ts` used a fixed seed (42), it was highly sensitive to the value of $k$. Toggling Auto-K often changed the recommended $k$, which consumed the random number sequence differently, leading to a "shuffle" effect when returning to manual mode.
+### 1. K-Means Initialization (Seeded)
+K-Means clustering requires an initial set of starting points. Previously, these were fixed to a default seed, but toggling Auto-K would still cause shifts.
+*   **Resolution**: Implemented a user-controllable **Solution Seed**. The K-Means engine now uses a deterministic Linear Congruential Generator (LCG) initialized by this seed.
 
-### 2. PCA (Dimensionality Reduction)
-The most significant cause of visual instability was in `lib/graph/dimensionality-reduction.ts`. The Principal Component Analysis (PCA) used a "Power Iteration" method to find 3D coordinates. This method initialized its search with `Math.random()`. Because PCA determines the orientation of the 3D space, a different random start would result in a mirrored, flipped, or rotated graph, even if the clusters were identical.
+### 2. PCA Orientation (Constant Initialization)
+Principal Component Analysis (PCA) determines the 3D orientation of the graph. Most PCA implementations initialize their search with random vectors, which can cause the graph to flip or rotate on every run.
+*   **Resolution**: We replaced seeded random initialization with **Constant Vector Initialization** (filling the starting vector with `1.0`). This ensures that for the same input data, the PCA components (the axes of the graph) are always pointing in the exact same mathematical direction.
 
-### 3. 3D Node Positioning
-In `computeNode3DPositions`, a small "jitter" (using `Math.random()`) was added to juror nodes to prevent them from perfectly overlapping with concept nodes. This caused nodes to "wiggle" on every re-run.
+### 3. Artificial Jitter (Eliminated)
+To prevent nodes from perfectly overlapping, a small random "jitter" was previously added to node positions. While this helped visibility, it introduced non-data-driven movement.
+*   **Resolution**: Removed all jitter. Node positions are now calculated using pure mathematical averages. If two jurors have identical concept profiles, they will occupy the exact same coordinate, accurately reflecting their perfect conceptual alignment.
 
-## The Solution: Seeded Pipeline
-To resolve this, we implemented a centralized **Seeded Pseudo-Random Number Generator (PRNG)** across the entire pipeline.
+## The strictness Update
+To achieve absolute determinism, the following changes were applied:
 
-### 1. Implementation of `createPRNG`
-We added a deterministic Linear Congruential Generator (LCG) in `lib/analysis/kmeans.ts`:
-```typescript
-export function createPRNG(seed: number) {
-  let s = seed >>> 0;
-  return () => {
-    s = (1664525 * s + 1013904223) >>> 0;
-    return s / 0xffffffff;
-  };
-}
-```
+1.  **Standardized createPRNG**: A centralized LCG is used for any unavoidable stochastic processes (like K-Means doc sampling).
+2.  **Deterministic Checkpoints**: Intermediate "Sentences Extracted" views now use a fixed grid layout instead of a random scatter.
+3.  **2D Fallback Stability**: The 2D force simulation hook now initializes all missing positions to the center `[width/2, height/2]` instead of a random cloud.
 
-### 2. Seed Propagation
-The `clusterSeed` (controllable via the UI "Solution Seed" slider) is now passed as a parameter through every layer:
-- **Frontend**: `app/page.tsx` maintains the state and sends it in the `POST /api/analyze` request.
-- **API**: `app/api/analyze/route.ts` extracts the seed and passes it to `buildAnalysis`.
-- **Logic**: `buildAnalysis` passes the seed to:
-    - `evaluateKRange` (for consistent Auto-K discovery).
-    - `kmeansCosine` (for consistent cluster formation).
-    - `computeNode3DPositions` (for consistent 3D layout).
-
-### 3. Replacing Math.random
-Every instance of `Math.random()` in the analysis and graph-building libraries was replaced with a call to a seeded `rand()` function derived from the user-provided seed.
-
-## Results
-- **Reproducibility**: For a given "Solution Seed", the graph is now 100% deterministic. The same data and the same seed will always produce the exact same clusters and the exact same 3D spatial orientation.
-- **Exploration**: Users can use the "Solution Seed" slider to intentionally "re-roll" the clustering and layout if they are unhappy with a specific arrangement, while maintaining the ability to return to a previous "good" state by remembering the seed number.
-- **Stability**: Toggling "Auto-K Discovery" and returning to manual mode now preserves the visual state of the graph, provided the $k$ value and seed remain constant.
+## Impact on Interpretation
+- **100% Reproducibility**: The same data + the same parameters + the same Solution Seed = the exact same visual pixel-perfect graph.
+- **Faithful Mapping**: Proximity in the 3D space is now a "strict" indicator of semantic similarity, unpolluted by visualization-only offsets.
+- **Scientific Rigor**: Users can rely on the graph as a stable evidence-based map of the architectural discourse.
 

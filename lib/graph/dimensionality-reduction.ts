@@ -62,13 +62,11 @@ function powerIteration(
   let data = centered.map((v) => new Float64Array(v));
   
   for (let comp = 0; comp < numComponents; comp++) {
-    // Initialize random vector
-    let pc = new Float64Array(dim);
-    for (let i = 0; i < dim; i++) {
-      pc[i] = rand() - 0.5;
-    }
+    // Use a fixed unit vector for initialization instead of a seeded random vector
+    // This ensures that for the same input data, the PCA components are identical
+    let pc = new Float64Array(dim).fill(1.0);
     
-    // Normalize
+    // Normalize initial vector
     let norm = Math.sqrt(pc.reduce((a, b) => a + b * b, 0)) || 1;
     for (let i = 0; i < dim; i++) pc[i] /= norm;
     
@@ -248,20 +246,16 @@ export function computeNode3DPositions(
     }
     
     if (totalWeight > 0) {
-      // Add small random offset to prevent overlapping with concepts
-      const offset = 0.5;
+      // Remove artificial jitter; use pure mathematical average
+      // This ensures node positions are perfectly faithful to the data
       positions.set(`juror:${juror}`, {
-        x: x / totalWeight + (rand() - 0.5) * offset,
-        y: y / totalWeight + (rand() - 0.5) * offset,
-        z: z / totalWeight + (rand() - 0.5) * offset,
+        x: x / totalWeight,
+        y: y / totalWeight,
+        z: z / totalWeight,
       });
     } else {
-      // Random position if no concept associations
-      positions.set(`juror:${juror}`, {
-        x: (rand() - 0.5) * scale,
-        y: (rand() - 0.5) * scale,
-        z: (rand() - 0.5) * scale,
-      });
+      // Use origin [0,0,0] as a neutral fallback instead of a random position
+      positions.set(`juror:${juror}`, { x: 0, y: 0, z: 0 });
     }
   }
   

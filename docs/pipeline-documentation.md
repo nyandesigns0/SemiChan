@@ -302,15 +302,13 @@ This step blends "what it means" (Semantic) with "what words it uses" (Frequency
 ## Step 9: Clustering
 **Plain Language:** Similar sentences from all jurors are grouped together into "Concepts."
 
-**Technical Detail:** The system supports multiple clustering algorithms:
+**Technical Detail:** The system supports multiple clustering algorithms, all governed by a **strict deterministic pipeline** to ensure reproducible results.
 
-**K-Means Clustering (Default):** The system implements a K-Means clustering algorithm tailored for high-dimensional cosine similarity. It initializes $K$ centroids (either randomly or using K-Means++) and then iteratively performs two sub-steps: Assignment, where each sentence vector is assigned to the cluster with the highest cosine similarity to its centroid; and Update, where each centroid is re-calculated as the normalized average of all vectors assigned to it. This process continues for up to 25 iterations or until assignments stop changing, effectively discovering the emergent themes within the corpus.
+**K-Means Clustering (Default):** The system implements a K-Means clustering algorithm tailored for high-dimensional cosine similarity. It initializes $K$ centroids using a **seeded pseudo-random number generator (PRNG)** derived from the user's "Solution Seed". This ensures that for a given seed, the initial "picks" are always identical. The algorithm then iteratively performs two sub-steps: Assignment, where each sentence vector is assigned to the cluster with the highest cosine similarity to its centroid; and Update, where each centroid is re-calculated as the normalized average of all vectors assigned to it. This process continues for up to 25 iterations or until assignments stop changing.
 
-**Hierarchical Clustering (Tree-based):** The system also supports agglomerative hierarchical clustering, which builds a complete dendrogram tree of all possible cluster merges. This tree structure enables two cutting strategies:
-- **Cut by Count:** The dendrogram is cut to produce exactly $K$ clusters, similar to K-Means but using the hierarchical structure.
-- **Cut by Granularity:** The dendrogram is cut at a distance threshold determined by a granularity percentage (0-100%), where 0% produces the finest clusters (many small groups) and 100% produces the coarsest clusters (few large groups). This allows users to explore different levels of abstraction by adjusting a single granularity slider, naturally revealing how "bigger concepts emerge" from finer themes. The resulting number of clusters is determined dynamically by the chosen threshold.
-
-The hierarchical approach builds a complete dendrogram once, then cuts it based on the selected method. When cutting by granularity, the system converts the percentage to a distance threshold using the formula: $threshold = minDistance + (maxDistance - minDistance) \times (granularityPercent / 100)$.
+**Hierarchical Clustering (Tree-based):** The system also supports agglomerative hierarchical clustering, which builds a complete dendrogram tree of all possible cluster merges. This method is inherently deterministic as it relies on calculating distances between all pairs of vectors.
+- **Cut by Count:** The dendrogram is cut to produce exactly $K$ clusters.
+- **Cut by Granularity:** The dendrogram is cut at a distance threshold determined by a granularity percentage (0-100%).
 
 **Location:** `lib/analysis/kmeans.ts` (`kmeansCosine`), `lib/analysis/hierarchical-clustering.ts` (`buildDendrogram`, `cutDendrogramByCount`, `cutDendrogramByThreshold`)
 
@@ -426,19 +424,17 @@ Links are created if the weight exceeds a threshold. "Juror-Juror" links are cre
 ## Step 13: 3D Position Calculation
 **Plain Language:** All nodes (concepts and jurors) are placed in a 3D space so that similar items are close together.
 
-**Technical Detail:** The `computeNode3DPositions()` function computes 3D coordinates for both concept and juror nodes in a single unified process. The function first calculates concept positions using PCA projection, then derives juror positions as weighted averages of the concept positions.
+**Technical Detail:** The `computeNode3DPositions()` function computes 3D coordinates for both concept and juror nodes in a single unified process. This process is **strictly faithful to the data**, with no artificially induced jitter or random offsets.
 
-**Location:** `lib/graph/dimensionality-reduction.ts` (`computeNode3DPositions`), called from `lib/graph/graph-builder.ts` (lines 260-267)
+**Location:** `lib/graph/dimensionality-reduction.ts` (`computeNode3DPositions`), called from `lib/graph/graph-builder.ts`
 
 ### Step 13.1: Concept 3D Positions
-Concept nodes are placed at the PCA-projected coordinates of their high-dimensional centroids. The system uses a custom Principal Component Analysis (PCA) implementation with the Power Iteration method to find the top three eigenvectors of the covariance matrix, which represent the directions of maximum variance in the data. Each centroid is projected onto these top three principal components to obtain (x, y, z) coordinates.
+Concept nodes are placed at the PCA-projected coordinates of their high-dimensional centroids. The system uses a custom Principal Component Analysis (PCA) implementation with the Power Iteration method. To ensure absolute visual stability, the iteration is initialized with a **constant unit vector** rather than a random one. This ensures that the graph orientation (which concepts are "left" vs "right") is perfectly stable across runs for the same data.
 
 **Location:** `lib/graph/dimensionality-reduction.ts` (`reduceTo3D`)
 
 ### Step 13.2: Juror 3D Positions
-Juror nodes are positioned using a weighted average of the concept 3D positions, where the weights come from the normalized juror-concept mapping (Step 11). For each juror, the system computes: $Position_{juror} = \frac{\Sigma(weight[concept] \times position[concept])}{\Sigma(weight[concept])}$ across all concepts the juror discussed. This positions each juror in the semantic neighborhood of their primary concerns, effectively placing them near the concepts they emphasized most in their feedback.
-
-**Location:** `lib/graph/dimensionality-reduction.ts` (`computeNode3DPositions`, lines 227-250)
+Juror nodes are positioned using a **pure mathematical weighted average** of the concept 3D positions. For each juror, the system computes: $Position_{juror} = \frac{\Sigma(weight[concept] \times position[concept])}{\Sigma(weight[concept])}$. Any previous "jitter" used for visualization has been removed to ensure the coordinates are 100% data-driven. If two jurors share the exact same thematic profile, they will appear at the exact same coordinate.
 
 ### Explanation
 The unified positioning approach ensures that both concept and juror nodes exist in the same coordinate system. Concepts serve as semantic anchors established through PCA projection, while jurors are positioned relative to those anchors based on their interest patterns. This creates a coherent spatial representation where jurors "float" near the themes they discussed most.
