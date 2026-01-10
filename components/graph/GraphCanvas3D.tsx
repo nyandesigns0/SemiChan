@@ -2,7 +2,7 @@
 
 import { useRef, useState, useMemo, useCallback, Suspense, useEffect } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
-import { OrbitControls, Environment, PerspectiveCamera, Grid } from "@react-three/drei";
+import { OrbitControls, Environment, PerspectiveCamera, Grid, Html } from "@react-three/drei";
 import * as THREE from "three";
 import { FileText, Play, FastForward, SkipBack } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,7 @@ import { Link3D } from "./Link3D";
 import { Graph3DControls } from "./Graph3DControls";
 import { GraphLegend } from "./GraphLegend";
 import type { GraphNode, GraphLink } from "@/types/graph";
-import type { AnalysisCheckpoint } from "@/types/analysis";
+import type { AnalysisCheckpoint, AnalysisResult } from "@/types/analysis";
 import type { OrbitControls as OrbitControlsType } from "three-stdlib";
 import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
 
@@ -31,6 +31,9 @@ interface GraphCanvas3DProps {
   empty: boolean;
   checkpoints?: AnalysisCheckpoint[];
   insights?: Record<string, ConceptInsight>;
+  axisLabels?: AnalysisResult["axisLabels"];
+  enableAxisLabelAI?: boolean;
+  onToggleAxisLabelAI?: (enabled: boolean) => void;
 }
 
 // Camera controller component to handle reset
@@ -62,6 +65,103 @@ function AxesHelper({ visible }: { visible: boolean }) {
   return <axesHelper args={[10]} />;
 }
 
+// Axis end labels component
+function AxisEndLabels({ 
+  visible, 
+  axisLabels, 
+  enableAI 
+}: { 
+  visible: boolean; 
+  axisLabels?: AnalysisResult["axisLabels"];
+  enableAI?: boolean;
+}) {
+  if (!visible) return null;
+  const size = 10;
+  const offset = 0.8;
+  
+  // Helper to get display label
+  const getLabel = (axis: "x" | "y" | "z", end: "negative" | "positive") => {
+    if (!axisLabels) return "";
+    const data = axisLabels[axis];
+    if (enableAI) {
+      return end === "negative" 
+        ? data.synthesizedNegative || data.negative 
+        : data.synthesizedPositive || data.positive;
+    }
+    return end === "negative" ? data.negative : data.positive;
+  };
+  
+  return (
+    <group>
+      {/* X Axis */}
+      <Html position={[size + offset, 0, 0]} center distanceFactor={15}>
+        <div className="flex flex-col items-center gap-1">
+          <div className="px-1.5 py-0.5 rounded bg-red-500/90 text-[10px] font-bold text-white shadow-sm pointer-events-none select-none border border-white/20">X+</div>
+          {axisLabels && (
+            <div className="px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold text-red-600 shadow-sm border border-red-100 whitespace-nowrap">
+              {getLabel("x", "positive")}
+            </div>
+          )}
+        </div>
+      </Html>
+      <Html position={[-(size + offset), 0, 0]} center distanceFactor={15}>
+        <div className="flex flex-col items-center gap-1">
+          <div className="px-1.5 py-0.5 rounded bg-red-500/90 text-[10px] font-bold text-white shadow-sm pointer-events-none select-none border border-white/20">X-</div>
+          {axisLabels && (
+            <div className="px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold text-red-600 shadow-sm border border-red-100 whitespace-nowrap">
+              {getLabel("x", "negative")}
+            </div>
+          )}
+        </div>
+      </Html>
+      
+      {/* Y Axis */}
+      <Html position={[0, size + offset, 0]} center distanceFactor={15}>
+        <div className="flex flex-col items-center gap-1">
+          <div className="px-1.5 py-0.5 rounded bg-green-500/90 text-[10px] font-bold text-white shadow-sm pointer-events-none select-none border border-white/20">Y+</div>
+          {axisLabels && (
+            <div className="px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold text-green-600 shadow-sm border border-green-100 whitespace-nowrap">
+              {getLabel("y", "positive")}
+            </div>
+          )}
+        </div>
+      </Html>
+      <Html position={[0, -(size + offset), 0]} center distanceFactor={15}>
+        <div className="flex flex-col items-center gap-1">
+          <div className="px-1.5 py-0.5 rounded bg-green-500/90 text-[10px] font-bold text-white shadow-sm pointer-events-none select-none border border-white/20">Y-</div>
+          {axisLabels && (
+            <div className="px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold text-green-600 shadow-sm border border-green-100 whitespace-nowrap">
+              {getLabel("y", "negative")}
+            </div>
+          )}
+        </div>
+      </Html>
+      
+      {/* Z Axis */}
+      <Html position={[0, 0, size + offset]} center distanceFactor={15}>
+        <div className="flex flex-col items-center gap-1">
+          <div className="px-1.5 py-0.5 rounded bg-blue-500/90 text-[10px] font-bold text-white shadow-sm pointer-events-none select-none border border-white/20">Z+</div>
+          {axisLabels && (
+            <div className="px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold text-blue-600 shadow-sm border border-blue-100 whitespace-nowrap">
+              {getLabel("z", "positive")}
+            </div>
+          )}
+        </div>
+      </Html>
+      <Html position={[0, 0, -(size + offset)]} center distanceFactor={15}>
+        <div className="flex flex-col items-center gap-1">
+          <div className="px-1.5 py-0.5 rounded bg-blue-500/90 text-[10px] font-bold text-white shadow-sm pointer-events-none select-none border border-white/20">Z-</div>
+          {axisLabels && (
+            <div className="px-2 py-0.5 rounded bg-white/90 text-[9px] font-bold text-blue-600 shadow-sm border border-blue-100 whitespace-nowrap">
+              {getLabel("z", "negative")}
+            </div>
+          )}
+        </div>
+      </Html>
+    </group>
+  );
+}
+
 // Scene content
 function SceneContent({
   nodes,
@@ -77,6 +177,8 @@ function SceneContent({
   showGrid,
   showAxes,
   insights = {},
+  axisLabels,
+  enableAxisLabelAI,
 }: {
   nodes: GraphNode[];
   links: GraphLink[];
@@ -91,6 +193,8 @@ function SceneContent({
   showGrid: boolean;
   showAxes: boolean;
   insights?: Record<string, ConceptInsight>;
+  axisLabels?: AnalysisResult["axisLabels"];
+  enableAxisLabelAI?: boolean;
 }) {
   // Create node lookup map
   const nodeMap = useMemo(() => {
@@ -143,6 +247,7 @@ function SceneContent({
       
       {/* Axes */}
       <AxesHelper visible={showAxes} />
+      <AxisEndLabels visible={showAxes} axisLabels={axisLabels} enableAI={enableAxisLabelAI} />
       
       {/* Links */}
       {links.map((link) => (
@@ -186,6 +291,9 @@ export function GraphCanvas3D({
   empty,
   checkpoints = [],
   insights = {},
+  axisLabels,
+  enableAxisLabelAI = false,
+  onToggleAxisLabelAI,
 }: GraphCanvas3DProps) {
   const controlsRef = useRef<OrbitControlsType>(null);
   const [showGrid, setShowGrid] = useState(true);
@@ -256,6 +364,8 @@ export function GraphCanvas3D({
                   showGrid={showGrid}
                   showAxes={showAxes}
                   insights={insights}
+                  axisLabels={axisLabels}
+                  enableAxisLabelAI={enableAxisLabelAI}
                 />
               </Suspense>
             </Canvas>
@@ -292,6 +402,9 @@ export function GraphCanvas3D({
               showAxes={showAxes}
               onToggleAxes={() => setShowAxes(!showAxes)}
               onResetCamera={handleResetCamera}
+              axisLabels={axisLabels}
+              enableAxisLabelAI={enableAxisLabelAI}
+              onToggleAxisLabelAI={onToggleAxisLabelAI}
             />
             
             {/* Instructions */}

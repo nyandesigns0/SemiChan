@@ -39,7 +39,9 @@ export function StanceFilters({
           key={filter.label}
           className={cn(
             "flex items-center justify-between rounded-2xl border-2 px-4 py-3 transition-all",
-            filter.checked ? "border-slate-100 bg-white shadow-sm" : "border-transparent bg-slate-50 opacity-60"
+            filter.checked 
+              ? "border-indigo-500/30 bg-white shadow-md ring-1 ring-indigo-500/10" 
+              : "border-transparent bg-slate-50/50 opacity-60 hover:opacity-100 hover:bg-slate-50"
           )}
         >
           <div className="flex items-center gap-3">

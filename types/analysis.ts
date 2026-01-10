@@ -43,5 +43,10 @@ export interface AnalysisResult {
   clusteringMode?: "kmeans" | "hierarchical" | "hybrid";
   checkpoints?: AnalysisCheckpoint[];
   jurorTopTerms?: Record<string, string[]>; // juror name -> top terms array
+  axisLabels?: {
+    x: { negative: string; positive: string; negativeId: string; positiveId: string; synthesizedNegative?: string; synthesizedPositive?: string };
+    y: { negative: string; positive: string; negativeId: string; positiveId: string; synthesizedNegative?: string; synthesizedPositive?: string };
+    z: { negative: string; positive: string; negativeId: string; positiveId: string; synthesizedNegative?: string; synthesizedPositive?: string };
+  };
 }
 

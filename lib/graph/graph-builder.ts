@@ -8,6 +8,7 @@ import { kmeansCosine } from "@/lib/analysis/kmeans";
 import { clamp } from "@/lib/utils/text-utils";
 import { buildJurorSimilarityLinks, buildConceptSimilarityLinks } from "./projections";
 import { computeNode3DPositions } from "./dimensionality-reduction";
+import { labelAxes } from "./axis-labeler";
 
 // Hybrid analysis imports
 import { embedSentences } from "@/lib/analysis/sentence-embeddings";
@@ -339,6 +340,9 @@ export async function buildAnalysis(
   const conceptSimilarityLinks = buildConceptSimilarityLinks(conceptIds, centroids, similarityThreshold);
   links.push(...conceptSimilarityLinks);
 
+  // Compute axis labels from 3D node positions
+  const axisLabels = labelAxes(nodes);
+
   // Final Checkpoint
   checkpoints.push({
     id: "final",
@@ -365,5 +369,6 @@ export async function buildAnalysis(
     clusteringMode,
     checkpoints,
     jurorTopTerms,
+    axisLabels,
   };
 }

@@ -41,7 +41,10 @@ export interface TabsListProps extends React.HTMLAttributes<HTMLDivElement> {}
 export function TabsList({ className, ...props }: TabsListProps) {
   return (
     <div
-      className={cn("inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground", className)}
+      className={cn(
+        "inline-flex h-10 items-center justify-center rounded-lg bg-slate-100/80 p-1 text-slate-500 gap-1",
+        className
+      )}
       {...props}
     />
   );
@@ -59,8 +62,10 @@ export function TabsTrigger({ className, value, ...props }: TabsTriggerProps) {
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
-        isActive ? "bg-background text-foreground shadow-sm" : "hover:bg-background/50",
+        "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50",
+        isActive
+          ? "bg-white text-indigo-600 shadow-md ring-2 ring-indigo-500/20 border border-indigo-100 scale-[1.02]"
+          : "text-slate-500 hover:bg-slate-200/50 hover:text-slate-900 border border-transparent",
         className
       )}
       onClick={() => context.onValueChange(value)}

@@ -78,12 +78,14 @@ export function IngestPanel({ rawText, onTextChange, jurorBlocks }: IngestPanelP
           )}
 
           <div className="space-y-4">
-            <div className="flex rounded-xl bg-slate-100 p-1">
+            <div className="flex rounded-xl bg-slate-100/80 p-1 gap-1 border border-slate-200/50">
               <button
                 onClick={() => setActiveTab("paste")}
                 className={cn(
                   "flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-sm font-semibold transition-all",
-                  activeTab === "paste" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  activeTab === "paste" 
+                    ? "bg-white text-indigo-600 shadow-md ring-2 ring-indigo-500/10 border border-indigo-100 scale-[1.01]" 
+                    : "text-slate-500 hover:text-slate-700 hover:bg-white/50"
                 )}
               >
                 <Type className="h-4 w-4" />
@@ -93,7 +95,9 @@ export function IngestPanel({ rawText, onTextChange, jurorBlocks }: IngestPanelP
                 onClick={() => setActiveTab("blocks")}
                 className={cn(
                   "flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-sm font-semibold transition-all",
-                  activeTab === "blocks" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  activeTab === "blocks" 
+                    ? "bg-white text-indigo-600 shadow-md ring-2 ring-indigo-500/10 border border-indigo-100 scale-[1.01]" 
+                    : "text-slate-500 hover:text-slate-700 hover:bg-white/50"
                 )}
               >
                 <Users className="h-4 w-4" />

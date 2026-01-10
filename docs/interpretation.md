@@ -56,3 +56,41 @@ You can control the "Interpretation Lens" using the Feature Weight sliders:
 
 **Pro Tip:** If you see jurors who seem isolated, try shifting the weights. If they suddenly "snap" to a concept when you increase Semantic Weight, it means they are talking about that theme, just in their own unique way.
 
+---
+
+## Understanding the 3D Space: Axis Labels
+
+In the 3D graph visualization, nodes are positioned using Principal Component Analysis (PCA), which reduces high-dimensional semantic vectors to three spatial coordinates (X, Y, Z). The axes represent the **primary dimensions of variation** in your corpus.
+
+### What Do the Axes Mean?
+
+Each axis represents a **spectrum** between two conceptual poles:
+
+*   **X-Axis:** The primary dimension of variation (most variance in the data)
+*   **Y-Axis:** The secondary dimension of variation
+*   **Z-Axis:** The tertiary dimension of variation (up/down in the 3D view)
+
+### How Axis Labels Work
+
+Axis labels identify the concepts at the extremes of each axis, showing you what dimensions your data varies along:
+
+*   **Negative End (Left/Bottom/Back):** The concept with the minimum coordinate value on that axis
+*   **Positive End (Right/Top/Front):** The concept with the maximum coordinate value on that axis
+*   **Synthesized Label (Optional):** An AI-generated label that captures the semantic relationship between the two extremes
+
+**Example:** If the X-axis shows "Lighting" ↔ "Structure", this means:
+*   The primary way concepts differ in your corpus is along a lighting-to-structure dimension
+*   Concepts related to lighting cluster toward the negative (left) side
+*   Concepts related to structure cluster toward the positive (right) side
+*   A node's X-position tells you how much it leans toward lighting concerns vs. structural concerns
+
+### Interpreting Spatial Position
+
+*   **Nodes close together** share similar semantic profiles across all dimensions
+*   **Nodes far apart** represent different thematic focuses
+*   **Axis position matters:** A node's position along an axis tells you where it falls on that particular spectrum
+*   **Jurors near concepts** have strong association with those themes
+
+**Key Insight:** The axes don't have inherent semantic meaning on their own—they're mathematical directions. But by labeling the extremes, we transform the "black box" of PCA into an interpretable map of your conceptual landscape.
+
+---

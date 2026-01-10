@@ -15,6 +15,7 @@ import { InspectorPanel } from "@/components/inspector/InspectorPanel";
 import { CorpusSummary } from "@/components/inspector/CorpusSummary";
 import { CollapsibleSidebar } from "@/components/ui/collapsible-sidebar";
 import { useConceptSummarizer } from "@/hooks/useConceptSummarizer";
+import { useAxisLabelEnhancer } from "@/hooks/useAxisLabelEnhancer";
 import { segmentByJuror } from "@/lib/segmentation/juror-segmenter";
 import { downloadJson } from "@/lib/utils/download";
 import { cn } from "@/lib/utils/cn";
@@ -94,8 +95,39 @@ export default function HomePage() {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
 
+  // AI Axis Labels toggle
+  const [enableAxisLabelAI, setEnableAxisLabelAI] = useState(false);
+
   // Concept Summarization
   const { insights, fetchSummary } = useConceptSummarizer(analysis);
+  
+  // Axis Label Enhancement
+  const { enhancedLabels } = useAxisLabelEnhancer(analysis, enableAxisLabelAI);
+  
+  // Merge enhanced axis labels with analysis axis labels
+  const displayAxisLabels = useMemo(() => {
+    if (!analysis?.axisLabels) return undefined;
+    if (enhancedLabels) {
+      return {
+        x: { 
+          ...analysis.axisLabels.x, 
+          synthesizedNegative: enhancedLabels.x.synthesizedNegative,
+          synthesizedPositive: enhancedLabels.x.synthesizedPositive
+        },
+        y: { 
+          ...analysis.axisLabels.y, 
+          synthesizedNegative: enhancedLabels.y.synthesizedNegative,
+          synthesizedPositive: enhancedLabels.y.synthesizedPositive
+        },
+        z: { 
+          ...analysis.axisLabels.z, 
+          synthesizedNegative: enhancedLabels.z.synthesizedNegative,
+          synthesizedPositive: enhancedLabels.z.synthesizedPositive
+        },
+      };
+    }
+    return analysis.axisLabels;
+  }, [analysis?.axisLabels, enhancedLabels]);
 
   // Update blocks when rawText changes
   useEffect(() => {
@@ -654,6 +686,9 @@ export default function HomePage() {
                   empty={emptyState}
                   checkpoints={analysis?.checkpoints}
                   insights={insights}
+                  axisLabels={displayAxisLabels}
+                  enableAxisLabelAI={enableAxisLabelAI}
+                  onToggleAxisLabelAI={setEnableAxisLabelAI}
                 />
               </CardContent>
             </Card>

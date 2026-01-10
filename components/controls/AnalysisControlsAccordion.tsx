@@ -60,7 +60,7 @@ export function AnalysisControlsAccordion({
         className="flex w-full items-center justify-between px-4 py-3 transition-colors hover:bg-slate-50"
       >
         <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-purple-50 p-2 text-purple-600">
+          <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600 ring-1 ring-indigo-100/50">
             <Sparkles className="h-5 w-5" />
           </div>
           <span className="font-bold text-slate-800">Analysis Controls</span>
