@@ -1,3 +1,5 @@
+import { createPRNG } from "@/lib/analysis/kmeans";
+
 /**
  * Principal Component Analysis (PCA) for dimensionality reduction
  * Reduces high-dimensional vectors to 3D coordinates for visualization
@@ -44,7 +46,8 @@ function centerVectors(vectors: Float64Array[], mean: Float64Array): Float64Arra
 function powerIteration(
   centered: Float64Array[],
   numComponents: number = 3,
-  iterations: number = 100
+  iterations: number = 100,
+  seed: number = 42
 ): Float64Array[] {
   if (centered.length === 0 || centered[0].length === 0) {
     return [];
@@ -53,6 +56,7 @@ function powerIteration(
   const dim = centered[0].length;
   const n = centered.length;
   const components: Float64Array[] = [];
+  const rand = createPRNG(seed);
   
   // Create a copy to work with (we'll deflate the data)
   let data = centered.map((v) => new Float64Array(v));
@@ -61,7 +65,7 @@ function powerIteration(
     // Initialize random vector
     let pc = new Float64Array(dim);
     for (let i = 0; i < dim; i++) {
-      pc[i] = Math.random() - 0.5;
+      pc[i] = rand() - 0.5;
     }
     
     // Normalize
@@ -176,7 +180,8 @@ function normalizeCoordinates(
  */
 export function reduceTo3D(
   vectors: Float64Array[],
-  scale: number = 10
+  scale: number = 10,
+  seed: number = 42
 ): { x: number; y: number; z: number }[] {
   if (vectors.length === 0) {
     return [];
@@ -191,7 +196,7 @@ export function reduceTo3D(
   const centered = centerVectors(vectors, mean);
   
   // Find top 3 principal components using power iteration
-  const components = powerIteration(centered, 3);
+  const components = powerIteration(centered, 3, 100, seed);
   
   if (components.length === 0) {
     return vectors.map(() => ({ x: 0, y: 0, z: 0 }));
@@ -214,12 +219,14 @@ export function computeNode3DPositions(
   conceptCentroids: Float64Array[],
   jurorList: string[],
   conceptIds: string[],
-  scale: number = 10
+  scale: number = 10,
+  seed: number = 42
 ): Map<string, { x: number; y: number; z: number }> {
   const positions = new Map<string, { x: number; y: number; z: number }>();
+  const rand = createPRNG(seed + 1); // Offset seed for variety
   
   // First, get 3D positions for concepts from centroids
-  const conceptCoords = reduceTo3D(conceptCentroids, scale);
+  const conceptCoords = reduceTo3D(conceptCentroids, scale, seed);
   for (let i = 0; i < conceptIds.length; i++) {
     positions.set(conceptIds[i], conceptCoords[i] ?? { x: 0, y: 0, z: 0 });
   }
@@ -244,16 +251,16 @@ export function computeNode3DPositions(
       // Add small random offset to prevent overlapping with concepts
       const offset = 0.5;
       positions.set(`juror:${juror}`, {
-        x: x / totalWeight + (Math.random() - 0.5) * offset,
-        y: y / totalWeight + (Math.random() - 0.5) * offset,
-        z: z / totalWeight + (Math.random() - 0.5) * offset,
+        x: x / totalWeight + (rand() - 0.5) * offset,
+        y: y / totalWeight + (rand() - 0.5) * offset,
+        z: z / totalWeight + (rand() - 0.5) * offset,
       });
     } else {
       // Random position if no concept associations
       positions.set(`juror:${juror}`, {
-        x: (Math.random() - 0.5) * scale,
-        y: (Math.random() - 0.5) * scale,
-        z: (Math.random() - 0.5) * scale,
+        x: (rand() - 0.5) * scale,
+        y: (rand() - 0.5) * scale,
+        z: (rand() - 0.5) * scale,
       });
     }
   }

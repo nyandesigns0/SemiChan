@@ -82,6 +82,7 @@ export default function HomePage() {
   // New algorithm state
   const [clusteringMode, setClusteringMode] = useState<"kmeans" | "hierarchical" | "hybrid">("kmeans");
   const [autoK, setAutoK] = useState(false);
+  const [clusterSeed, setClusterSeed] = useState(42);
   const [softMembership, setSoftMembership] = useState(false);
   const [cutType, setCutType] = useState<"count" | "granularity">("count");
   const [granularityPercent, setGranularityPercent] = useState(50);
@@ -175,6 +176,7 @@ export default function HomePage() {
             frequencyWeight,
             clusteringMode,
             autoK,
+            clusterSeed,
             softMembership,
             cutType,
             granularityPercent: cutType === "granularity" ? granularityPercent : undefined,
@@ -193,7 +195,7 @@ export default function HomePage() {
     };
 
     analyze();
-  }, [jurorBlocks, kConcepts, similarityThreshold, semanticWeight, frequencyWeight, clusteringMode, autoK, softMembership, cutType, granularityPercent]);
+  }, [jurorBlocks, kConcepts, similarityThreshold, semanticWeight, frequencyWeight, clusteringMode, autoK, clusterSeed, softMembership, cutType, granularityPercent]);
 
   // Helper function to get node network (node + connected links + connected nodes)
   const getNodeNetwork = useCallback((nodeId: string, nodes: GraphNode[], links: GraphLink[]) => {
@@ -546,6 +548,8 @@ export default function HomePage() {
             onClusteringModeChange={setClusteringMode}
             autoK={autoK}
             onAutoKChange={setAutoK}
+            clusterSeed={clusterSeed}
+            onClusterSeedChange={setClusterSeed}
             softMembership={softMembership}
             onSoftMembershipChange={setSoftMembership}
             cutType={cutType}
@@ -575,26 +579,6 @@ export default function HomePage() {
                 <h1 className="text-xl font-bold tracking-tight text-slate-900">Jury Concept Graph</h1>
                 <p className="text-xs text-slate-500 font-medium">Explainable juror-concept mapping</p>
               </div>
-              {analysis && (
-                <div className="ml-4 hidden items-center gap-6 border-l border-slate-200 pl-6 lg:flex">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Juror Pool</span>
-                    <span className="text-sm font-bold text-slate-700">{analysis.stats.totalJurors} Participants</span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Corpus Size</span>
-                    <span className="text-sm font-bold text-slate-700">{analysis.stats.totalSentences} Sentences</span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Thematic Clusters</span>
-                    <span className="text-sm font-bold text-slate-700">{analysis.stats.totalConcepts} Concepts</span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Topology</span>
-                    <span className="text-sm font-bold text-slate-700">{analysis.links.length} Connections</span>
-                  </div>
-                </div>
-              )}
             </div>
             <div className="flex items-center gap-3">
               <Button
@@ -652,10 +636,6 @@ export default function HomePage() {
                         <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
                           <Lightbulb className="h-3.5 w-3.5" />
                           <span>{analysis.stats.totalConcepts} concepts found</span>
-                        </Badge>
-                        <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
-                          <Layers className="h-3.5 w-3.5" />
-                          <span>K-Means: {analysis.stats.totalConcepts} clusters</span>
                         </Badge>
                         <div className="mx-1 h-6 w-px bg-slate-200" />
                       </>

@@ -21,6 +21,8 @@ interface AnalysisControlsAccordionProps {
   onClusteringModeChange: (mode: "kmeans" | "hierarchical" | "hybrid") => void;
   autoK: boolean;
   onAutoKChange: (value: boolean) => void;
+  clusterSeed: number;
+  onClusterSeedChange: (value: number) => void;
   softMembership: boolean;
   onSoftMembershipChange: (value: boolean) => void;
   cutType: "count" | "granularity";
@@ -44,6 +46,8 @@ export function AnalysisControlsAccordion({
   onClusteringModeChange,
   autoK,
   onAutoKChange,
+  clusterSeed,
+  onClusterSeedChange,
   softMembership,
   onSoftMembershipChange,
   cutType,
@@ -89,6 +93,8 @@ export function AnalysisControlsAccordion({
             onClusteringModeChange={onClusteringModeChange}
             autoK={autoK}
             onAutoKChange={onAutoKChange}
+            clusterSeed={clusterSeed}
+            onClusterSeedChange={onClusterSeedChange}
             softMembership={softMembership}
             onSoftMembershipChange={onSoftMembershipChange}
             cutType={cutType}

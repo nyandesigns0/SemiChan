@@ -27,6 +27,7 @@ export interface AnalyzeRequest {
   softTopN?: number;
   cutType?: "count" | "granularity";
   granularityPercent?: number;
+  clusterSeed?: number;
 }
 
 export interface AnalyzeResponse {

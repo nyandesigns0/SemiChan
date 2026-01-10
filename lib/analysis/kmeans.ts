@@ -1,13 +1,20 @@
 import type { KMeansResult } from "@/types/nlp";
 import { cosine } from "./tfidf";
 
-export function kmeansCosine(vectors: Float64Array[], k: number, iters = 25, seed = 42): KMeansResult {
-  // Simple deterministic PRNG
+/**
+ * Simple deterministic PRNG (LCG)
+ */
+export function createPRNG(seed: number) {
   let s = seed >>> 0;
-  const rand = () => {
+  return () => {
     s = (1664525 * s + 1013904223) >>> 0;
     return s / 0xffffffff;
   };
+}
+
+export function kmeansCosine(vectors: Float64Array[], k: number, iters = 25, seed = 42): KMeansResult {
+  // Simple deterministic PRNG
+  const rand = createPRNG(seed);
 
   const n = vectors.length;
   if (n === 0) return { k, assignments: [], centroids: [] };
@@ -22,6 +29,7 @@ export function kmeansCosine(vectors: Float64Array[], k: number, iters = 25, see
     used.add(idx);
     centroids.push(new Float64Array(vectors[idx]));
   }
+
   const K = centroids.length;
   const assignments = new Array(n).fill(0);
 

@@ -4,7 +4,7 @@ import type { GraphNode, GraphLink } from "@/types/graph";
 import type { Stance } from "@/types/nlp";
 import { sentenceSplit } from "@/lib/nlp/sentence-splitter";
 import { stanceOfSentence } from "@/lib/nlp/stance-classifier";
-import { kmeansCosine } from "@/lib/analysis/kmeans";
+import { kmeansCosine, createPRNG } from "@/lib/analysis/kmeans";
 import { clamp } from "@/lib/utils/text-utils";
 import { buildJurorSimilarityLinks, buildConceptSimilarityLinks } from "./projections";
 import { computeNode3DPositions } from "./dimensionality-reduction";
@@ -39,6 +39,7 @@ export async function buildAnalysis(
     softTopN?: number;
     cutType?: "count" | "granularity";
     granularityPercent?: number;
+    seed?: number;
   } = {}
 ): Promise<AnalysisResult> {
   const {
@@ -50,6 +51,7 @@ export async function buildAnalysis(
     softTopN = 2,
     cutType = "count",
     granularityPercent = 50,
+    seed = 42,
   } = options;
 
   const checkpoints: AnalysisCheckpoint[] = [];
@@ -68,6 +70,7 @@ export async function buildAnalysis(
   const effectiveSentences = sentences.filter((s) => jurors.length === 0 || s.juror !== "Unattributed");
   
   // CHECKPOINT 1: Sentences extracted
+  const checkpointRand = createPRNG(seed - 1);
   checkpoints.push({
     id: "sentences",
     label: "Sentences Extracted",
@@ -77,9 +80,9 @@ export async function buildAnalysis(
       label: s.sentence.slice(0, 30) + "...",
       size: 10,
       meta: { juror: s.juror },
-      x: (Math.random() - 0.5) * 10,
-      y: (Math.random() - 0.5) * 10,
-      z: (Math.random() - 0.5) * 10,
+      x: (checkpointRand() - 0.5) * 10,
+      y: (checkpointRand() - 0.5) * 10,
+      z: (checkpointRand() - 0.5) * 10,
     })),
     links: [],
   });
@@ -123,7 +126,7 @@ export async function buildAnalysis(
   let kSearchMetrics: Array<{ k: number; score: number }> | undefined;
 
   if (autoK) {
-    const evalResult = evaluateKRange(hybridVectors, kMin, kMax);
+    const evalResult = evaluateKRange(hybridVectors, kMin, kMax, seed);
     recommendedK = evalResult.recommendedK;
     kSearchMetrics = evalResult.metrics;
     K = recommendedK;
@@ -150,7 +153,7 @@ export async function buildAnalysis(
     }
   } else {
     // Default K-means
-    const km = kmeansCosine(hybridVectors, K);
+    const km = kmeansCosine(hybridVectors, K, 25, seed);
     assignments = km.assignments;
     centroids = km.centroids;
   }
@@ -264,7 +267,8 @@ export async function buildAnalysis(
     centroids,
     jurorList,
     conceptIds,
-    10 // scale
+    10, // scale
+    seed
   );
 
   // Nodes with 3D positions

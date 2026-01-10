@@ -36,6 +36,8 @@ interface AnalysisControlsProps {
   onClusteringModeChange: (mode: "kmeans" | "hierarchical" | "hybrid") => void;
   autoK: boolean;
   onAutoKChange: (value: boolean) => void;
+  clusterSeed: number;
+  onClusterSeedChange: (value: number) => void;
   softMembership: boolean;
   onSoftMembershipChange: (value: boolean) => void;
   cutType: "count" | "granularity";
@@ -59,6 +61,8 @@ export function AnalysisControls({
   onClusteringModeChange,
   autoK,
   onAutoKChange,
+  clusterSeed,
+  onClusterSeedChange,
   softMembership,
   onSoftMembershipChange,
   cutType,
@@ -170,6 +174,36 @@ export function AnalysisControls({
             <p className="text-[10px] text-slate-500">Sentences can belong to 2+ concepts</p>
           </div>
           <Switch checked={softMembership} onCheckedChange={onSoftMembershipChange} className="hover:scale-105 transition-transform" />
+        </div>
+
+        <div className="h-px bg-slate-200/50" />
+
+        {/* Clustering Seed Slider */}
+        <div className="space-y-3 group">
+          <div className="flex items-center justify-between">
+            <Label 
+              className="text-sm font-bold text-slate-700 flex items-center gap-1.5 cursor-help group-hover:text-slate-900 transition-colors"
+              title="Adjust the 'random seed' used to initialize clusters. Changing this will give you a different but reproducible arrangement for the same data."
+            >
+              <Dices className="h-3.5 w-3.5 text-indigo-500" />
+              Solution Seed
+              <Info className="h-3 w-3 opacity-50" />
+            </Label>
+            <Badge variant="secondary" className="bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 ring-1 ring-indigo-200/50">
+              {clusterSeed}
+            </Badge>
+          </div>
+          <div className="space-y-1">
+            <Slider 
+              value={[clusterSeed]} 
+              min={1} 
+              max={100} 
+              step={1} 
+              onValueChange={(v) => onClusterSeedChange(v[0])} 
+              className="py-1.5"
+            />
+            <p className="text-[8px] text-slate-400 italic font-medium">Pick a number to lock in a specific clustering arrangement.</p>
+          </div>
         </div>
       </div>
 

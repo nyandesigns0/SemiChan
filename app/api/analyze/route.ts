@@ -31,7 +31,8 @@ export async function POST(request: NextRequest) {
       softMembership,
       softTopN,
       cutType,
-      granularityPercent
+      granularityPercent,
+      clusterSeed
     } = body;
 
     if (!blocks || !Array.isArray(blocks)) {
@@ -106,7 +107,8 @@ export async function POST(request: NextRequest) {
         softMembership,
         softTopN,
         cutType,
-        granularityPercent
+        granularityPercent,
+        seed: clusterSeed
       }
     );
 
