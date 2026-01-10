@@ -6,6 +6,22 @@ import { Text, Billboard } from "@react-three/drei";
 import * as THREE from "three";
 import type { GraphNode, NodeType } from "@/types/graph";
 
+// Helper function to lighten a hex color by mixing with white
+function lightenColor(hex: string, amount: number): string {
+  // Remove # if present
+  const hexClean = hex.replace("#", "");
+  // Convert to RGB
+  const r = parseInt(hexClean.substring(0, 2), 16);
+  const g = parseInt(hexClean.substring(2, 4), 16);
+  const b = parseInt(hexClean.substring(4, 6), 16);
+  // Mix with white (255, 255, 255)
+  const newR = Math.round(r + (255 - r) * amount);
+  const newG = Math.round(g + (255 - g) * amount);
+  const newB = Math.round(b + (255 - b) * amount);
+  // Convert back to hex
+  return `#${newR.toString(16).padStart(2, "0")}${newG.toString(16).padStart(2, "0")}${newB.toString(16).padStart(2, "0")}`;
+}
+
 interface Node3DProps {
   node: GraphNode;
   isSelected: boolean;
@@ -58,10 +74,17 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick }: No
   if (opacity === 0) {
     color = "#e2e8f0"; // Very light gray - no hover effect when not visible
   } else {
-    color = isSelected ? colors.selected : hovered ? colors.hover : colors.base;
+    const baseColor = isSelected ? colors.selected : hovered ? colors.hover : colors.base;
+    // If opacity is 0.7 (connected node), lighten the color
+    if (opacity === 0.7) {
+      // Lighten the color by mixing with white (50% original, 50% white)
+      color = lightenColor(baseColor, 0.5);
+    } else {
+      color = baseColor;
+    }
   }
-  // Mesh opacity: use the provided opacity value (0, 0.7, or 1.0)
-  const meshOpacity = opacity === 0 ? 0.35 : opacity;
+  // Mesh opacity: use the provided opacity value (0, 0.7, or 1.0), but keep at 1.0 for color visibility
+  const meshOpacity = opacity === 0 ? 0.35 : 1.0;
   const radius = (node.size / 16) * 0.3; // Scale down for 3D space
   
   // Animate on hover/select (only if visible)

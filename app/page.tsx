@@ -231,11 +231,40 @@ export default function HomePage() {
         linkVisibility.set(link.id, 0);
       }
 
-      // Track which nodes are directly selected (for 100% opacity)
-      const directlySelectedNodeIds = new Set(adaptiveSelectedNodeIds);
-      const directlySelectedLinkIds = new Set(adaptiveSelectedLinkIds);
+      // Helper to check if a node passes current manual filters
+      const nodePassesFilters = (nId: string) => {
+        const node = analysis.nodes.find((n) => n.id === nId);
+        if (!node) return false;
+        // Search filter
+        if (!nodeOk(node)) return false;
+        // Manual toggles
+        if (node.type === "juror" && !showJurorNodes) return false;
+        if (node.type === "concept" && !showConceptNodes) return false;
+        return true;
+      };
 
-      // First, set all directly selected nodes and links to 1.0
+      // Helper to check if a link passes current manual filters
+      const linkPassesFilters = (lId: string) => {
+        const link = analysis.links.find((l) => l.id === lId);
+        if (!link) return false;
+        // Weight filter
+        if (link.weight < minEdgeWeight) return false;
+        // Manual toggles
+        if (link.kind === "jurorConcept" && !showJurorConceptLinks) return false;
+        if (link.kind === "jurorJuror" && !showJurorJurorLinks) return false;
+        if (link.kind === "conceptConcept" && !showConceptConceptLinks) return false;
+
+        if (link.kind === "jurorConcept") {
+          const stance = link.stance ?? "neutral";
+          if (stance === "praise" && !showPraise) return false;
+          if (stance === "critique" && !showCritique) return false;
+          if (stance === "suggestion" && !showSuggestion) return false;
+          if (stance === "neutral" && !showNeutral) return false;
+        }
+        return true;
+      };
+
+      // 1. Directly selected nodes and links always get 1.0 opacity (regardless of filters)
       for (const nodeId of adaptiveSelectedNodeIds) {
         nodeVisibility.set(nodeId, 1.0);
       }
@@ -243,34 +272,36 @@ export default function HomePage() {
         linkVisibility.set(linkId, 1.0);
       }
 
-      // Then, activate connected networks (connected nodes/links get 0.7, but don't overwrite selected ones)
+      // 2. Expand networks from selected nodes
       for (const nodeId of adaptiveSelectedNodeIds) {
-        const network = getNodeNetwork(nodeId, nodes, links);
-        // Connected nodes get 70% opacity (only if not directly selected)
+        // Use FULL analysis data for network discovery to ensure we don't skip nodes/links
+        const network = getNodeNetwork(nodeId, analysis.nodes, analysis.links);
+        
         for (const nId of network.nodeIds) {
-          if (!directlySelectedNodeIds.has(nId)) {
+          // If not already set to 1.0 and passes filters, set to 0.7
+          if (!adaptiveSelectedNodeIds.has(nId) && nodePassesFilters(nId)) {
             nodeVisibility.set(nId, 0.7);
           }
         }
-        // Connected links get 70% opacity (only if not directly selected)
         for (const lId of network.linkIds) {
-          if (!directlySelectedLinkIds.has(lId)) {
+          if (!adaptiveSelectedLinkIds.has(lId) && linkPassesFilters(lId)) {
             linkVisibility.set(lId, 0.7);
           }
         }
       }
 
+      // 3. Expand networks from selected links
       for (const linkId of adaptiveSelectedLinkIds) {
-        const network = getLinkNetwork(linkId, links);
-        // Connected nodes get 70% opacity (only if not directly selected)
+        // Use FULL analysis data for network discovery
+        const network = getLinkNetwork(linkId, analysis.links);
+        
         for (const nId of network.nodeIds) {
-          if (!directlySelectedNodeIds.has(nId)) {
+          if (!adaptiveSelectedNodeIds.has(nId) && nodePassesFilters(nId)) {
             nodeVisibility.set(nId, 0.7);
           }
         }
-        // Connected links get 70% opacity (only if not directly selected)
         for (const lId of network.linkIds) {
-          if (!directlySelectedLinkIds.has(lId)) {
+          if (!adaptiveSelectedLinkIds.has(lId) && linkPassesFilters(lId)) {
             linkVisibility.set(lId, 0.7);
           }
         }
@@ -363,28 +394,28 @@ export default function HomePage() {
       const isShiftHeld = event?.shiftKey || false;
 
       if (isShiftHeld) {
-        // Add to selection: add node + its network
-        const network = getNodeNetwork(n.id, analysis.nodes, analysis.links);
+        // Add just this node to selection
         setAdaptiveSelectedNodeIds((prev) => {
           const newSet = new Set(prev);
-          for (const nodeId of network.nodeIds) {
-            newSet.add(nodeId);
-          }
-          return newSet;
-        });
-        setAdaptiveSelectedLinkIds((prev) => {
-          const newSet = new Set(prev);
-          for (const linkId of network.linkIds) {
-            newSet.add(linkId);
+          if (newSet.has(n.id)) {
+            newSet.delete(n.id);
+          } else {
+            newSet.add(n.id);
           }
           return newSet;
         });
       } else {
-        // Clear and set new selection: only this node's network
-        const network = getNodeNetwork(n.id, analysis.nodes, analysis.links);
-        setAdaptiveSelectedNodeIds(network.nodeIds);
-        setAdaptiveSelectedLinkIds(network.linkIds);
+        // Single click: replace selection or deselect
+        setAdaptiveSelectedNodeIds((prev) => {
+          if (prev.size === 1 && prev.has(n.id)) {
+            return new Set();
+          }
+          return new Set([n.id]);
+        });
+        setAdaptiveSelectedLinkIds(new Set());
       }
+      setSelectedNodeId(null); // Clear manual selection
+      setSelectedLinkId(null);
     } else {
       // Existing behavior: toggle selection for inspector
       setSelectedLinkId(null);
@@ -397,28 +428,28 @@ export default function HomePage() {
       const isShiftHeld = event?.shiftKey || false;
 
       if (isShiftHeld) {
-        // Add to selection: add link + its two nodes
-        const network = getLinkNetwork(l.id, analysis.links);
-        setAdaptiveSelectedNodeIds((prev) => {
-          const newSet = new Set(prev);
-          for (const nodeId of network.nodeIds) {
-            newSet.add(nodeId);
-          }
-          return newSet;
-        });
+        // Add just this link to selection
         setAdaptiveSelectedLinkIds((prev) => {
           const newSet = new Set(prev);
-          for (const linkId of network.linkIds) {
-            newSet.add(linkId);
+          if (newSet.has(l.id)) {
+            newSet.delete(l.id);
+          } else {
+            newSet.add(l.id);
           }
           return newSet;
         });
       } else {
-        // Clear and set new selection: only this link's network
-        const network = getLinkNetwork(l.id, analysis.links);
-        setAdaptiveSelectedNodeIds(network.nodeIds);
-        setAdaptiveSelectedLinkIds(network.linkIds);
+        // Single click: replace selection or deselect
+        setAdaptiveSelectedLinkIds((prev) => {
+          if (prev.size === 1 && prev.has(l.id)) {
+            return new Set();
+          }
+          return new Set([l.id]);
+        });
+        setAdaptiveSelectedNodeIds(new Set());
       }
+      setSelectedNodeId(null);
+      setSelectedLinkId(null);
     } else {
       // Existing behavior
       setSelectedNodeId(null);
@@ -623,42 +654,15 @@ export default function HomePage() {
             showCritique={showCritique}
             showSuggestion={showSuggestion}
             showNeutral={showNeutral}
-            onShowJurorNodesChange={(value) => {
-              setAdaptiveMode(false);
-              setShowJurorNodes(value);
-            }}
-            onShowConceptNodesChange={(value) => {
-              setAdaptiveMode(false);
-              setShowConceptNodes(value);
-            }}
-            onShowJurorConceptLinksChange={(value) => {
-              setAdaptiveMode(false);
-              setShowJurorConceptLinks(value);
-            }}
-            onShowJurorJurorLinksChange={(value) => {
-              setAdaptiveMode(false);
-              setShowJurorJurorLinks(value);
-            }}
-            onShowConceptConceptLinksChange={(value) => {
-              setAdaptiveMode(false);
-              setShowConceptConceptLinks(value);
-            }}
-            onShowPraiseChange={(value) => {
-              setAdaptiveMode(false);
-              setShowPraise(value);
-            }}
-            onShowCritiqueChange={(value) => {
-              setAdaptiveMode(false);
-              setShowCritique(value);
-            }}
-            onShowSuggestionChange={(value) => {
-              setAdaptiveMode(false);
-              setShowSuggestion(value);
-            }}
-            onShowNeutralChange={(value) => {
-              setAdaptiveMode(false);
-              setShowNeutral(value);
-            }}
+            onShowJurorNodesChange={setShowJurorNodes}
+            onShowConceptNodesChange={setShowConceptNodes}
+            onShowJurorConceptLinksChange={setShowJurorConceptLinks}
+            onShowJurorJurorLinksChange={setShowJurorJurorLinks}
+            onShowConceptConceptLinksChange={setShowConceptConceptLinks}
+            onShowPraiseChange={setShowPraise}
+            onShowCritiqueChange={setShowCritique}
+            onShowSuggestionChange={setShowSuggestion}
+            onShowNeutralChange={setShowNeutral}
           />
 
           <CorpusSummary analysis={analysis} empty={emptyState} />

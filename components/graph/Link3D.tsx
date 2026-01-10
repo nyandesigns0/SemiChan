@@ -6,6 +6,22 @@ import * as THREE from "three";
 import type { GraphLink, GraphNode } from "@/types/graph";
 import type { Stance } from "@/types/nlp";
 
+// Helper function to lighten a hex color by mixing with white
+function lightenColor(hex: string, amount: number): string {
+  // Remove # if present
+  const hexClean = hex.replace("#", "");
+  // Convert to RGB
+  const r = parseInt(hexClean.substring(0, 2), 16);
+  const g = parseInt(hexClean.substring(2, 4), 16);
+  const b = parseInt(hexClean.substring(4, 6), 16);
+  // Mix with white (255, 255, 255)
+  const newR = Math.round(r + (255 - r) * amount);
+  const newG = Math.round(g + (255 - g) * amount);
+  const newB = Math.round(b + (255 - b) * amount);
+  // Convert back to hex
+  return `#${newR.toString(16).padStart(2, "0")}${newG.toString(16).padStart(2, "0")}${newB.toString(16).padStart(2, "0")}`;
+}
+
 interface Link3DProps {
   link: GraphLink;
   nodes: Map<string, GraphNode>;
@@ -73,13 +89,15 @@ export function Link3D({ link, nodes, isSelected, opacity, onClick }: Link3DProp
     color = "#fbbf24";
   } else if (hovered) {
     color = "#94a3b8";
+  } else if (opacity === 0.7) {
+    // Lighten the color for connected links (70% opacity means connected)
+    color = lightenColor(baseColor, 0.5);
   }
   
-  // Link opacity: use the provided opacity value (0, 0.7, or 1.0)
-  // Apply hover/select effects on top of base opacity
+  // Link opacity: keep at 1.0 for color visibility, except when grayed out
   const linkOpacity = opacity === 0
     ? (isSelected ? 0.4 : 0.25)
-    : (isSelected ? opacity : hovered ? Math.min(1, opacity * 1.2) : opacity * 0.85);
+    : 1.0;
 
   // Line width based on weight
   const lineWidth = Math.max(1, Math.min(4, link.weight * 10));

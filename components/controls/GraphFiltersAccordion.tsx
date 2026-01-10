@@ -104,10 +104,15 @@ export function GraphFiltersAccordion({
           </div>
 
           {/* Separator */}
-          <div className="mb-4 border-b border-slate-200" />
+          <div className="mb-4 space-y-3">
+            <div className="border-b border-slate-200" />
+            <h3 className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+              {adaptiveMode ? "Adaptive Filters" : "Complete Filters"}
+            </h3>
+          </div>
 
           {/* Manual Toggles - Two Column Grid */}
-          <div className={cn("grid grid-cols-2 gap-x-4 gap-y-2", adaptiveMode && "opacity-50")}>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2">
             {/* Node Type Filters */}
             {nodeFilters.map((filter) => (
               <div
@@ -118,7 +123,7 @@ export function GraphFiltersAccordion({
                 )}
               >
                 <Label className="text-xs font-bold text-slate-700">{filter.label}</Label>
-                <Switch checked={filter.checked} onCheckedChange={filter.onChange} disabled={adaptiveMode} />
+                <Switch checked={filter.checked} onCheckedChange={filter.onChange} />
               </div>
             ))}
 
@@ -132,7 +137,7 @@ export function GraphFiltersAccordion({
                 )}
               >
                 <Label className="text-xs font-bold text-slate-700">{filter.label}</Label>
-                <Switch checked={filter.checked} onCheckedChange={filter.onChange} disabled={adaptiveMode} />
+                <Switch checked={filter.checked} onCheckedChange={filter.onChange} />
               </div>
             ))}
 
@@ -149,7 +154,7 @@ export function GraphFiltersAccordion({
                   <div className={cn("h-2 w-2 rounded-full", filter.color)} />
                   <Label className="text-xs font-bold text-slate-700">{filter.label}</Label>
                 </div>
-                <Switch checked={filter.checked} onCheckedChange={filter.onChange} disabled={adaptiveMode} />
+                <Switch checked={filter.checked} onCheckedChange={filter.onChange} />
               </div>
             ))}
           </div>
