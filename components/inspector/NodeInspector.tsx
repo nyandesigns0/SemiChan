@@ -4,10 +4,11 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Brain, Fingerprint, Users, MessageSquare } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { extractKeyphrases } from "@/lib/nlp/keyphrase-extractor";
 import { stanceColor } from "@/lib/utils/stance-utils";
+import { getPCColor, lightenColor } from "@/lib/utils/graph-color-utils";
 import type { GraphNode } from "@/types/graph";
 import type { AnalysisResult, SentenceRecord } from "@/types/analysis";
 import type { JurorBlock } from "@/types/nlp";
@@ -78,6 +79,19 @@ function SentenceList({ sentences, conceptId }: { sentences: SentenceRecord[], c
 }
 
 export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSummary }: NodeInspectorProps) {
+  const baseColor = node.type === "juror" ? "#3b82f6" : "#8b5cf6";
+  const nodeColor = node.pcValues ? getPCColor(node.pcValues, baseColor) : baseColor;
+  const lightNodeColor = lightenColor(nodeColor, 0.9);
+  const mediumNodeColor = lightenColor(nodeColor, 0.5);
+
+  const getEntityColor = (id: string, type: "juror" | "concept") => {
+    const targetNode = analysis.nodes.find(n => n.id === id || (type === "juror" && n.id === `juror:${id}`));
+    if (targetNode?.pcValues) {
+      return getPCColor(targetNode.pcValues, type === "juror" ? "#3b82f6" : "#8b5cf6");
+    }
+    return type === "juror" ? "#3b82f6" : "#8b5cf6";
+  };
+
   if (node.type === "juror") {
     const jurorName = node.label;
     const vec = analysis.jurorVectors[jurorName] || {};
@@ -140,15 +154,19 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
     return (
       <Tabs defaultValue="concepts" className="w-full">
         <TabsList className="grid w-full grid-cols-3 mb-4">
-          <TabsTrigger value="concepts" className="text-[10px] uppercase font-bold">
+          <TabsTrigger 
+            value="concepts" 
+            className="text-[10px] uppercase font-bold group data-[state=active]:text-white data-[state=active]:bg-[var(--active-color)] data-[state=active]:shadow-lg"
+            style={{ "--active-color": nodeColor } as any}
+          >
             <Brain className="h-3 w-3 mr-1.5" />
             Concepts
           </TabsTrigger>
-          <TabsTrigger value="fingerprint" className="text-[10px] uppercase font-bold">
+          <TabsTrigger value="fingerprint" className="text-[10px] uppercase font-bold group data-[state=active]:text-white data-[state=active]:bg-[var(--active-color)] data-[state=active]:shadow-lg" style={{ "--active-color": nodeColor } as any}>
             <Fingerprint className="h-3 w-3 mr-1.5" />
             Fingerprint
           </TabsTrigger>
-          <TabsTrigger value="sentences" className="text-[10px] uppercase font-bold">
+          <TabsTrigger value="sentences" className="text-[10px] uppercase font-bold group data-[state=active]:text-white data-[state=active]:bg-[var(--active-color)] data-[state=active]:shadow-lg" style={{ "--active-color": nodeColor } as any}>
             <MessageSquare className="h-3 w-3 mr-1.5" />
             Sentences
           </TabsTrigger>
@@ -178,10 +196,13 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
                   />
                   <Bar 
                     dataKey="value" 
-                    fill="#3b82f6" 
                     radius={[0, 4, 4, 0]}
                     barSize={14}
-                  />
+                  >
+                    {jurorTopConcepts.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={getEntityColor(entry.conceptId, "concept")} />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -267,42 +288,67 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
     return (
       <Tabs defaultValue="insight" className="w-full">
         <TabsList className="grid w-full grid-cols-4 mb-4">
-          <TabsTrigger value="insight" className="text-[10px] uppercase font-bold px-1">
+          <TabsTrigger 
+            value="insight" 
+            className="text-[10px] uppercase font-bold px-1 group data-[state=active]:text-white data-[state=active]:bg-[var(--active-color)] data-[state=active]:shadow-lg"
+            style={{ "--active-color": nodeColor } as any}
+          >
             <Brain className="h-3 w-3 mr-1" />
             Insight
           </TabsTrigger>
-          <TabsTrigger value="fingerprint" className="text-[10px] uppercase font-bold px-1">
+          <TabsTrigger 
+            value="fingerprint" 
+            className="text-[10px] uppercase font-bold px-1 group data-[state=active]:text-white data-[state=active]:bg-[var(--active-color)] data-[state=active]:shadow-lg"
+            style={{ "--active-color": nodeColor } as any}
+          >
             <Fingerprint className="h-3 w-3 mr-1" />
             Terms
           </TabsTrigger>
-          <TabsTrigger value="contributors" className="text-[10px] uppercase font-bold px-1">
+          <TabsTrigger 
+            value="contributors" 
+            className="text-[10px] uppercase font-bold px-1 group data-[state=active]:text-white data-[state=active]:bg-[var(--active-color)] data-[state=active]:shadow-lg"
+            style={{ "--active-color": nodeColor } as any}
+          >
             <Users className="h-3 w-3 mr-1" />
             Jurors
-            <span className="ml-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-slate-100 text-[8px] text-slate-500 font-bold group-data-[state=active]:bg-indigo-600 group-data-[state=active]:text-white transition-colors">
+            <span 
+              className="ml-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-slate-100 text-[8px] text-slate-500 font-bold group-data-[state=active]:bg-white/20 group-data-[state=active]:text-white transition-colors"
+            >
               {jurorCount}
             </span>
           </TabsTrigger>
-          <TabsTrigger value="sentences" className="text-[10px] uppercase font-bold px-1">
+          <TabsTrigger 
+            value="sentences" 
+            className="text-[10px] uppercase font-bold px-1 group data-[state=active]:text-white data-[state=active]:bg-[var(--active-color)] data-[state=active]:shadow-lg"
+            style={{ "--active-color": nodeColor } as any}
+          >
             <MessageSquare className="h-3 w-3 mr-1" />
             Text
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="insight" className="space-y-4">
-          <div className="rounded-2xl border-2 border-indigo-100 bg-gradient-to-r from-indigo-50/50 to-purple-50/50 p-4 shadow-sm">
+          <div className="rounded-2xl border-2 border-indigo-100 bg-gradient-to-r from-indigo-50/50 to-purple-50/50 p-4 shadow-sm" style={{ borderColor: `${nodeColor}20` }}>
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-2">
-                <div className="rounded-lg bg-indigo-600 p-1.5 text-white shadow-lg shadow-indigo-200">
+                <div 
+                  className="rounded-lg p-1.5 text-white shadow-lg"
+                  style={{ backgroundColor: nodeColor, boxShadow: `0 8px 16px ${nodeColor}40` }}
+                >
                   <Badge variant="outline" className="border-none p-0 text-white text-[9px]">AI</Badge>
                 </div>
                 <div>
-                  <h3 className="text-[10px] font-bold text-indigo-900 uppercase tracking-wider">Concept Insight</h3>
-                  <p className="text-[8px] text-indigo-500 font-medium">Synthesized from feedback</p>
+                  <h3 className="text-[10px] font-bold uppercase tracking-wider" style={{ color: nodeColor }}>Concept Insight</h3>
+                  <p className="text-[8px] text-indigo-500 font-medium opacity-70">Synthesized from feedback</p>
                 </div>
               </div>
               <div className="flex flex-col items-end gap-1">
                 <div className="flex items-center gap-1.5">
-                  <Badge variant="secondary" className="bg-indigo-600/10 text-indigo-700 border-indigo-200/50 font-bold text-[9px] px-1.5 h-4">
+                  <Badge 
+                    variant="secondary" 
+                    className="font-bold text-[9px] px-1.5 h-4 border-none"
+                    style={{ backgroundColor: `${nodeColor}15`, color: nodeColor }}
+                  >
                     {totalWeight.toFixed(1)} Weight
                   </Badge>
                   <Badge variant="outline" className="text-slate-500 border-slate-200 font-bold text-[9px] px-1.5 h-4">
@@ -313,7 +359,7 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
                   </Badge>
                 </div>
                 {insight?.isLoadingSummary && (
-                  <Badge variant="secondary" className="animate-pulse bg-indigo-100 text-indigo-700 border-none text-[8px]">Analyzing...</Badge>
+                  <Badge variant="secondary" className="animate-pulse bg-indigo-100 text-indigo-700 border-none text-[8px]" style={{ color: nodeColor, backgroundColor: `${nodeColor}10` }}>Analyzing...</Badge>
                 )}
               </div>
             </div>
@@ -345,8 +391,20 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
                   <div>
                     <Button 
                       variant="outline" 
-                      className="group px-3 py-1 border-indigo-200 bg-white/50 text-indigo-600 hover:bg-indigo-600 hover:text-white transition-all shadow-sm h-auto text-[10px]"
+                      className="group px-3 py-1 bg-white/50 transition-all shadow-sm h-auto text-[10px]"
+                      style={{ 
+                        borderColor: `${nodeColor}40`, 
+                        color: nodeColor 
+                      }}
                       onClick={() => onFetchSummary?.(node.id)}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.backgroundColor = nodeColor;
+                        e.currentTarget.style.color = 'white';
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.5)';
+                        e.currentTarget.style.color = nodeColor;
+                      }}
                     >
                       <Sparkles className="mr-1.5 h-3 w-3 transition-transform group-hover:rotate-12" />
                       Synthesize
@@ -359,16 +417,20 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
         </TabsContent>
 
         <TabsContent value="fingerprint" className="space-y-4">
-          <div className="rounded-2xl border border-purple-100 bg-purple-50/20 p-4 shadow-sm">
+          <div 
+            className="rounded-2xl border p-4 shadow-sm"
+            style={{ borderColor: `${nodeColor}20`, backgroundColor: `${nodeColor}05` }}
+          >
             <div className="mb-3">
-              <h3 className="text-xs font-black text-purple-900 uppercase tracking-tight">Semantic Fingerprint</h3>
-              <p className="text-[9px] text-purple-600 font-medium">Top terms from cluster centroid</p>
+              <h3 className="text-xs font-black uppercase tracking-tight" style={{ color: nodeColor }}>Semantic Fingerprint</h3>
+              <p className="text-[9px] text-slate-500 font-medium opacity-80">Top terms from cluster centroid</p>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {topTerms.map((t) => (
                 <Badge 
                   key={String(t)} 
-                  className="text-[10px] px-2 py-0.5 font-medium text-purple-700 border-purple-200"
+                  className="text-[10px] px-2 py-0.5 font-medium border-none"
+                  style={{ backgroundColor: `${nodeColor}10`, color: nodeColor }}
                 >
                   {String(t)}
                 </Badge>
@@ -406,10 +468,13 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
                   />
                   <Bar 
                     dataKey="value" 
-                    fill="#8b5cf6" 
                     radius={[0, 4, 4, 0]}
                     barSize={14}
-                  />
+                  >
+                    {conceptTopJurors.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={getEntityColor(entry.name, "juror")} />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -426,7 +491,11 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
               </div>
             </div>
             <div className="flex items-center gap-1.5">
-              <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 border-indigo-100 font-bold text-[10px] px-2">
+              <Badge 
+                variant="secondary" 
+                className="border-none font-bold text-[10px] px-2"
+                style={{ backgroundColor: `${nodeColor}15`, color: nodeColor }}
+              >
                 {totalWeight.toFixed(1)} Weight
               </Badge>
               <Badge variant="outline" className="text-slate-500 border-slate-200 font-bold text-[10px] px-2">

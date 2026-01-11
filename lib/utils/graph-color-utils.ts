@@ -75,3 +75,46 @@ export function lightenColor(hex: string, amount: number): string {
   return `#${newR.toString(16).padStart(2, "0")}${newG.toString(16).padStart(2, "0")}${newB.toString(16).padStart(2, "0")}`;
 }
 
+/**
+ * Deterministically jitter a base color using an identity string.
+ * Keeps the original hue as an anchor while introducing small offsets
+ * to avoid visually merging similar contributors.
+ */
+export function offsetColorByIdentity(baseColor: string, identity: string): string {
+  const hashToUnit = (text: string) => {
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+      hash = (hash << 5) - hash + text.charCodeAt(i);
+      hash |= 0;
+    }
+    return ((hash >>> 0) % 10000) / 10000;
+  };
+
+  const anchor = new THREE.Color(baseColor);
+  const hsl = { h: 0, s: 0, l: 0 };
+  anchor.getHSL(hsl);
+
+  const hueJitter = (hashToUnit(identity) - 0.5) * 0.14; // ±25° in hue space
+  const satJitter = 0.9 + hashToUnit(identity + "-s") * 0.2;
+  const lightJitter = 0.9 + hashToUnit(identity + "-l") * 0.18;
+
+  const color = new THREE.Color().setHSL(
+    (hsl.h + hueJitter + 1) % 1,
+    Math.min(1, Math.max(0, hsl.s * satJitter)),
+    Math.min(1, Math.max(0.05, Math.min(0.95, hsl.l * lightJitter)))
+  );
+
+  return `#${color.getHexString()}`;
+}
+
+/**
+ * Blend two hex colors by a given amount (0-1).
+ */
+export function mixColors(a: string, b: string, amount: number): string {
+  const amt = Math.min(1, Math.max(0, amount));
+  const colorA = new THREE.Color(a);
+  const colorB = new THREE.Color(b);
+  const mixed = colorA.clone().lerp(colorB, amt);
+  return `#${mixed.getHexString()}`;
+}
+

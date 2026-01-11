@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { NodeInspector } from "./NodeInspector";
 import { LinkInspector } from "./LinkInspector";
+import { getPCColor } from "@/lib/utils/graph-color-utils";
 import type { GraphNode, GraphLink } from "@/types/graph";
 import type { AnalysisResult, SentenceRecord } from "@/types/analysis";
 import type { JurorBlock } from "@/types/nlp";
@@ -36,17 +37,27 @@ export function FloatingDetailsPanel({
   if (!selectedNode && !selectedLink) return null;
   if (!analysis) return null;
 
+  const baseColor = selectedNode?.type === "juror" ? "#3b82f6" : "#8b5cf6";
+  const nodeColor = selectedNode?.pcValues ? getPCColor(selectedNode.pcValues, baseColor) : baseColor;
+
   return (
     <div className="absolute top-4 right-4 z-50 w-96 rounded-2xl border border-slate-200 bg-white/95 p-0 shadow-2xl backdrop-blur-sm transition-all duration-300 animate-in fade-in slide-in-from-right-4 max-h-[calc(100vh-8rem)] flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 bg-slate-50/50">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="rounded-lg bg-white p-1.5 text-indigo-600 shadow-sm border border-slate-100 shrink-0">
+          <div 
+            className="rounded-lg bg-white p-1.5 shadow-sm border border-slate-100 shrink-0"
+            style={{ color: nodeColor }}
+          >
             {selectedNode ? <Activity className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}
           </div>
           <div className="min-w-0 flex-1 overflow-hidden">
             <div className="flex items-center gap-2 mb-0.5">
-              <Badge variant="outline" className="border-blue-100 bg-blue-50/50 text-blue-600 px-1.5 py-0 text-[8px] font-bold uppercase h-3.5 shrink-0">
+              <Badge 
+                variant="outline" 
+                className="px-1.5 py-0 text-[8px] font-bold uppercase h-3.5 shrink-0"
+                style={{ backgroundColor: `${nodeColor}10`, color: nodeColor, borderColor: `${nodeColor}30` }}
+              >
                 {selectedNode ? selectedNode.type : selectedLink?.kind.replace(/([A-Z])/g, ' $1')}
               </Badge>
             </div>

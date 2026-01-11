@@ -4,7 +4,8 @@ import { useRef, useState, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Text, Billboard, Line, Html } from "@react-three/drei";
 import * as THREE from "three";
-import { getPCColor, lightenColor } from "@/lib/utils/graph-color-utils";
+import { getPCColor, lightenColor, mixColors, offsetColorByIdentity } from "@/lib/utils/graph-color-utils";
+import { stanceColor } from "@/lib/utils/stance-utils";
 import type { GraphLink, GraphNode, NodeType } from "@/types/graph";
 import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
 
@@ -197,30 +198,75 @@ export function Node3D({
     const jurorLinks = connectedLinks?.filter((link) => link.kind === "jurorConcept") ?? [];
     const jurorCount = jurorLinks.length;
 
-    const contributions = jurorLinks.map((link) => {
-      const sourceId = typeof link.source === "string" ? link.source : link.source.id;
-      const targetId = typeof link.target === "string" ? link.target : link.target.id;
-      const otherId = sourceId === node.id ? targetId : sourceId;
-      const jurorNode = otherId ? allNodesMap?.get(otherId) : undefined;
+    const contributions = jurorLinks
+      .map((link) => {
+        const sourceId = typeof link.source === "string" ? link.source : link.source.id;
+        const targetId = typeof link.target === "string" ? link.target : link.target.id;
+        const otherId = sourceId === node.id ? targetId : sourceId;
+        const otherNode = otherId ? allNodesMap?.get(otherId) : undefined;
+        const weight = Math.max(0, link.weight ?? 0);
+        if (weight === 0) return null;
 
-      let jurorColor = "#1a1a1a";
-      if (jurorNode) {
-        const jurorColors = nodeColors[jurorNode.type as NodeType] ?? defaultNodeColors;
-        jurorColor = jurorNode.pcValues
-          ? getPCColor(jurorNode.pcValues, jurorColors.base)
-          : jurorColors.base;
-      }
+        const otherBase = otherNode ? (nodeColors[otherNode.type as NodeType] ?? defaultNodeColors) : defaultNodeColors;
+        const otherNodeColor = otherNode?.pcValues
+          ? getPCColor(otherNode.pcValues, otherBase.base)
+          : otherBase.base;
 
-      return { color: jurorColor, weight: link.weight ?? 1 };
-    });
+        const baseColor = node.type === "concept" ? nodeColor : otherNodeColor;
+        const identitySeed = otherNode?.label || otherId || "";
+        const identityColor = offsetColorByIdentity(baseColor, identitySeed);
+        const stanceTint = link.stance
+          ? mixColors(identityColor, stanceColor(link.stance), 0.25)
+          : identityColor;
+
+        return { color: stanceTint, weight, identity: identitySeed };
+      })
+      .filter((c): c is { color: string; weight: number; identity: string } => !!c);
 
     const totalWeight = contributions.reduce((sum, c) => sum + c.weight, 0);
-    const jurorRatios = contributions.map((c) => ({
-      color: c.color,
-      ratio: c.weight / (totalWeight || 1),
-    }));
+    const weightedContributions = totalWeight > 0
+      ? contributions
+          .map((c) => ({ ...c, ratio: c.weight / totalWeight }))
+          .sort((a, b) => b.weight - a.weight)
+      : [];
 
     const mainBranchCount = Math.floor(8 + Math.min(jurorCount * 1.5, 12));
+    const branchColors: string[] = [];
+
+    if (weightedContributions.length === 0) {
+      for (let i = 0; i < mainBranchCount; i++) branchColors.push(nodeColor);
+    } else {
+      const targets = weightedContributions.map((c) => c.ratio * mainBranchCount);
+      const counts = targets.map((t) => Math.floor(t));
+      let remaining = mainBranchCount - counts.reduce((sum, c) => sum + c, 0);
+
+      const remainderOrder = targets
+        .map((t, i) => ({ i, remainder: t - counts[i] }))
+        .sort((a, b) => b.remainder - a.remainder);
+
+      for (let i = 0; i < remaining; i++) {
+        const idx = remainderOrder[i]?.i ?? 0;
+        counts[idx] = (counts[idx] ?? 0) + 1;
+      }
+
+      let placed = 0;
+      while (placed < mainBranchCount) {
+        let advanced = false;
+        for (let i = 0; i < counts.length && placed < mainBranchCount; i++) {
+          if (counts[i] > 0) {
+            branchColors.push(weightedContributions[i].color);
+            counts[i]--;
+            placed++;
+            advanced = true;
+          }
+        }
+        if (!advanced) break;
+      }
+
+      while (branchColors.length < mainBranchCount) {
+        branchColors.push(nodeColor);
+      }
+    }
     const segments: RootSegment[] = [];
 
     const phi = Math.PI * (3 - Math.sqrt(5)); // golden angle
@@ -288,18 +334,7 @@ export function Node3D({
     };
 
     for (let i = 0; i < mainBranchCount; i++) {
-      let branchColor = "#1a1a1a";
-      if (jurorRatios.length > 0) {
-        const progress = i / mainBranchCount;
-        let cumulative = 0;
-        for (const contrib of jurorRatios) {
-          cumulative += contrib.ratio;
-          if (progress <= cumulative) {
-            branchColor = contrib.color;
-            break;
-          }
-        }
-      }
+      const branchColor = branchColors[i] ?? nodeColor;
 
       const t = i / mainBranchCount;
       const y = 1 - t * 2;
@@ -312,7 +347,7 @@ export function Node3D({
     }
 
     return segments;
-  }, [allNodesMap, connectedLinks, node.id, node.meta?.weight, radius]);
+  }, [allNodesMap, connectedLinks, node.id, node.type, node.meta?.weight, radius, nodeColor]);
 
   const [growthProgress, setGrowthProgress] = useState(0);
   const lastSelectedRef = useRef(isSelected);
