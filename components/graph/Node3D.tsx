@@ -5,7 +5,7 @@ import { useFrame } from "@react-three/fiber";
 import { Text, Billboard, Line, Html } from "@react-three/drei";
 import * as THREE from "three";
 import { getPCColor, lightenColor } from "@/lib/utils/graph-color-utils";
-import type { GraphNode, NodeType } from "@/types/graph";
+import type { GraphLink, GraphNode, NodeType } from "@/types/graph";
 import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
 
 // A simple seeded random number generator for deterministic procedural roots
@@ -30,6 +30,8 @@ interface Node3DProps {
   onClick: (node: GraphNode, event?: MouseEvent) => void;
   onDoubleClick: (node: GraphNode) => void;
   insight?: ConceptInsight;
+  connectedLinks?: GraphLink[];
+  allNodesMap?: Map<string, GraphNode>;
 }
 
 // Color scheme for node types
@@ -61,7 +63,7 @@ const nodeColors: Record<NodeType, NodeColorScheme> = {
 // Custom Shader for the soft "Photoshop" outer glow halo
 const selectionHaloShader = {
   uniforms: {
-    uColor: { value: new THREE.Color("#fef08a") }, // Lighter Yellow (Tailwind yellow-200)
+    uColor: { value: new THREE.Color("#000000") }, // Black glow
     uOpacity: { value: 0.6 },
   },
   vertexShader: `
@@ -88,6 +90,7 @@ interface RootSegment {
   depth: number;
   startT: number; // When this segment starts growing (0-1)
   endT: number;   // When this segment finishes growing (0-1)
+  color: string;
 }
 
 interface ProceduralRootProps {
@@ -100,8 +103,7 @@ interface ProceduralRootProps {
  * Renders a single branching root with growth and firing pulse animation.
  */
 function ProceduralRoot({ segment, globalGrowth, pulseOffset }: ProceduralRootProps) {
-  const { points, startT, endT } = segment;
-  const rootBaseColor = "#1a1a1a"; // Almost black
+  const { points, startT, endT, color } = segment;
   
   // Calculate local growth for this specific segment
   const localGrowth = useMemo(() => {
@@ -119,10 +121,10 @@ function ProceduralRoot({ segment, globalGrowth, pulseOffset }: ProceduralRootPr
 
   return (
     <group>
-      {/* SIMPLE BLACK ROOTS - Removed outer glow as requested */}
+      {/* Roots tinted per juror contribution */}
       <Line
         points={visiblePoints}
-        color={rootBaseColor}
+        color={color}
         lineWidth={2.2}
         transparent
         opacity={1.0}
@@ -132,7 +134,16 @@ function ProceduralRoot({ segment, globalGrowth, pulseOffset }: ProceduralRootPr
   );
 }
 
-export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insight }: Node3DProps) {
+export function Node3D({ 
+  node, 
+  isSelected, 
+  opacity, 
+  onClick, 
+  onDoubleClick, 
+  insight,
+  connectedLinks = [],
+  allNodesMap
+}: Node3DProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
   
@@ -183,24 +194,49 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
   // Procedural root structure generation
   const rootSegments = useMemo(() => {
     const rng = createPRNG(node.id);
-    const weight = (node.meta?.weight as number) || 10;
-    const mainBranchCount = Math.floor(8 + Math.min(weight / 2, 12));
+    const jurorLinks = connectedLinks?.filter((link) => link.kind === "jurorConcept") ?? [];
+    const jurorCount = jurorLinks.length;
+
+    const contributions = jurorLinks.map((link) => {
+      const sourceId = typeof link.source === "string" ? link.source : link.source.id;
+      const targetId = typeof link.target === "string" ? link.target : link.target.id;
+      const otherId = sourceId === node.id ? targetId : sourceId;
+      const jurorNode = otherId ? allNodesMap?.get(otherId) : undefined;
+
+      let jurorColor = "#1a1a1a";
+      if (jurorNode) {
+        const jurorColors = nodeColors[jurorNode.type as NodeType] ?? defaultNodeColors;
+        jurorColor = jurorNode.pcValues
+          ? getPCColor(jurorNode.pcValues, jurorColors.base)
+          : jurorColors.base;
+      }
+
+      return { color: jurorColor, weight: link.weight ?? 1 };
+    });
+
+    const totalWeight = contributions.reduce((sum, c) => sum + c.weight, 0);
+    const jurorRatios = contributions.map((c) => ({
+      color: c.color,
+      ratio: c.weight / (totalWeight || 1),
+    }));
+
+    const mainBranchCount = Math.floor(8 + Math.min(jurorCount * 1.5, 12));
     const segments: RootSegment[] = [];
-    
+
     const phi = Math.PI * (3 - Math.sqrt(5)); // golden angle
-    
+    const nodeWeight = (node.meta?.weight as number) || 10;
+
     const generateBranch = (
-      start: THREE.Vector3, 
-      direction: THREE.Vector3, 
-      length: number, 
+      start: THREE.Vector3,
+      direction: THREE.Vector3,
+      length: number,
       depth: number,
-      parentStartT: number,
-      parentEndT: number,
-      nodeWeight: number
+      currentNodeWeight: number,
+      branchColor: string
     ) => {
-      const segmentRes = 24; 
+      const segmentRes = 24;
       const controlPoints = [start.clone()];
-      
+
       const midPoint = start.clone().add(direction.clone().multiplyScalar(length * 0.5));
       midPoint.add(new THREE.Vector3(
         (rng() - 0.5) * length * 0.45,
@@ -208,7 +244,7 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
         (rng() - 0.5) * length * 0.45
       ));
       controlPoints.push(midPoint);
-      
+
       const endPoint = start.clone().add(direction.clone().multiplyScalar(length));
       endPoint.add(new THREE.Vector3(
         (rng() - 0.5) * length * 0.2,
@@ -227,18 +263,18 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
         points,
         depth,
         startT,
-        endT
+        endT,
+        color: branchColor,
       });
 
       // Procedural branching based on weight
       // Level 0 -> Level 1 -> Level 2
-      if (depth < 2) { 
-        // More branches for higher weight nodes
-        const maxSubBranches = depth === 0 
-          ? Math.floor(1 + Math.min(nodeWeight / 15, 3)) // Up to 4 branches from trunk
-          : Math.floor(1 + Math.min(nodeWeight / 30, 1)); // Up to 2 branches from sub-branches
-          
-        const subBranchCount = rng() > 0.3 ? maxSubBranches : 0; 
+      if (depth < 2) {
+        const maxSubBranches = depth === 0
+          ? Math.floor(1 + Math.min(currentNodeWeight / 15, 3)) // Up to 4 branches from trunk
+          : Math.floor(1 + Math.min(currentNodeWeight / 30, 1)); // Up to 2 branches from sub-branches
+
+        const subBranchCount = rng() > 0.3 ? maxSubBranches : 0;
 
         for (let i = 0; i < subBranchCount; i++) {
           const splitPoint = points[Math.floor(points.length * (0.6 + rng() * 0.3))];
@@ -246,24 +282,37 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
           const angle = (rng() - 0.5) * 1.4;
           const axis = new THREE.Vector3(rng() - 0.5, rng() - 0.5, rng() - 0.5).normalize();
           splitDir.applyAxisAngle(axis, angle);
-          generateBranch(splitPoint, splitDir, length * 0.65, depth + 1, endT, 1.0, nodeWeight);
+          generateBranch(splitPoint, splitDir, length * 0.65, depth + 1, currentNodeWeight, branchColor);
         }
       }
     };
 
     for (let i = 0; i < mainBranchCount; i++) {
+      let branchColor = "#1a1a1a";
+      if (jurorRatios.length > 0) {
+        const progress = i / mainBranchCount;
+        let cumulative = 0;
+        for (const contrib of jurorRatios) {
+          cumulative += contrib.ratio;
+          if (progress <= cumulative) {
+            branchColor = contrib.color;
+            break;
+          }
+        }
+      }
+
       const t = i / mainBranchCount;
       const y = 1 - t * 2;
       const r = Math.sqrt(Math.max(0, 1 - y * y));
       const theta = phi * i;
       const dir = new THREE.Vector3(Math.cos(theta) * r, y, Math.sin(theta) * r).normalize();
-      
+
       const start = dir.clone().multiplyScalar(radius);
-      generateBranch(start, dir, radius * 0.7 + 0.4, 0, 0, 0.6, weight);
+      generateBranch(start, dir, radius * 0.7 + 0.4, 0, nodeWeight, branchColor);
     }
-    
+
     return segments;
-  }, [node.id, node.meta?.weight, radius]);
+  }, [allNodesMap, connectedLinks, node.id, node.meta?.weight, radius]);
 
   const [growthProgress, setGrowthProgress] = useState(0);
   const lastSelectedRef = useRef(isSelected);

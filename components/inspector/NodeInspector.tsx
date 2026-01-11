@@ -262,6 +262,7 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
     }, 0);
 
     const sentenceCount = conceptSentences.length;
+    const jurorCount = new Set(conceptSentences.map(s => s.juror)).size;
 
     return (
       <Tabs defaultValue="insight" className="w-full">
@@ -277,6 +278,9 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
           <TabsTrigger value="contributors" className="text-[10px] uppercase font-bold px-1">
             <Users className="h-3 w-3 mr-1" />
             Jurors
+            <span className="ml-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-slate-100 text-[8px] text-slate-500 font-bold group-data-[state=active]:bg-indigo-600 group-data-[state=active]:text-white transition-colors">
+              {jurorCount}
+            </span>
           </TabsTrigger>
           <TabsTrigger value="sentences" className="text-[10px] uppercase font-bold px-1">
             <MessageSquare className="h-3 w-3 mr-1" />
@@ -303,6 +307,9 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
                   </Badge>
                   <Badge variant="outline" className="text-slate-500 border-slate-200 font-bold text-[9px] px-1.5 h-4">
                     n={sentenceCount}
+                  </Badge>
+                  <Badge variant="outline" className="text-slate-500 border-slate-200 font-bold text-[9px] px-1.5 h-4">
+                    {jurorCount} {jurorCount === 1 ? 'Juror' : 'Jurors'}
                   </Badge>
                 </div>
                 {insight?.isLoadingSummary && (
@@ -374,7 +381,12 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-xs font-bold text-slate-800 uppercase tracking-tight">Top contributors</h3>
-              <Badge variant="outline" className="bg-slate-50 text-slate-500 text-[9px]">Distribution</Badge>
+              <div className="flex items-center gap-1.5">
+                <Badge variant="outline" className="bg-slate-50 text-slate-500 font-bold text-[9px]">
+                  {jurorCount} Total
+                </Badge>
+                <Badge variant="outline" className="bg-slate-50 text-slate-500 text-[9px]">Distribution</Badge>
+              </div>
             </div>
             <div className="h-[200px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -419,6 +431,9 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
               </Badge>
               <Badge variant="outline" className="text-slate-500 border-slate-200 font-bold text-[10px] px-2">
                 n={sentenceCount}
+              </Badge>
+              <Badge variant="outline" className="text-slate-500 border-slate-200 font-bold text-[10px] px-2">
+                {jurorCount} {jurorCount === 1 ? 'Juror' : 'Jurors'}
               </Badge>
             </div>
           </div>

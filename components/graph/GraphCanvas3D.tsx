@@ -312,6 +312,23 @@ function SceneContent({
     return map;
   }, [nodes]);
 
+  const linksByNode = useMemo(() => {
+    const map = new Map<string, GraphLink[]>();
+    links.forEach((link) => {
+      const sourceId = typeof link.source === "string" ? link.source : link.source.id;
+      const targetId = typeof link.target === "string" ? link.target : link.target.id;
+      if (!map.has(sourceId)) {
+        map.set(sourceId, []);
+      }
+      if (!map.has(targetId)) {
+        map.set(targetId, []);
+      }
+      map.get(sourceId)!.push(link);
+      map.get(targetId)!.push(link);
+    });
+    return map;
+  }, [links]);
+
   // Generate axis directions
   const axisDirections = useMemo(() => 
     generateSymmetricAxisDirections(numDimensions), 
@@ -430,13 +447,15 @@ function SceneContent({
         <Node3D
           key={node.id}
           node={node}
-          isSelected={selectedNodeId === node.id}
-          opacity={nodeVisibility.get(node.id) ?? 0}
-          onClick={onNodeClick}
-          onDoubleClick={onNodeDoubleClick}
-          insight={insights[node.id]}
-        />
-      ))}
+        isSelected={selectedNodeId === node.id}
+        opacity={nodeVisibility.get(node.id) ?? 0}
+        onClick={onNodeClick}
+        onDoubleClick={onNodeDoubleClick}
+        insight={insights[node.id]}
+        connectedLinks={linksByNode.get(node.id) || []}
+        allNodesMap={nodeMap}
+      />
+    ))}
     </>
   );
 }
