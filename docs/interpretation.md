@@ -130,3 +130,42 @@ Axis labels identify the concepts at the extremes of each axis, showing you what
 **Key Insight:** The axes don't have inherent semantic meaning on their own—they're mathematical directions. But by labeling the extremes, we transform the "black box" of PCA into an interpretable map of your conceptual landscape.
 
 ---
+
+## Understanding the Node Anatomy: Roots and Identity
+
+When you select a node in the 3D graph, you will see "roots" or "tendrils" growing out of it. These are a high-fidelity visualization of the **Identity Distribution** and **Contribution Weight** of the jurors connected to that node.
+
+### 1. Root Colors: Matching Juror Identity
+Unlike the node itself, which uses a blended color to represent its general "profile," the roots are **multicolored**.
+*   **Direct Identity Match:** Each color in the root system corresponds exactly to a Juror's color in the "Jurors" sidebar tab. 
+*   **Visual Fingerprint:** If you see a concept node with a "rainbow" of different colored roots, it means many different jurors are contributing diverse perspectives. If the roots are overwhelmingly one color, it means a single juror is the primary "owner" of that concept.
+
+### 2. Branching Density: The "Weight" Map
+The "thickness" and "complexity" of the roots are programmatically tied to the **Contribution Weight**:
+*   **Proportional Count:** The number of root "trunks" for a specific color is proportional to that juror's weight. If the sidebar shows a juror has 50% contribution, 50% of the roots will be their color.
+*   **"Bushiness" (Sub-branching):** Stronger contributors have "bushier" roots with more secondary and tertiary branches. Minor contributors appear as thin, single tendrils.
+*   **Deterministic Shuffling:** Colors are scattered evenly around the node surface so that the "tapestry" of contributors is visible from any camera angle.
+
+---
+
+## The Color Language of Feedback: Stance
+
+While the roots tell you **who** is talking, the colors of the **link lines** and the **stance badges** in the inspector tell you the **intent** of the feedback:
+
+*   <span style="color:#16a34a">●</span> **Green (Praise):** Positive feedback, validation, or successful elements.
+*   <span style="color:#dc2626">●</span> **Red (Critique):** Negative feedback, identified failures, or "pain points."
+*   <span style="color:#f59e0b">●</span> **Orange (Suggestion):** Constructive advice, requested changes, or future possibilities.
+*   <span style="color:#64748b">●</span> **Slate (Neutral):** Purely descriptive observations or factual statements.
+
+**Key Insight:** A concept node with mostly **Red** links but a diverse set of **Multicolored Roots** indicates a "universal pain point"—something that many different jurors (identities) agree is a problem.
+
+---
+
+## Spatial Shapes: Jurors vs. Concepts
+
+To help you navigate the 3D space, we use distinct geometries for different entity types:
+
+*   **Spheres (Concepts):** Represent semantic clusters and themes. Their size indicates the total volume of feedback associated with that idea.
+*   **Dodecahedrons (Jurors):** Represent individual people. They are shaped like complex geometric "crystals" to signify unique human perspectives. 
+
+---
