@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import { Download, Network, Trash2 } from "lucide-react";
+import { Download, FileText, Network, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,13 +13,13 @@ import { AIControlsAccordion } from "@/components/controls/AIControlsAccordion";
 import { SearchBarAccordion } from "@/components/controls/SearchBarAccordion";
 import { GraphFiltersAccordion } from "@/components/controls/GraphFiltersAccordion";
 import { GraphCanvas3D } from "@/components/graph/GraphCanvas3D";
-import { InspectorPanel } from "@/components/inspector/InspectorPanel";
+import { InspectorPanel, type InspectorTab } from "@/components/inspector/InspectorPanel";
 import { FloatingDetailsPanel } from "@/components/inspector/FloatingDetailsPanel";
 import { CollapsibleSidebar } from "@/components/ui/collapsible-sidebar";
 import { useConceptSummarizer } from "@/hooks/useConceptSummarizer";
 import { useAxisLabelEnhancer } from "@/hooks/useAxisLabelEnhancer";
 import { segmentByJuror } from "@/lib/segmentation/juror-segmenter";
-import { downloadJson } from "@/lib/utils/download";
+import { downloadJson, downloadPdf } from "@/lib/utils/download";
 import { cn } from "@/lib/utils/cn";
 import { DEFAULT_SAMPLE, DEFAULT_MODEL } from "@/constants/nlp-constants";
 import { calculateCost, formatCost } from "@/lib/utils/api-utils";
@@ -108,6 +108,9 @@ export default function HomePage() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [apiCallCount, setApiCallCount] = useState(0);
   const [apiCostTotal, setApiCostTotal] = useState(0);
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("console");
+  const analysisContainerRef = useRef<HTMLDivElement | null>(null);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const lastVarianceLogSignature = useRef<string | null>(null);
   const addLog = useCallback((type: LogEntry["type"], message: string, data?: any) => {
     let finalMessage = message;
@@ -641,6 +644,23 @@ export default function HomePage() {
 
   const emptyState = !analysis || analysis.stats.totalSentences === 0;
 
+  const handleExportPdf = useCallback(async () => {
+    if (!analysis || emptyState) return;
+    setInspectorTab("analysis");
+    setExportingPdf(true);
+    try {
+      // Wait for the analysis tab to render before capturing
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const container = analysisContainerRef.current;
+      if (!container) throw new Error("Analysis panel not ready");
+      await downloadPdf(container, `analysis-report-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (error) {
+      console.error("[Export PDF] Failed to export analysis report", error);
+    } finally {
+      setExportingPdf(false);
+    }
+  }, [analysis, emptyState]);
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-slate-50 text-slate-900">
       {/* Left Sidebar */}
@@ -753,6 +773,15 @@ export default function HomePage() {
               <Button
                 variant="outline"
                 className="h-9 rounded-xl border-slate-200 px-4 font-semibold shadow-sm transition-all hover:bg-slate-50 hover:shadow-md active:scale-95 text-xs"
+                onClick={handleExportPdf}
+                disabled={!analysis || emptyState || exportingPdf}
+              >
+                <FileText className="mr-2 h-4 w-4" />
+                {exportingPdf ? "Preparing..." : "Export PDF"}
+              </Button>
+              <Button
+                variant="outline"
+                className="h-9 rounded-xl border-slate-200 px-4 font-semibold shadow-sm transition-all hover:bg-slate-50 hover:shadow-md active:scale-95 text-xs"
                 onClick={() => {
                   if (!analysis) return;
                   downloadJson(analysis, `jury-concept-graph-${new Date().toISOString().slice(0, 10)}.json`);
@@ -836,6 +865,10 @@ export default function HomePage() {
             enableAxisLabelAI={enableAxisLabelAI}
             isRefreshingAxisLabels={isRefreshingAxisLabels}
             insights={insights}
+            activeTab={inspectorTab}
+            onTabChange={setInspectorTab}
+            autoExpandOnAnalysis
+            analysisContainerRef={analysisContainerRef}
           />
 
         </div>

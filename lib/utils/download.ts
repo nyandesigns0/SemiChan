@@ -10,3 +10,76 @@ export function downloadJson(obj: unknown, filename = "jury-concept-graph.json")
   URL.revokeObjectURL(url);
 }
 
+function gatherHeadStyles(): string {
+  return Array.from(document.querySelectorAll("link[rel='stylesheet'], style"))
+    .map((node) => node.outerHTML)
+    .join("\n");
+}
+
+function createPrintDocument(targetHtml: string, filename: string): string {
+  const styles = gatherHeadStyles();
+  return `
+    <!doctype html>
+    <html>
+      <head>
+        <title>${filename}</title>
+        ${styles}
+        <style>
+          body {
+            margin: 0;
+            background: #f8fafc;
+            font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+            -webkit-print-color-adjust: exact;
+          }
+          #export-root {
+            width: 100%;
+          }
+          @media print {
+            body {
+              padding: 24px;
+            }
+            #export-root {
+              width: 100%;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div id="export-root">${targetHtml}</div>
+        <script>
+          function triggerPrint() {
+            window.print();
+          }
+          window.addEventListener("load", () => {
+            setTimeout(triggerPrint, 100);
+          });
+        </script>
+      </body>
+    </html>
+  `;
+}
+
+export async function downloadPdf(target: HTMLElement, filename = "analysis-report.pdf"): Promise<void> {
+  if (!target) throw new Error("No target element provided for PDF export");
+
+  const html = createPrintDocument(target.outerHTML, filename);
+  const printWindow = window.open("", "_blank", "toolbar=0,location=0,menubar=0,width=1280,height=720");
+  if (!printWindow) {
+    throw new Error("Unable to open window for PDF export");
+  }
+
+  return new Promise<void>((resolve) => {
+    const cleanup = () => {
+      printWindow.close();
+      resolve();
+    };
+    printWindow.document.write(html);
+    printWindow.document.close();
+
+    printWindow.addEventListener("afterprint", cleanup);
+    printWindow.addEventListener("beforeunload", cleanup);
+    printWindow.addEventListener("load", () => {
+      printWindow.focus();
+    });
+  });
+}

@@ -9,6 +9,8 @@ import type { AnalysisResult } from "@/types/analysis";
 import type { JurorBlock } from "@/types/nlp";
 import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
 
+export type InspectorTab = "console" | "analysis";
+
 interface InspectorPanelProps {
   logs: LogEntry[];
   analysis: AnalysisResult | null;
@@ -17,9 +19,15 @@ interface InspectorPanelProps {
   enableAxisLabelAI?: boolean;
   isRefreshingAxisLabels?: boolean;
   insights?: Record<string, ConceptInsight>;
+  /** When provided, the panel will follow this tab value. */
+  activeTab?: InspectorTab;
+  /** Notify parent when a tab changes. */
+  onTabChange?: (tab: InspectorTab) => void;
+  /** If true, expanding happens automatically when switching to the analysis tab. */
+  autoExpandOnAnalysis?: boolean;
+  /** Ref to the scrollable analysis container for export/snapshot purposes. */
+  analysisContainerRef?: React.RefObject<HTMLDivElement>;
 }
-
-type TabType = "console" | "analysis";
 
 const MIN_HEIGHT = 40;
 const DEFAULT_HEIGHT = 350;
@@ -33,8 +41,12 @@ export function InspectorPanel({
   enableAxisLabelAI,
   isRefreshingAxisLabels,
   insights,
+  activeTab,
+  onTabChange,
+  autoExpandOnAnalysis = false,
+  analysisContainerRef,
 }: InspectorPanelProps) {
-  const [activeTab, setActiveTab] = useState<TabType>("console");
+  const [internalTab, setInternalTab] = useState<InspectorTab>("console");
   const [height, setHeight] = useState(MIN_HEIGHT);
   const [isResizing, setIsResizing] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
@@ -73,6 +85,27 @@ export function InspectorPanel({
     };
   }, [isResizing]);
 
+  const currentTab = activeTab ?? internalTab;
+
+  useEffect(() => {
+    if (activeTab && activeTab !== internalTab) {
+      setInternalTab(activeTab);
+      if (activeTab === "analysis" && autoExpandOnAnalysis) {
+        setIsCollapsed(false);
+        setHeight((prev) => (prev < DEFAULT_HEIGHT ? DEFAULT_HEIGHT : prev));
+      }
+    }
+  }, [activeTab, internalTab, autoExpandOnAnalysis]);
+
+  const handleTabChange = (tab: InspectorTab) => {
+    setInternalTab(tab);
+    onTabChange?.(tab);
+    if (tab === "analysis" && autoExpandOnAnalysis) {
+      setIsCollapsed(false);
+      setHeight((prev) => (prev < DEFAULT_HEIGHT ? DEFAULT_HEIGHT : prev));
+    }
+  };
+
   const toggleCollapse = () => {
     if (isCollapsed) {
       setIsCollapsed(false);
@@ -108,15 +141,15 @@ export function InspectorPanel({
         {/* Left Side: Tabs */}
         <div className="flex items-center gap-1">
           <TabButton
-            active={activeTab === "console"}
-            onClick={() => { setActiveTab("console"); setIsCollapsed(false); }}
+            active={currentTab === "console"}
+            onClick={() => { handleTabChange("console"); setIsCollapsed(false); }}
             icon={<Terminal className="h-3.5 w-3.5" />}
             label="Console"
             count={logs.length}
           />
           <TabButton
-            active={activeTab === "analysis"}
-            onClick={() => { setActiveTab("analysis"); setIsCollapsed(false); }}
+            active={currentTab === "analysis"}
+            onClick={() => { handleTabChange("analysis"); setIsCollapsed(false); }}
             icon={<BarChart3 className="h-3.5 w-3.5" />}
             label="Analysis"
           />
@@ -126,7 +159,7 @@ export function InspectorPanel({
         {isCollapsed && (
           <div className="flex flex-1 items-center justify-center px-4 overflow-hidden">
             <span className="truncate text-[10px] font-medium text-slate-400 uppercase tracking-tight">
-              {activeTab === "console" ? "System Logs Active" : "Analysis Report"}
+              {currentTab === "console" ? "System Logs Active" : "Analysis Report"}
             </span>
           </div>
         )}
@@ -145,15 +178,15 @@ export function InspectorPanel({
       {/* Content Area */}
       {!isCollapsed && (
         <div className="flex-1 overflow-hidden bg-slate-50/30">
-          {activeTab === "console" && (
+          {currentTab === "console" && (
             <InspectorConsole
               logs={logs}
               isEmbedded={true}
             />
           )}
 
-          {activeTab === "analysis" && (
-            <div className="h-full overflow-y-auto bg-white">
+          {currentTab === "analysis" && (
+            <div ref={analysisContainerRef} className="h-full overflow-y-auto bg-white">
               <AnalysisReport 
                 analysis={analysis} 
                 jurorBlocks={jurorBlocks} 
