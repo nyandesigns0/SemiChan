@@ -256,6 +256,13 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
         return weightB - weightA;
       });
 
+    const totalWeight = conceptSentences.reduce((acc, s) => {
+      const membership = s.conceptMembership?.find(m => m.conceptId === cid);
+      return acc + (membership?.weight || (s.conceptId === cid ? 1 : 0));
+    }, 0);
+
+    const sentenceCount = conceptSentences.length;
+
     return (
       <Tabs defaultValue="insight" className="w-full">
         <TabsList className="grid w-full grid-cols-4 mb-4">
@@ -289,9 +296,19 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
                   <p className="text-[8px] text-indigo-500 font-medium">Synthesized from feedback</p>
                 </div>
               </div>
-              {insight?.isLoadingSummary && (
-                <Badge variant="secondary" className="animate-pulse bg-indigo-100 text-indigo-700 border-none text-[8px]">Analyzing...</Badge>
-              )}
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex items-center gap-1.5">
+                  <Badge variant="secondary" className="bg-indigo-600/10 text-indigo-700 border-indigo-200/50 font-bold text-[9px] px-1.5 h-4">
+                    {totalWeight.toFixed(1)} Weight
+                  </Badge>
+                  <Badge variant="outline" className="text-slate-500 border-slate-200 font-bold text-[9px] px-1.5 h-4">
+                    n={sentenceCount}
+                  </Badge>
+                </div>
+                {insight?.isLoadingSummary && (
+                  <Badge variant="secondary" className="animate-pulse bg-indigo-100 text-indigo-700 border-none text-[8px]">Analyzing...</Badge>
+                )}
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -389,9 +406,21 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
         </TabsContent>
 
         <TabsContent value="sentences" className="space-y-4">
-          <div className="mb-2">
-            <h3 className="text-xs font-black text-slate-900 uppercase tracking-tight">Associated Sentences</h3>
-            <p className="text-[9px] text-slate-500 font-medium">Full list of evidence (including soft matches)</p>
+          <div className="mb-2 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex flex-col">
+                <h3 className="text-xs font-black text-slate-900 uppercase tracking-tight">Associated Sentences</h3>
+                <p className="text-[9px] text-slate-500 font-medium">Full list of evidence (including soft matches)</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 border-indigo-100 font-bold text-[10px] px-2">
+                {totalWeight.toFixed(1)} Weight
+              </Badge>
+              <Badge variant="outline" className="text-slate-500 border-slate-200 font-bold text-[10px] px-2">
+                n={sentenceCount}
+              </Badge>
+            </div>
           </div>
           <SentenceList sentences={conceptSentences} conceptId={cid} />
         </TabsContent>

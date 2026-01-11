@@ -109,6 +109,15 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
   // Calculate size and color
   const colors = nodeColors[node.type as NodeType] ?? defaultNodeColors;
   const isVisible = opacity > 0;
+  
+  // Static random rotation for juror shapes to look more organic
+  const rotation = useMemo(() => {
+    if (node.type === "juror") {
+      return [Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI] as [number, number, number];
+    }
+    return [0, 0, 0] as [number, number, number];
+  }, [node.id, node.type]);
+
   let color: string;
   
   // Custom axis-based color for concept nodes
@@ -136,7 +145,7 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
   const radius = (node.size / 16) * 0.3; // Scale down for 3D space
   
   // Animate on hover/select (only if visible)
-  useFrame(() => {
+  useFrame((state) => {
     if (!meshRef.current) return;
     const targetScale = (hovered || isSelected) && isVisible ? 1.2 : 1;
     meshRef.current.scale.lerp(
@@ -168,9 +177,10 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
   
   return (
     <group position={position}>
-      {/* Node sphere */}
+      {/* Node geometry - Cubes for jurors, Spheres for concepts */}
       <mesh
         ref={meshRef}
+        rotation={rotation}
         onClick={(e) => {
           e.stopPropagation();
           handleClick(e.nativeEvent as MouseEvent);
@@ -178,7 +188,11 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
         onPointerOver={() => setHovered(true)}
         onPointerOut={() => setHovered(false)}
       >
-        <sphereGeometry args={[radius, 32, 32]} />
+        {node.type === "juror" ? (
+          <dodecahedronGeometry args={[radius * 0.8, 0]} />
+        ) : (
+          <sphereGeometry args={[radius, 32, 32]} />
+        )}
         <meshStandardMaterial
           color={color}
           metalness={0.3}
@@ -214,10 +228,28 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
       
       {/* Selection ring */}
       {isSelected && (
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[radius + 0.1, radius + 0.15, 32]} />
-          <meshBasicMaterial color="#fbbf24" side={THREE.DoubleSide} />
-        </mesh>
+        <group>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[radius + 0.1, radius + 0.15, 32]} />
+            <meshBasicMaterial color="#fbbf24" side={THREE.DoubleSide} />
+          </mesh>
+          
+          {/* Internal count/weight label */}
+          <Billboard>
+            <Text
+              position={[0, 0, 0.01]} // Slightly forward to avoid Z-fighting with sphere surface
+              fontSize={radius * 0.8}
+              color="white"
+              anchorX="center"
+              anchorY="middle"
+              fontWeight="bold"
+            >
+              {node.type === "concept" && node.meta?.weight 
+                ? Math.round(node.meta.weight as number).toString() 
+                : ""}
+            </Text>
+          </Billboard>
+        </group>
       )}
     </group>
   );

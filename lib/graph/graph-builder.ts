@@ -282,7 +282,7 @@ export async function buildAnalysis(
       id: `juror:${j}`, 
       type: "juror", 
       label: j, 
-      size: 16, 
+      size: 20, 
       meta: {},
       x: pos.x,
       y: pos.y,
@@ -290,13 +290,20 @@ export async function buildAnalysis(
     });
   }
 
-  const concepts = conceptIds.map((id) => ({
-    id,
-    label: conceptLabel.get(id) || id,
-    size: 22 + Math.sqrt(conceptCounts[id] ?? 1) * 6,
-    topTerms: conceptTopTerms.get(id) || [],
-    representativeSentences: representativeSentencesMap.get(id),
-  }));
+  const concepts = conceptIds.map((id) => {
+    const weight = conceptCounts[id] ?? 0;
+    // Logarithmic scale with a cap at 48 (3x previous 16)
+    // multiplier 8.4 (3x 2.8)
+    const rawSize = 6 + Math.log2(weight + 1) * 8.4;
+    return {
+      id,
+      label: conceptLabel.get(id) || id,
+      size: Math.min(rawSize, 48.0),
+      weight,
+      topTerms: conceptTopTerms.get(id) || [],
+      representativeSentences: representativeSentencesMap.get(id),
+    };
+  });
 
   for (const c of concepts) {
     const pos = positions3D.get(c.id) ?? { x: 0, y: 0, z: 0 };
@@ -305,7 +312,10 @@ export async function buildAnalysis(
       type: "concept", 
       label: c.label, 
       size: c.size, 
-      meta: { topTerms: c.topTerms },
+      meta: { 
+        topTerms: c.topTerms,
+        weight: c.weight
+      },
       x: pos.x,
       y: pos.y,
       z: pos.z,
