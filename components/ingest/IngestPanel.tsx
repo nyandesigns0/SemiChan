@@ -16,7 +16,7 @@ interface IngestPanelProps {
 }
 
 export function IngestPanel({ rawText, onTextChange, jurorBlocks, onOpenModal, ingestError }: IngestPanelProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md">
@@ -64,4 +64,3 @@ export function IngestPanel({ rawText, onTextChange, jurorBlocks, onOpenModal, i
     </div>
   );
 }
-

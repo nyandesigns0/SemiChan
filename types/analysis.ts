@@ -42,6 +42,10 @@ export interface AnalysisResult {
   kSearchMetrics?: Array<{ k: number; score: number }>;
   clusteringMode?: "kmeans" | "hierarchical" | "hybrid";
   checkpoints?: AnalysisCheckpoint[];
+  requestedNumDimensions?: number;
+  appliedNumDimensions?: number;
+  dimensionMode?: "manual" | "elbow" | "threshold";
+  varianceThreshold?: number;
   jurorTopTerms?: Record<string, string[]>; // juror name -> top terms array
   axisLabels?: Record<string, { 
     negative: string; 
@@ -51,5 +55,9 @@ export interface AnalysisResult {
     synthesizedNegative?: string; 
     synthesizedPositive?: string 
   }>;
+  varianceStats?: {
+    totalVariance: number;
+    explainedVariances: number[];
+    cumulativeVariances: number[];
+  };
 }
-

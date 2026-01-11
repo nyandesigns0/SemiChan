@@ -34,7 +34,6 @@ export function generateSymmetricAxisDirections(numDimensions: number): AxisDire
 
   // Fibonacci sphere algorithm for relatively even distribution
   const directions: AxisDirection[] = [];
-  const phi = Math.PI * (3 - Math.sqrt(5)); // Golden angle
 
   for (let i = 0; i < numDimensions; i++) {
     const y = 1 - ((i + 0.5) / numDimensions) * 2; // step inside [-1,1] without hitting exact poles
@@ -89,62 +88,61 @@ function centerVectors(vectors: Float64Array[], mean: Float64Array): Float64Arra
 
 /**
  * Compute covariance matrix (simplified for high dimensions)
- * Uses power iteration method to find top 3 principal components
+ * Uses power iteration method to find top principal components
  */
 function powerIteration(
   centered: Float64Array[],
   numComponents: number = 3,
   iterations: number = 100,
   seed: number = 42
-): Float64Array[] {
+): { components: Float64Array[], variances: number[] } {
   if (centered.length === 0 || centered[0].length === 0) {
-    return [];
+    return { components: [], variances: [] };
   }
   
   const dim = centered[0].length;
   const n = centered.length;
   const components: Float64Array[] = [];
-  const rand = createPRNG(seed);
+  const variances: number[] = [];
   
   // Create a copy to work with (we'll deflate the data)
   let data = centered.map((v) => new Float64Array(v));
   
   for (let comp = 0; comp < numComponents; comp++) {
-    // Use a fixed unit vector for initialization instead of a seeded random vector
-    // This ensures that for the same input data, the PCA components are identical
     let pc = new Float64Array(dim).fill(1.0);
-    
-    // Normalize initial vector
     let norm = Math.sqrt(pc.reduce((a, b) => a + b * b, 0)) || 1;
     for (let i = 0; i < dim; i++) pc[i] /= norm;
     
-    // Power iteration to find principal component
     for (let iter = 0; iter < iterations; iter++) {
-      // Compute X^T * X * v (covariance times vector)
       const newPc = new Float64Array(dim);
-      
-      // First: project data onto pc (X * v)
       const projections = data.map((row) => {
         let dot = 0;
         for (let i = 0; i < dim; i++) dot += row[i] * pc[i];
         return dot;
       });
       
-      // Second: compute X^T * projections
       for (let i = 0; i < dim; i++) {
         for (let j = 0; j < n; j++) {
           newPc[i] += data[j][i] * projections[j];
         }
       }
       
-      // Normalize
       norm = Math.sqrt(newPc.reduce((a, b) => a + b * b, 0)) || 1;
       for (let i = 0; i < dim; i++) {
         pc[i] = newPc[i] / norm;
       }
     }
     
+    // Calculate variance captured by this component
+    let componentVariance = 0;
+    for (let j = 0; j < n; j++) {
+      let dot = 0;
+      for (let i = 0; i < dim; i++) dot += data[j][i] * pc[i];
+      componentVariance += dot * dot;
+    }
+    
     components.push(pc);
+    variances.push(componentVariance);
     
     // Deflate: remove this component's contribution from data
     for (let j = 0; j < n; j++) {
@@ -156,7 +154,7 @@ function powerIteration(
     }
   }
   
-  return components;
+  return { components, variances };
 }
 
 /**
@@ -232,49 +230,151 @@ function normalizeCoordinates(
 }
 
 /**
+ * Calculate total variance of centered vectors
+ */
+function computeTotalVariance(centered: Float64Array[]): number {
+  let total = 0;
+  for (const v of centered) {
+    for (let i = 0; i < v.length; i++) {
+      total += v[i] * v[i];
+    }
+  }
+  return total;
+}
+
+/**
+ * Find optimal number of dimensions using cumulative variance threshold
+ */
+export function findOptimalDimensionsThreshold(
+  variances: number[],
+  totalVariance: number,
+  threshold: number = 0.9
+): number {
+  let cumulative = 0;
+  for (let i = 0; i < variances.length; i++) {
+    cumulative += variances[i];
+    if (cumulative / totalVariance >= threshold) {
+      return i + 1;
+    }
+  }
+  return variances.length;
+}
+
+/**
+ * Find optimal number of dimensions using the elbow method (scree plot)
+ * Uses the maximum distance from a point on the scree plot to the line connecting start and end.
+ */
+export function findOptimalDimensionsElbow(variances: number[], epsilon: number = 1e-8): number {
+  // Trim trailing near-zero variances that can distort the elbow detection
+  let lastNonZeroIdx = -1;
+  for (let i = variances.length - 1; i >= 0; i--) {
+    if (variances[i] > epsilon) {
+      lastNonZeroIdx = i;
+      break;
+    }
+  }
+
+  if (lastNonZeroIdx <= 0) return Math.max(1, lastNonZeroIdx + 1);
+
+  const trimmed = variances.slice(0, lastNonZeroIdx + 1);
+  if (trimmed.length <= 2) return trimmed.length;
+  
+  // Scree plot points (index, variance)
+  const n = trimmed.length;
+  const start = { x: 0, y: trimmed[0] };
+  const end = { x: n - 1, y: trimmed[n - 1] };
+  
+  let maxDistance = -1;
+  let elbowIndex = 0;
+  
+  // Line parameters: ax + by + c = 0
+  const a = start.y - end.y;
+  const b = end.x - start.x;
+  const c = start.x * end.y - end.x * start.y;
+  const denominator = Math.sqrt(a * a + b * b) || 1;
+  
+  for (let i = 0; i < n; i++) {
+    const distance = Math.abs(a * i + b * trimmed[i] + c) / denominator;
+    if (distance > maxDistance) {
+      maxDistance = distance;
+      elbowIndex = i;
+    }
+  }
+  
+  return elbowIndex + 1;
+}
+
+/**
  * Reduce high-dimensional vectors to N-dimensional coordinates projected to 3D using PCA
  * 
  * @param vectors - Array of high-dimensional vectors
  * @param numDimensions - Number of principal components to use (2-10)
  * @param scale - Scale factor for the output coordinates (default 10)
- * @returns Object containing 3D coordinates and raw N-D PC values
+ * @returns Object containing 3D coordinates, raw N-D PC values, and variance stats
  */
 export function reduceToND(
   vectors: Float64Array[],
   numDimensions: number = 3,
   scale: number = 10,
   seed: number = 42
-): { coords: { x: number; y: number; z: number }[], pcValues: number[][] } {
-  if (vectors.length === 0) {
-    return { coords: [], pcValues: [] };
+): { 
+  coords: { x: number; y: number; z: number }[], 
+  pcValues: number[][],
+  varianceStats: {
+    totalVariance: number,
+    explainedVariances: number[],
+    cumulativeVariances: number[]
   }
-  
-  if (vectors.length === 1) {
+} {
+  const vectorDim = vectors[0]?.length ?? 0;
+  const maxPossibleComponents = Math.max(1, Math.min(numDimensions, vectors.length || 1, vectorDim || numDimensions));
+
+  if (vectors.length === 0) {
     return { 
-      coords: [{ x: 0, y: 0, z: 0 }], 
-      pcValues: [new Array(numDimensions).fill(0)] 
+      coords: [], 
+      pcValues: [], 
+      varianceStats: { totalVariance: 0, explainedVariances: [], cumulativeVariances: [] } 
     };
   }
   
   // Compute mean and center data
   const mean = computeMean(vectors);
   const centered = centerVectors(vectors, mean);
+  const totalVariance = computeTotalVariance(centered);
+  
+  if (vectors.length === 1) {
+    const dims = Math.max(1, Math.min(maxPossibleComponents, vectorDim || numDimensions));
+    return { 
+      coords: [{ x: 0, y: 0, z: 0 }], 
+      pcValues: [new Array(dims).fill(0)],
+      varianceStats: { totalVariance, explainedVariances: new Array(dims).fill(0), cumulativeVariances: new Array(dims).fill(0) }
+    };
+  }
   
   // Find top N principal components using power iteration
-  const components = powerIteration(centered, numDimensions, 100, seed);
+  const { components, variances } = powerIteration(centered, maxPossibleComponents, 100, seed);
   
   if (components.length === 0) {
     return { 
       coords: vectors.map(() => ({ x: 0, y: 0, z: 0 })), 
-      pcValues: vectors.map(() => new Array(numDimensions).fill(0)) 
+      pcValues: vectors.map(() => new Array(maxPossibleComponents).fill(0)),
+      varianceStats: { totalVariance, explainedVariances: [], cumulativeVariances: [] }
     };
+  }
+  
+  const cumulativeVariances: number[] = [];
+  let currentSum = 0;
+  for (const v of variances) {
+    currentSum += v;
+    cumulativeVariances.push(currentSum);
   }
   
   // 1. Get N-dimensional coordinates
   const ndCoords = projectToND(centered, components);
   
   // 2. Generate axis directions for 3D projection
-  const axisDirections = generateSymmetricAxisDirections(numDimensions);
+  const usedDimensions = components.length;
+  const axisDirections = generateSymmetricAxisDirections(usedDimensions);
   
   // 3. Project N-D to 3D
   const coords3D = projectNDTo3D(ndCoords, axisDirections);
@@ -284,7 +384,12 @@ export function reduceToND(
   
   return {
     coords: normalizedCoords,
-    pcValues: ndCoords
+    pcValues: ndCoords,
+    varianceStats: {
+      totalVariance,
+      explainedVariances: variances,
+      cumulativeVariances
+    }
   };
 }
 
@@ -305,13 +410,19 @@ export function computeNode3DPositions(
   positions: Map<string, { x: number; y: number; z: number }>; 
   conceptPcValues: Map<string, number[]>;
   jurorPcValues: Map<string, number[]>;
+  varianceStats: {
+    totalVariance: number,
+    explainedVariances: number[],
+    cumulativeVariances: number[]
+  };
 } {
   const positions = new Map<string, { x: number; y: number; z: number }>();
   const conceptPcValues = new Map<string, number[]>();
   const jurorPcValues = new Map<string, number[]>();
   
   // First, get N-D positions for concepts from centroids
-  const { coords: conceptCoords, pcValues: conceptRawPcValues } = reduceToND(conceptCentroids, numDimensions, scale, seed);
+  const { coords: conceptCoords, pcValues: conceptRawPcValues, varianceStats } = reduceToND(conceptCentroids, numDimensions, scale, seed);
+  const effectiveDims = Math.max(1, varianceStats.explainedVariances.length || numDimensions);
   
   for (let i = 0; i < conceptIds.length; i++) {
     positions.set(conceptIds[i], conceptCoords[i] ?? { x: 0, y: 0, z: 0 });
@@ -325,7 +436,7 @@ export function computeNode3DPositions(
     let x = 0, y = 0, z = 0;
     
     // Weighted average for PC values
-    const mixedPc = new Array(numDimensions).fill(0);
+    const mixedPc = new Array(effectiveDims).fill(0);
     
     for (const [conceptId, weight] of Object.entries(vec)) {
       const conceptPos = positions.get(conceptId);
@@ -336,8 +447,8 @@ export function computeNode3DPositions(
         y += conceptPos.y * weight;
         z += conceptPos.z * weight;
         
-        for (let i = 0; i < numDimensions; i++) {
-          mixedPc[i] += cPc[i] * weight;
+        for (let i = 0; i < effectiveDims; i++) {
+          mixedPc[i] += (cPc[i] || 0) * weight;
         }
         
         totalWeight += weight;
@@ -354,13 +465,9 @@ export function computeNode3DPositions(
       jurorPcValues.set(`juror:${juror}`, mixedPc.map(v => v / totalWeight));
     } else {
       positions.set(`juror:${juror}`, { x: 0, y: 0, z: 0 });
-      jurorPcValues.set(`juror:${juror}`, new Array(numDimensions).fill(0));
+      jurorPcValues.set(`juror:${juror}`, new Array(effectiveDims).fill(0));
     }
   }
   
-  return { positions, conceptPcValues, jurorPcValues };
+  return { positions, conceptPcValues, jurorPcValues, varianceStats };
 }
-
-
-
-

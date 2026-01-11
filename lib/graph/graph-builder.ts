@@ -7,7 +7,12 @@ import { stanceOfSentence } from "@/lib/nlp/stance-classifier";
 import { kmeansCosine, createPRNG } from "@/lib/analysis/kmeans";
 import { clamp } from "@/lib/utils/text-utils";
 import { buildJurorSimilarityLinks, buildConceptSimilarityLinks } from "./projections";
-import { computeNode3DPositions } from "./dimensionality-reduction";
+import { 
+  computeNode3DPositions, 
+  findOptimalDimensionsThreshold, 
+  findOptimalDimensionsElbow,
+  reduceToND
+} from "./dimensionality-reduction";
 import { labelAxes } from "./axis-labeler";
 
 // Hybrid analysis imports
@@ -41,6 +46,8 @@ export async function buildAnalysis(
     granularityPercent?: number;
     seed?: number;
     numDimensions?: number;
+    dimensionMode?: "manual" | "elbow" | "threshold";
+    varianceThreshold?: number;
   } = {}
 ): Promise<AnalysisResult> {
   const {
@@ -54,6 +61,8 @@ export async function buildAnalysis(
     granularityPercent = 50,
     seed = 42,
     numDimensions = 3,
+    dimensionMode = "manual",
+    varianceThreshold = 0.9,
   } = options;
 
   const checkpoints: AnalysisCheckpoint[] = [];
@@ -126,6 +135,7 @@ export async function buildAnalysis(
   let K = clamp(kConcepts, 4, 30);
   let recommendedK: number | undefined;
   let kSearchMetrics: Array<{ k: number; score: number }> | undefined;
+  const requestedNumDimensions = numDimensions;
 
   if (autoK) {
     const evalResult = evaluateKRange(hybridVectors, kMin, kMax, seed);
@@ -263,13 +273,34 @@ export async function buildAnalysis(
     }
   }
 
+  // Determine final number of dimensions if in automatic mode
+  let finalNumDimensions = numDimensions;
+  if (dimensionMode !== "manual" && centroids.length > 1) {
+    const scanTargetDimensions = Math.max(12, numDimensions);
+    const scanResult = reduceToND(centroids, scanTargetDimensions, 10, seed);
+
+    if (dimensionMode === "threshold") {
+      finalNumDimensions = findOptimalDimensionsThreshold(
+        scanResult.varianceStats.explainedVariances,
+        scanResult.varianceStats.totalVariance,
+        varianceThreshold
+      );
+    } else if (dimensionMode === "elbow") {
+      finalNumDimensions = findOptimalDimensionsElbow(scanResult.varianceStats.explainedVariances);
+    }
+
+    // Clamp to available scan dimensions to avoid trailing zero-variance axes
+    const maxAvailable = Math.max(1, scanResult.varianceStats.explainedVariances.length || 1);
+    finalNumDimensions = Math.max(1, Math.min(maxAvailable, finalNumDimensions));
+  }
+
   // Compute 3D positions
-  const { positions: positions3D, conceptPcValues, jurorPcValues } = computeNode3DPositions(
+  const { positions: positions3D, conceptPcValues, jurorPcValues, varianceStats } = computeNode3DPositions(
     jurorVectors,
     centroids,
     jurorList,
     conceptIds,
-    numDimensions,
+    finalNumDimensions,
     10, // scale
     seed
   );
@@ -370,7 +401,7 @@ export async function buildAnalysis(
   links.push(...conceptSimilarityLinks);
 
   // Compute axis labels from 3D node positions
-  const axisLabels = labelAxes(nodes, numDimensions, conceptPcValues);
+  const axisLabels = labelAxes(nodes, finalNumDimensions, conceptPcValues);
 
   // Final Checkpoint
   checkpoints.push({
@@ -399,5 +430,10 @@ export async function buildAnalysis(
     checkpoints,
     jurorTopTerms,
     axisLabels,
+    varianceStats,
+    requestedNumDimensions,
+    appliedNumDimensions: varianceStats?.explainedVariances.length ?? finalNumDimensions,
+    dimensionMode,
+    varianceThreshold,
   };
 }

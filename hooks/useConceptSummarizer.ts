@@ -13,7 +13,12 @@ export interface ConceptInsight {
   isLoadingSummary: boolean;
 }
 
-export function useConceptSummarizer(analysis: AnalysisResult | null, selectedModel: string = DEFAULT_MODEL) {
+export function useConceptSummarizer(
+  analysis: AnalysisResult | null,
+  selectedModel: string = DEFAULT_MODEL,
+  autoSynthesize: boolean = false,
+  onAddLog?: (type: LogEntry["type"], msg: string, data?: any) => void
+) {
   const [insights, setInsights] = useState<Record<string, ConceptInsight>>({});
 
   // Reset insights when analysis changes
@@ -142,6 +147,16 @@ export function useConceptSummarizer(analysis: AnalysisResult | null, selectedMo
       }));
     }
   }, [analysis, insights, selectedModel]);
+
+  useEffect(() => {
+    if (!autoSynthesize || !analysis) return;
+
+    analysis.concepts.forEach((concept) => {
+      if (!insights[concept.id]?.summary && !insights[concept.id]?.isLoadingSummary) {
+        fetchSummary(concept.id, onAddLog);
+      }
+    });
+  }, [analysis, autoSynthesize, fetchSummary, insights, onAddLog]);
 
   return { insights, fetchSummary };
 }

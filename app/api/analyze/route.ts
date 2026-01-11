@@ -34,6 +34,8 @@ export async function POST(request: NextRequest) {
       granularityPercent,
       clusterSeed,
       numDimensions,
+      dimensionMode,
+      varianceThreshold,
       model
     } = body;
 
@@ -112,6 +114,8 @@ export async function POST(request: NextRequest) {
         granularityPercent,
         seed: clusterSeed,
         numDimensions: numDimensions || 3,
+        dimensionMode,
+        varianceThreshold,
       }
     );
 

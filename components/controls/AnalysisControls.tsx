@@ -56,10 +56,15 @@ interface AnalysisControlsProps {
   // Visualization Dimensions
   numDimensions: number;
   onNumDimensionsChange: (value: number) => void;
+  dimensionMode: "manual" | "elbow" | "threshold";
+  onDimensionModeChange: (mode: "manual" | "elbow" | "threshold") => void;
+  varianceThreshold: number;
+  onVarianceThresholdChange: (value: number) => void;
   
   // Model selection
   selectedModel: string;
   onModelChange: (model: string) => void;
+  appliedNumDimensions?: number;
 }
 
 export function AnalysisControls({
@@ -87,12 +92,23 @@ export function AnalysisControls({
   onGranularityPercentChange,
   numDimensions,
   onNumDimensionsChange,
+  dimensionMode,
+  onDimensionModeChange,
+  varianceThreshold,
+  onVarianceThresholdChange,
   selectedModel,
   onModelChange,
+  appliedNumDimensions,
 }: AnalysisControlsProps) {
   const [showClusteringSettings, setShowClusteringSettings] = useState(false);
   const [showLensSettings, setShowLensSettings] = useState(false);
   const [showNetworkSettings, setShowNetworkSettings] = useState(false);
+  const [showDimensionSettings, setShowDimensionSettings] = useState(false);
+  const effectiveAxes = appliedNumDimensions ?? numDimensions;
+  const isAutoDimensionMode = dimensionMode !== "manual";
+  const axisBadgeLabel = isAutoDimensionMode
+    ? `${effectiveAxes} Axis${effectiveAxes === 1 ? "" : "es"} (auto)`
+    : `${numDimensions} Axis${numDimensions === 1 ? "" : "es"}`;
 
   const models = [
     "GPT-5.1",
@@ -469,7 +485,7 @@ export function AnalysisControls({
       <Separator className="bg-slate-100/80" />
 
       {/* Category: Visualization Dimensions */}
-      <div className="space-y-4">
+      <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label 
             className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-900"
@@ -477,25 +493,116 @@ export function AnalysisControls({
             <Maximize2 className="h-3 w-3" />
             Visualization Dimensions
           </Label>
-          <Badge variant="outline" className="bg-slate-50 text-[10px] font-bold border-slate-200">
-            {numDimensions} Axis
+          <Badge
+            variant="outline"
+            className="rounded-full border-indigo-200 bg-indigo-50/50 px-2.5 py-1 text-[9px] font-bold uppercase leading-tight text-indigo-500 whitespace-nowrap"
+          >
+            {axisBadgeLabel}
           </Badge>
         </div>
         
-        <div className="space-y-3 px-1">
-          <Slider 
-            value={[numDimensions]} 
-            onValueChange={([v]) => onNumDimensionsChange(v)} 
-            min={2} 
-            max={10} 
-            step={1} 
-            className="py-2"
-          />
-          <div className="relative h-3 w-full text-[9px] font-bold uppercase text-slate-400">
-            <span className="absolute left-0">2D</span>
-            <span className="absolute -translate-x-1/2" style={{ left: '12.5%' }}>3D</span>
-            <span className="absolute -translate-x-1/2" style={{ left: '37.5%' }}>5D</span>
-            <span className="absolute right-0">10D</span>
+        <div className="space-y-2">
+          {/* Dimension Mode Tabs */}
+          <Tabs value={dimensionMode} onValueChange={(v) => onDimensionModeChange(v as any)}>
+            <TabsList className="grid w-full grid-cols-3 bg-slate-100/50 p-1 border border-slate-200/60 rounded-xl" style={{ height: 'auto' }}>
+              <TabsTrigger value="manual" className="flex items-center gap-1.5 py-1.5 transition-all">
+                <Settings2 className="h-3 w-3" />
+                <span className="text-[10px] font-bold uppercase tracking-tight">Manual</span>
+              </TabsTrigger>
+              <TabsTrigger value="elbow" className="flex items-center gap-1.5 py-1.5 transition-all">
+                <Workflow className="h-3 w-3" />
+                <span className="text-[10px] font-bold uppercase tracking-tight">Elbow</span>
+              </TabsTrigger>
+              <TabsTrigger value="threshold" className="flex items-center gap-1.5 py-1.5 transition-all">
+                <Target className="h-3 w-3" />
+                <span className="text-[10px] font-bold uppercase tracking-tight">Threshold</span>
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          {/* Dimension Settings Accordion */}
+          <div className="space-y-2">
+            <button 
+              onClick={() => setShowDimensionSettings(!showDimensionSettings)}
+              className="flex w-full items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-indigo-500 transition-colors py-0.5 px-1 border-b border-dashed border-slate-200"
+            >
+              <div className="flex items-center gap-1.5">
+                <Settings2 className="h-3 w-3" />
+                Advanced Dimension Settings
+              </div>
+              {showDimensionSettings ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            </button>
+
+            {showDimensionSettings && (
+              <div className="space-y-3 pt-0.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                {dimensionMode === "manual" && (
+                  <div className="space-y-3 px-1">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-[11px] font-bold text-slate-700">Dimensions</Label>
+                      <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                        {numDimensions} Axis
+                      </Badge>
+                    </div>
+                    <Slider 
+                      value={[numDimensions]} 
+                      onValueChange={([v]) => onNumDimensionsChange(v)} 
+                      min={2} 
+                      max={10} 
+                      step={1} 
+                      className="py-1"
+                    />
+                    <div className="relative h-3 w-full text-[9px] font-bold uppercase text-slate-400">
+                      <span className="absolute left-0">2D</span>
+                      <span className="absolute -translate-x-1/2" style={{ left: '12.5%' }}>3D</span>
+                      <span className="absolute right-0">10D</span>
+                    </div>
+                  </div>
+                )}
+
+                {dimensionMode === "threshold" && (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-[11px] font-bold text-slate-700">Variance Threshold</Label>
+                      <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                        {Math.round(varianceThreshold * 100)}%
+                      </Badge>
+                    </div>
+                    <Slider 
+                      value={[varianceThreshold]} 
+                      onValueChange={([v]) => onVarianceThresholdChange(v)} 
+                      min={0.5} 
+                      max={0.99} 
+                      step={0.01} 
+                      className="py-1"
+                    />
+                    <div className="flex justify-between text-[7px] font-bold uppercase tracking-widest text-slate-400">
+                      <span>More Compression</span>
+                      <span>More Accuracy</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-500">
+                      <span>Applied Axes</span>
+                      <Badge variant="secondary" className="bg-white px-1.5 py-0 text-[9px] font-bold text-indigo-700 border border-indigo-100">
+                        {effectiveAxes} axis{effectiveAxes === 1 ? "" : "es"}
+                      </Badge>
+                    </div>
+                  </div>
+                )}
+
+                {dimensionMode === "elbow" && (
+                  <div className="flex flex-col gap-2 p-2 rounded-xl bg-slate-50 border border-slate-100">
+                    <p className="text-[9px] font-medium leading-relaxed text-slate-500 italic">
+                      Automated dimension selection using the Scree Plot Elbow method. Finds the "sweet spot" where adding more axes yields diminishing returns in explained variance.
+                    </p>
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-500">
+                      <span>Applied Axes</span>
+                      <Badge variant="secondary" className="bg-white px-1.5 py-0 text-[9px] font-bold text-indigo-700 border border-indigo-100">
+                        {effectiveAxes} axis{effectiveAxes === 1 ? "" : "es"}
+                      </Badge>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -19,6 +19,10 @@ export interface AnalyzeRequest {
   frequencyWeight?: number;
   /** Number of dimensions for visualization (2-10, default 3) */
   numDimensions?: number;
+  /** Method for selecting dimensions: manual, elbow, or threshold */
+  dimensionMode?: "manual" | "elbow" | "threshold";
+  /** Variance threshold for threshold method (0.0-1.0, default 0.9) */
+  varianceThreshold?: number;
   
   // New clustering options
   clusteringMode?: "kmeans" | "hierarchical" | "hybrid";

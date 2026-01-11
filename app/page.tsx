@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { Download, Network, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { IngestPanel } from "@/components/ingest/IngestPanel";
 import { IngestModal } from "@/components/ingest/IngestModal";
 import { AnalysisControlsAccordion } from "@/components/controls/AnalysisControlsAccordion";
+import { AIControlsAccordion } from "@/components/controls/AIControlsAccordion";
 import { SearchBarAccordion } from "@/components/controls/SearchBarAccordion";
 import { GraphFiltersAccordion } from "@/components/controls/GraphFiltersAccordion";
 import { GraphCanvas3D } from "@/components/graph/GraphCanvas3D";
@@ -31,30 +32,9 @@ import type { LogEntry } from "@/components/inspector/InspectorConsole";
 import type { TokenUsage } from "@/types/api";
 
 export default function HomePage() {
-  // Sidebar state with localStorage persistence
-  const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
-  const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const saved = localStorage.getItem("sidebar-left-open");
-    if (saved !== null) setLeftSidebarOpen(saved === "true");
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const saved = localStorage.getItem("sidebar-right-open");
-    if (saved !== null) setRightSidebarOpen(saved === "true");
-  }, []);
-
-  // Save sidebar state to localStorage
-  useEffect(() => {
-    localStorage.setItem("sidebar-left-open", String(leftSidebarOpen));
-  }, [leftSidebarOpen]);
-
-  useEffect(() => {
-    localStorage.setItem("sidebar-right-open", String(rightSidebarOpen));
-  }, [rightSidebarOpen]);
+  // Sidebar state defaults to closed on load
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
   // Ingest
   const [rawText, setRawText] = useState(DEFAULT_SAMPLE);
   const [jurorBlocks, setJurorBlocks] = useState<JurorBlock[]>(() => segmentByJuror(DEFAULT_SAMPLE));
@@ -64,6 +44,8 @@ export default function HomePage() {
   // Analysis params
   const [kConcepts, setKConcepts] = useState(10);
   const [numDimensions, setNumDimensions] = useState(3);
+  const [dimensionMode, setDimensionMode] = useState<"manual" | "elbow" | "threshold">("elbow");
+  const [varianceThreshold, setVarianceThreshold] = useState(0.9);
   const [minEdgeWeight, setMinEdgeWeight] = useState(0.02);
   const [similarityThreshold, setSimilarityThreshold] = useState(0.35);
 
@@ -105,8 +87,16 @@ export default function HomePage() {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
 
-  // AI Axis Labels toggle
+  // Use the actual number of dimensions from the analysis if available, otherwise the manual setting
+  const appliedNumDimensions = useMemo(() => {
+    if (analysis?.appliedNumDimensions) return analysis.appliedNumDimensions;
+    if (analysis?.varianceStats?.explainedVariances.length) return analysis.varianceStats.explainedVariances.length;
+    return numDimensions;
+  }, [analysis, numDimensions]);
+
+  // AI controls
   const [enableAxisLabelAI, setEnableAxisLabelAI] = useState(false);
+  const [autoSynthesize, setAutoSynthesize] = useState(false);
   
   // Pipeline checkpoint state
   const [checkpointIndex, setCheckpointIndex] = useState(-1);
@@ -117,13 +107,24 @@ export default function HomePage() {
 
   // Console logging state
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [apiCallCount, setApiCallCount] = useState(0);
+  const [apiCostTotal, setApiCostTotal] = useState(0);
+  const lastVarianceLogSignature = useRef<string | null>(null);
   const addLog = useCallback((type: LogEntry["type"], message: string, data?: any) => {
     let finalMessage = message;
+    let incrementalCost = 0;
     
     // Add cost info if available in data
     if (data?.usage && data?.model) {
-      const cost = calculateCost(data.model, data.usage);
-      finalMessage += ` [Cost: ${formatCost(cost)}]`;
+      incrementalCost = calculateCost(data.model, data.usage);
+      finalMessage += ` [Cost: ${formatCost(incrementalCost)}]`;
+    }
+
+    if (type === "api_request") {
+      setApiCallCount((prev) => prev + 1);
+    }
+    if (type === "api_response" && incrementalCost > 0) {
+      setApiCostTotal((prev) => prev + incrementalCost);
     }
 
     const entry: LogEntry = {
@@ -168,11 +169,44 @@ export default function HomePage() {
         { keywords: allKeywords, sentenceCount: analysis.stats.totalSentences }
       );
       addLog("analysis", `Analysis complete: ${analysis.stats.totalSentences} sentences, ${analysis.stats.totalConcepts} concepts`);
+      
+      if (analysis.varianceStats) {
+        const cumulative = analysis.varianceStats.cumulativeVariances;
+        const total = analysis.varianceStats.totalVariance;
+        const lastCumulative = cumulative[cumulative.length - 1];
+        const percent = Math.round((lastCumulative / total) * 100);
+        addLog("analysis", `Visualization uses ${cumulative.length} dimensions, capturing ${percent}% of data variance.`);
+      }
     }
   }, [analysis, addLog]);
+  
+  // Log how automatic dimension selection behaved (even if it kept the manual value)
+  useEffect(() => {
+    if (!analysis?.varianceStats) return;
+    if (dimensionMode === "manual") return;
+    if (analysis.dimensionMode && analysis.dimensionMode !== dimensionMode) return;
+    const applied = appliedNumDimensions;
+    const requested = analysis.requestedNumDimensions ?? numDimensions;
+    const signature = `${analysis.varianceStats.explainedVariances.join(",")}:${applied}:${requested}`;
+    if (lastVarianceLogSignature.current === signature) return;
+    lastVarianceLogSignature.current = signature;
+
+    const cumulativeValue = analysis.varianceStats.cumulativeVariances[applied - 1] 
+      ?? analysis.varianceStats.cumulativeVariances[analysis.varianceStats.cumulativeVariances.length - 1] 
+      ?? 0;
+    const percent = analysis.varianceStats.totalVariance > 0 
+      ? Math.round((cumulativeValue / analysis.varianceStats.totalVariance) * 100) 
+      : 0;
+
+    if (applied === requested) {
+      addLog("analysis", `Auto dimension (${dimensionMode}) kept ${applied} axes (~${percent}% variance).`);
+    } else {
+      addLog("analysis", `Auto dimension (${dimensionMode}) chose ${applied} axes (requested ${requested}, ~${percent}% variance).`);
+    }
+  }, [analysis, dimensionMode, appliedNumDimensions, numDimensions, addLog]);
 
   // Concept Summarization
-  const { insights, fetchSummary } = useConceptSummarizer(analysis, selectedModel);
+  const { insights, fetchSummary } = useConceptSummarizer(analysis, selectedModel, autoSynthesize, addLog);
   
   // Axis Label Enhancement
   const { enhancedLabels, isLoading: isRefreshingAxisLabels, refreshAxisLabels } =
@@ -255,6 +289,8 @@ export default function HomePage() {
             cutType,
             granularityPercent: cutType === "granularity" ? granularityPercent : undefined,
             numDimensions,
+            dimensionMode,
+            varianceThreshold,
             model: selectedModel,
           }),
         });
@@ -278,7 +314,7 @@ export default function HomePage() {
     };
 
     analyze();
-  }, [jurorBlocks, kConcepts, similarityThreshold, semanticWeight, frequencyWeight, clusteringMode, autoK, clusterSeed, softMembership, cutType, granularityPercent, numDimensions, selectedModel]);
+  }, [jurorBlocks, kConcepts, similarityThreshold, semanticWeight, frequencyWeight, clusteringMode, autoK, clusterSeed, softMembership, cutType, granularityPercent, numDimensions, selectedModel, dimensionMode, varianceThreshold]);
 
   // Helper function to get node network (node + connected links + connected nodes)
   const getNodeNetwork = useCallback((nodeId: string, nodes: GraphNode[], links: GraphLink[]) => {
@@ -622,6 +658,13 @@ export default function HomePage() {
             ingestError={ingestError}
           />
 
+          <AIControlsAccordion
+            enableAxisLabelAI={enableAxisLabelAI}
+            onToggleAxisLabelAI={setEnableAxisLabelAI}
+            autoSynthesize={autoSynthesize}
+            onToggleAutoSynthesize={setAutoSynthesize}
+          />
+
           <AnalysisControlsAccordion
             kConcepts={kConcepts}
             onKConceptsChange={setKConcepts}
@@ -642,14 +685,19 @@ export default function HomePage() {
             softMembership={softMembership}
             onSoftMembershipChange={setSoftMembership}
             cutType={cutType}
-                  onCutTypeChange={setCutType}
-                  granularityPercent={granularityPercent}
-                  onGranularityPercentChange={setGranularityPercent}
-                  numDimensions={numDimensions}
-                  onNumDimensionsChange={setNumDimensions}
+            onCutTypeChange={setCutType}
+            granularityPercent={granularityPercent}
+            onGranularityPercentChange={setGranularityPercent}
+            numDimensions={numDimensions}
+            onNumDimensionsChange={setNumDimensions}
+            dimensionMode={dimensionMode}
+            onDimensionModeChange={setDimensionMode}
+                  varianceThreshold={varianceThreshold}
+                  onVarianceThresholdChange={setVarianceThreshold}
                   selectedModel={selectedModel}
-            onModelChange={setSelectedModel}
-          />
+                  onModelChange={setSelectedModel}
+                  appliedNumDimensions={appliedNumDimensions}
+                />
 
         </div>
       </CollapsibleSidebar>
@@ -758,7 +806,9 @@ export default function HomePage() {
                   onToggleAxes={setShowAxes}
                   showGraph={showGraph}
                   onToggleGraph={setShowGraph}
-                  numDimensions={numDimensions}
+                  numDimensions={appliedNumDimensions}
+                  apiCallCount={apiCallCount}
+                  apiCostTotal={apiCostTotal}
                 />
               </div>
 

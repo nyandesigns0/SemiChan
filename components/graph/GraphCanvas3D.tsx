@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useMemo, useCallback, Suspense, useEffect, memo } from "react";
+import { useRef, useState, useMemo, useCallback, Suspense, memo } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, Environment, PerspectiveCamera, Grid, Html } from "@react-three/drei";
 import * as THREE from "three";
@@ -48,6 +48,8 @@ interface GraphCanvas3DProps {
   showGraph?: boolean;
   onToggleGraph?: (show: boolean) => void;
   numDimensions?: number;
+  apiCallCount?: number;
+  apiCostTotal?: number;
 }
 
 // Camera controller component to handle reset
@@ -489,9 +491,17 @@ export function GraphCanvas3D({
   showGraph: showGraphProp = true,
   onToggleGraph,
   numDimensions = 3,
+  apiCallCount = 0,
+  apiCostTotal = 0,
 }: GraphCanvas3DProps) {
   const controlsRef = useRef<OrbitControlsType>(null);
   const [showGrid, setShowGrid] = useState(false);
+  const projectionKey = useMemo(() => {
+    const stats = analysis?.varianceStats;
+    const lastCumulative = stats?.cumulativeVariances?.length ? stats.cumulativeVariances[stats.cumulativeVariances.length - 1] : "";
+    const signature = stats ? `${stats.explainedVariances.join(",")}::${lastCumulative}` : "none";
+    return `${numDimensions}-${signature}`;
+  }, [analysis, numDimensions]);
   
   // Use props if provided, otherwise fall back to internal state (for backwards compatibility)
   const checkpointIndex = checkpointIndexProp;
@@ -540,6 +550,7 @@ export function GraphCanvas3D({
               <Suspense fallback={null}>
                 <CameraController controlsRef={controlsRef} />
                 <SceneContent
+                  key={projectionKey}
                   nodes={activeNodes}
                   links={activeLinks}
                   nodeVisibility={nodeVisibility}
@@ -595,6 +606,8 @@ export function GraphCanvas3D({
         filteredNodesCount={filteredNodesCount}
         filteredLinksCount={filteredLinksCount}
         numDimensions={numDimensions}
+        apiCallCount={apiCallCount}
+        apiCostTotal={apiCostTotal}
       />
     </>
   );

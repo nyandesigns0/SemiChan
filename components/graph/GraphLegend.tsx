@@ -1,8 +1,9 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { Users, MessageSquare, Lightbulb, Hash, Link as LinkIcon, Layers } from "lucide-react";
+import { Users, MessageSquare, Lightbulb, Hash, Link as LinkIcon, Layers, Activity } from "lucide-react";
 import { getAxisColors } from "@/lib/utils/graph-color-utils";
+import { formatCost } from "@/lib/utils/api-utils";
 import type { Stance } from "@/types/nlp";
 import type { AnalysisResult } from "@/types/analysis";
 
@@ -24,13 +25,17 @@ interface GraphLegendProps {
   filteredNodesCount?: number;
   filteredLinksCount?: number;
   numDimensions?: number;
+  apiCallCount?: number;
+  apiCostTotal?: number;
 }
 
 export function GraphLegend({ 
   analysis, 
   filteredNodesCount = 0, 
   filteredLinksCount = 0,
-  numDimensions = 3
+  numDimensions = 3,
+  apiCallCount = 0,
+  apiCostTotal = 0
 }: GraphLegendProps) {
   return (
     <div className="mt-3 flex items-center justify-between gap-4 text-xs text-slate-700">
@@ -87,6 +92,14 @@ export function GraphLegend({
           <Layers className="h-3.5 w-3.5" />
           <span>{numDimensions} axes projection</span>
         </Badge>
+        <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
+          <Activity className="h-3.5 w-3.5" />
+          <div className="flex items-center gap-1.5">
+            <span>{apiCallCount} calls</span>
+            <span className="h-4 w-px bg-slate-200" />
+            <span>{formatCost(apiCostTotal)} cost</span>
+          </div>
+        </Badge>
         <Badge variant="secondary" className="flex items-center gap-1.5 border border-indigo-100 bg-indigo-50 px-3 py-1 text-indigo-700">
           <Hash className="h-3.5 w-3.5" />
           <span>{filteredNodesCount} Nodes</span>
@@ -99,4 +112,3 @@ export function GraphLegend({
     </div>
   );
 }
-
