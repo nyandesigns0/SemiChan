@@ -341,7 +341,7 @@ function SceneContent({
     <>
       {/* Lighting */}
       <ambientLight intensity={0.35} />
-      <hemisphereLight skyColor="#f8fafc" groundColor="#0b1220" intensity={0.45} />
+      <hemisphereLight color="#f8fafc" groundColor="#0b1220" intensity={0.45} />
       <directionalLight position={[10, 10, 5]} intensity={0.9} />
       <directionalLight position={[-10, -10, -5]} intensity={0.35} />
       <pointLight position={[0, 12, 6]} intensity={0.3} color="#fdfdfd" />
