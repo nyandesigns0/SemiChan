@@ -1,13 +1,138 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { BarChart2, Compass, Layers, Users, Sparkles, CircleDot, RefreshCw, ListFilter, Filter } from "lucide-react";
+import { BarChart2, Layers, Users, Sparkles, CircleDot, RefreshCw, ListFilter, Filter, Plus, Minus } from "lucide-react";
 import type { AnalysisResult } from "@/types/analysis";
 import type { JurorBlock } from "@/types/nlp";
 import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
 import { getPCColor, lightenColor, getAxisColors } from "@/lib/utils/graph-color-utils";
+import { extractKeyphrases } from "@/lib/nlp/keyphrase-extractor";
+
+type AxisPlotDatum = {
+  axisIndex: number;
+  key: string;
+  positive?: string;
+  negative?: string;
+  value: number; // normalized [-1, 1]
+  raw: number;
+  color?: string;
+};
+
+function AxisAffinityChart({
+  axes,
+  color,
+  scale = 1,
+}: {
+  axes: AxisPlotDatum[];
+  color: string;
+  scale?: number;
+}) {
+  if (axes.length === 0) {
+    return (
+      <div className="flex h-32 flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white text-slate-400">
+        <p className="text-xs font-semibold">Axis data unavailable.</p>
+        <p className="text-[11px]">Run analysis with axis labels to view this chart.</p>
+      </div>
+    );
+  }
+
+  const size = 220;
+  const center = size / 2;
+  const baseRadius = size * 0.38; // for labels (kept stable)
+  const radius = baseRadius * scale; // for geometry (zoomable)
+  const startAngle = -Math.PI / 2;
+  const angleStep = (Math.PI * 2) / axes.length;
+
+  const labelDistance = baseRadius + 18;
+  const points = axes.map((axis, idx) => {
+    const angle = startAngle + angleStep * idx;
+    const x = center + Math.cos(angle) * radius * axis.value;
+    const y = center + Math.sin(angle) * radius * axis.value;
+    const posX = center + Math.cos(angle) * labelDistance;
+    const posY = center + Math.sin(angle) * labelDistance;
+    return {
+      axis,
+      angle,
+      x,
+      y,
+      posX,
+      posY,
+    };
+  });
+
+  const polygonPoints = points.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(" ");
+
+  const renderShape =
+    axes.length >= 3 ? (
+      <polygon
+        points={polygonPoints}
+        fill={`${color}22`}
+        stroke={color}
+        strokeWidth={2}
+        className="transition-all duration-200"
+      />
+    ) : (
+      <polyline
+        points={polygonPoints}
+        fill="none"
+        stroke={color}
+        strokeWidth={2}
+        className="transition-all duration-200"
+      />
+    );
+
+  return (
+    <div className="relative h-[200px] w-full">
+      <svg viewBox={`0 0 ${size} ${size}`} className="axis-affinity-chart absolute inset-0 h-full w-full">
+        {[0.5, 1].map((r) => (
+          <circle
+            key={r}
+            cx={center}
+            cy={center}
+            r={radius * r}
+            fill="none"
+            stroke="#e2e8f0"
+            strokeDasharray="4 4"
+            strokeWidth={1}
+            opacity={r === 1 ? 0.6 : 0.35}
+          />
+        ))}
+        {points.map((p) => (
+          <line key={`axis-line-${p.axis.key}`} x1={center} y1={center} x2={center + Math.cos(p.angle) * radius} y2={center + Math.sin(p.angle) * radius} stroke="#e2e8f0" strokeWidth={1} strokeDasharray="2 2" />
+        ))}
+        <circle cx={center} cy={center} r={3} fill="#94a3b8" />
+          {renderShape}
+          {points.map((p) => (
+            <circle key={`point-${p.axis.key}`} cx={p.x} cy={p.y} r={4} fill={color} stroke="#fff" strokeWidth={1.25} />
+          ))}
+        </svg>
+
+        {/* Labels rendered separately so zoom only affects geometry */}
+        <div className="pointer-events-none absolute inset-0">
+          {points.map((p) => {
+            return (
+              <div
+                key={`label-group-${p.axis.key}`}
+                className="absolute flex items-center justify-center"
+                style={{
+                  left: `${p.posX}px`,
+                  top: `${p.posY}px`,
+                  transform: "translate(-50%, -50%)",
+                }}
+              >
+                <div 
+                  className="h-3 w-3 rounded-full border border-black shadow-sm"
+                  style={{ backgroundColor: p.axis.color }}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
 
 interface AnalysisReportProps {
   analysis: AnalysisResult | null;
@@ -59,6 +184,21 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
     return map;
   }, [analysis]);
 
+  const jurorColors = useMemo(() => {
+    if (!analysis) return new Map<string, { base: string; soft: string }>();
+    const map = new Map<string, { base: string; soft: string }>();
+    analysis.nodes
+      .filter((n) => n.type === "juror")
+      .forEach((n) => {
+        const base = getPCColor(n.pcValues, "#0f172a");
+        const soft = lightenColor(base, 0.85);
+        // node id formatted as juror:Name
+        const name = n.id.replace(/^juror:/, "");
+        map.set(name, { base, soft });
+      });
+    return map;
+  }, [analysis]);
+
   const conceptWeights = useMemo(() => {
     if (!analysis) return new Map<string, number>();
     const map = new Map<string, number>();
@@ -84,6 +224,11 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [conceptLimit, setConceptLimit] = useState<"5" | "10" | "all">("all");
   const [limitMenuOpen, setLimitMenuOpen] = useState(false);
+  const [showAllJurorContribs, setShowAllJurorContribs] = useState<Record<string, boolean>>({});
+  const [showAllJurorConcepts, setShowAllJurorConcepts] = useState<Record<string, boolean>>({});
+  const [showAllJurorRawTerms, setShowAllJurorRawTerms] = useState<Record<string, boolean>>({});
+  const [jurorSort, setJurorSort] = useState<"links" | "concepts" | "sentences" | "alpha">("links");
+  const [jurorSortMenuOpen, setJurorSortMenuOpen] = useState(false);
 
   const sortedConcepts = useMemo(() => {
     if (!analysis) return [];
@@ -119,6 +264,73 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
     }
   }, [sortedConcepts, conceptLimit]);
 
+  const sortedJurors = useMemo(() => {
+    if (!analysis) return [];
+    const base = [...analysis.jurors];
+    return base.sort((a, b) => {
+      const sentencesA = sentencesByJuror.get(a) ?? 0;
+      const sentencesB = sentencesByJuror.get(b) ?? 0;
+      const vectorA = analysis.jurorVectors[a] || {};
+      const vectorB = analysis.jurorVectors[b] || {};
+      const totalLinksA = Object.values(vectorA).reduce((sum, v) => sum + v, 0);
+      const totalLinksB = Object.values(vectorB).reduce((sum, v) => sum + v, 0);
+      const conceptCountA = Object.keys(vectorA).length;
+      const conceptCountB = Object.keys(vectorB).length;
+
+      switch (jurorSort) {
+        case "sentences":
+          return sentencesB - sentencesA || a.localeCompare(b);
+        case "concepts":
+          return conceptCountB - conceptCountA || a.localeCompare(b);
+        case "alpha":
+          return a.localeCompare(b);
+        case "links":
+        default:
+          return totalLinksB - totalLinksA || a.localeCompare(b);
+      }
+    });
+  }, [analysis, sentencesByJuror, jurorSort]);
+
+  const [axisScale, setAxisScale] = useState(1);
+  const adjustAxisScale = (delta: number) => {
+    setAxisScale((prev) => {
+      const next = Math.min(3, Math.max(0.3, prev + delta));
+      return Number(next.toFixed(2));
+    });
+  };
+
+  const maxPcDim = useMemo(() => {
+    if (!analysis) return 0;
+    return analysis.nodes.reduce((max, n) => {
+      const len = Array.isArray(n.pcValues) ? n.pcValues.length : 0;
+      return Math.max(max, len);
+    }, 0);
+  }, [analysis]);
+
+  const axisColorList = useMemo(
+    () => getAxisColors(Math.max((analysis?.appliedNumDimensions || 0) || 3, 3)),
+    [analysis?.appliedNumDimensions]
+  );
+
+  const nodeById = useMemo(() => {
+    if (!analysis) return new Map<string, AnalysisResult["nodes"][number]>();
+    return new Map(analysis.nodes.map((n) => [n.id, n]));
+  }, [analysis]);
+
+  const maxAbsByDim = useMemo(() => {
+    if (!analysis) return [] as number[];
+    const arr: number[] = [];
+    analysis.nodes.forEach((n) => {
+      if (!Array.isArray(n.pcValues)) return;
+      n.pcValues.forEach((v, idx) => {
+        const abs = Math.abs(v ?? 0);
+        if (!Number.isFinite(abs)) return;
+        arr[idx] = Math.max(arr[idx] ?? 0, abs);
+      });
+    });
+    return arr;
+  }, [analysis]);
+
   if (!analysis) {
     return (
       <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white">
@@ -130,24 +342,43 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
     );
   }
 
-  const stanceCounts = analysis.stats.stanceCounts;
-  const stanceTotal =
-    stanceCounts.praise + stanceCounts.critique + stanceCounts.suggestion + stanceCounts.neutral || 1;
+  const stanceBadgeConfig = [
+    { key: "praise", label: "Praise", color: "bg-emerald-400" },
+    { key: "critique", label: "Critique", color: "bg-rose-400" },
+    { key: "suggestion", label: "Suggestion", color: "bg-blue-400" },
+    { key: "neutral", label: "Neutral", color: "bg-slate-300" },
+  ] as const;
 
-  const effectiveAxisLabels = axisLabels || analysis.axisLabels;
-
-  const axisKeys = Object.keys(effectiveAxisLabels || {});
-  const orderedAxes = axisKeys
+  const effectiveAxisLabels = axisLabels || analysis?.axisLabels || {};
+  const axisKeys = Object.keys(effectiveAxisLabels);
+  const orderedAxesAll = axisKeys
     .map((key, idx) => {
       const parsed = Number.parseInt(key, 10);
       const axisIndex = Number.isFinite(parsed) ? parsed : idx;
       return { key, axisIndex, originalIndex: idx };
     })
     .sort((a, b) => (a.axisIndex - b.axisIndex) || (a.originalIndex - b.originalIndex));
-  const axisColorList = useMemo(
-    () => getAxisColors(Math.max(orderedAxes.length || 3, 3)),
-    [orderedAxes.length]
+  const maxAxes = Math.max(
+    0,
+    Math.min(
+      orderedAxesAll.length,
+      analysis.appliedNumDimensions ?? Number.POSITIVE_INFINITY,
+      analysis.varianceStats?.explainedVariances?.length ?? Number.POSITIVE_INFINITY,
+      maxPcDim || Number.POSITIVE_INFINITY
+    )
   );
+  const orderedAxes = orderedAxesAll.slice(0, maxAxes || orderedAxesAll.length);
+
+  const stanceCounts = analysis.stats.stanceCounts;
+  const stanceTotal =
+    stanceCounts.praise + stanceCounts.critique + stanceCounts.suggestion + stanceCounts.neutral || 1;
+
+  const overviewBadges = [
+    { label: "Sentences", value: analysis.stats.totalSentences },
+    { label: "Concepts", value: analysis.stats.totalConcepts },
+    { label: "Jurors", value: analysis.stats.totalJurors },
+    { label: "Source Files", value: jurorBlocks.length },
+  ];
 
   return (
     <div className="flex h-full flex-col gap-6 overflow-y-auto p-6">
@@ -160,40 +391,49 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
             </Badge>
             <span className="text-sm font-semibold text-white/80">Volume & stance mix</span>
           </div>
-          <BarChart2 className="h-4 w-4 text-white/60" />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {overviewBadges.map((item) => (
+              <Badge
+                key={item.label}
+                variant="outline"
+                className="flex items-center gap-1 rounded-lg border-white/30 bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm"
+              >
+                <span className="text-[9px] uppercase tracking-[0.15em] text-white/60">{item.label}</span>
+                <span className="text-sm font-black text-white">{item.value}</span>
+              </Badge>
+            ))}
+            <BarChart2 className="h-4 w-4 text-white/60" />
+          </div>
         </div>
-        <div className="grid grid-cols-1 gap-3 border-b border-white/10 px-5 py-4 md:grid-cols-8">
-          {[
-            { label: "Sentences", value: analysis.stats.totalSentences },
-            { label: "Concepts", value: analysis.stats.totalConcepts },
-            { label: "Jurors", value: analysis.stats.totalJurors },
-            { label: "Source Files", value: jurorBlocks.length },
-          ].map((item) => (
-            <div key={item.label} className="rounded-xl bg-white/5 p-3">
-              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/60">{item.label}</div>
-              <div className="mt-1 text-2xl font-black text-white">{item.value}</div>
-            </div>
-          ))}
-          {(
-            [
-              { key: "praise", label: "Praise", color: "bg-emerald-400" },
-              { key: "critique", label: "Critique", color: "bg-rose-400" },
-              { key: "suggestion", label: "Suggestion", color: "bg-blue-400" },
-              { key: "neutral", label: "Neutral", color: "bg-slate-300" },
-            ] as const
-          ).map(({ key, label, color }) => {
+        <div className="grid grid-cols-2 gap-3 px-5 py-4 md:grid-cols-4">
+          {stanceBadgeConfig.map(({ key, label, color }) => {
             const count = stanceCounts[key] || 0;
-            const share = stanceTotal > 0 ? Math.max(0.02, count / stanceTotal) : 0;
+            const percent = stanceTotal > 0 ? count / stanceTotal : 0;
             return (
-              <div key={key} className="rounded-xl bg-white/5 p-3">
-                <div className="flex items-center justify-between text-[11px] font-semibold text-white/80">
-                  <span>{label}</span>
-                  <span>
-                    {count} ({formatPercent(stanceTotal > 0 ? count / stanceTotal : 0, 0)})
-                  </span>
+              <div key={key} className="flex flex-col gap-1 rounded-lg bg-white/5 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-white/80">
+                    <span className={`h-2.5 w-2.5 rounded-full ${color}`} />
+                    <span>{label}</span>
+                    <Badge
+                      variant="outline"
+                      className="border-white/30 bg-white/10 px-2 py-0 text-[10px] font-black text-white shadow-sm"
+                    >
+                      {count}
+                    </Badge>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="border-white/20 bg-white/5 px-2 py-0 text-[10px] font-bold text-white"
+                  >
+                    {formatPercent(percent, 0)}
+                  </Badge>
                 </div>
-                <div className="mt-2 h-2 w-full rounded-full bg-white/10">
-                  <div className={`h-2 rounded-full ${color}`} style={{ width: `${Math.min(100, share * 100)}%` }} />
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className={`h-1.5 ${color}`}
+                    style={{ width: `${Math.min(100, Math.max(percent * 100, 4))}%` }}
+                  />
                 </div>
               </div>
             );
@@ -216,19 +456,125 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
               <Badge variant="outline" className="border-slate-200 bg-white text-[11px] font-semibold text-slate-600">
                 {analysis.stats.totalJurors} jurors
               </Badge>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setJurorSortMenuOpen((prev) => !prev)}
+                  className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 shadow-sm hover:bg-slate-50"
+                >
+                  <ListFilter className="h-3.5 w-3.5" />
+                  Sort
+                </button>
+                {jurorSortMenuOpen && (
+                  <div className="absolute right-0 top-8 z-10 w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                    {[
+                      { value: "links", label: "Contribution weight" },
+                      { value: "concepts", label: "# Concepts" },
+                      { value: "sentences", label: "# Sentences" },
+                      { value: "alpha", label: "Alphabetical" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => {
+                          setJurorSort(opt.value as any);
+                          setJurorSortMenuOpen(false);
+                        }}
+                        className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-[12px] font-semibold ${
+                          jurorSort === opt.value ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:bg-slate-50"
+                        }`}
+                      >
+                        <span>{opt.label}</span>
+                        {jurorSort === opt.value && <span className="text-[10px] text-indigo-600">•</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <Users className="h-4 w-4 text-slate-400" />
             </div>
           </div>
           <div className="space-y-3">
-            {analysis.jurors.map((juror) => {
-              const rawTerms = analysis.jurorTopTerms?.[juror] || [];
+            {sortedJurors.map((juror) => {
+              const semanticTerms = analysis.jurorTopTerms?.[juror] || [];
               const vector = analysis.jurorVectors[juror] || {};
               const conceptWeights = Object.entries(vector)
                 .filter(([, w]) => w > 0)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 3);
+                .sort((a, b) => b[1] - a[1]);
+              const showAllConcepts = showAllJurorConcepts[juror] ?? false;
+              const visibleConceptWeights = showAllConcepts ? conceptWeights : conceptWeights.slice(0, 3);
+              const jurorText = jurorBlocks.find((b) => b.juror === juror)?.text ?? "";
+              const keyphrases = extractKeyphrases(jurorText);
+              const semanticSet = new Set(semanticTerms.map((t) => t.toLowerCase()));
+
+              const hasPartialMatch = (term: string, otherList: string[]): boolean => {
+                const termWords = term.toLowerCase().split(/\s+/);
+                return otherList.some((other) => {
+                  const otherWords = other.toLowerCase().split(/\s+/);
+                  const sharedWords = termWords.filter((w) => otherWords.includes(w));
+                  return sharedWords.length > 0 && term.toLowerCase() !== other.toLowerCase();
+                });
+              };
+
+              const allTerms: Array<{ term: string; matchType: "keyphrase-only" | "semantic-only" | "exact-match" | "partial-match" }> = [];
+              const processed = new Set<string>();
+
+              keyphrases.forEach((kp) => {
+                const lower = kp.toLowerCase();
+                if (processed.has(lower)) return;
+                processed.add(lower);
+
+                if (semanticSet.has(lower)) {
+                  allTerms.push({ term: kp, matchType: "exact-match" });
+                } else if (hasPartialMatch(kp, semanticTerms)) {
+                  allTerms.push({ term: kp, matchType: "partial-match" });
+                } else {
+                  allTerms.push({ term: kp, matchType: "keyphrase-only" });
+                }
+              });
+
+              semanticTerms.forEach((st) => {
+                const lower = st.toLowerCase();
+                if (processed.has(lower)) return;
+                processed.add(lower);
+
+                if (hasPartialMatch(st, keyphrases)) {
+                  allTerms.push({ term: st, matchType: "partial-match" });
+                } else {
+                  allTerms.push({ term: st, matchType: "semantic-only" });
+                }
+              });
+
+              const showAllRaw = showAllJurorRawTerms[juror] ?? false;
+              const visibleRawTerms = showAllRaw ? allTerms : allTerms.slice(0, 6);
               const sentences = sentencesByJuror.get(juror) ?? 0;
               const conceptCoverage = Object.keys(vector).length;
+              const jurorNode = nodeById.get(`juror:${juror}`);
+              const pcValues = Array.isArray(jurorNode?.pcValues) ? jurorNode?.pcValues : null;
+              const jurorAxes: AxisPlotDatum[] = [];
+              if (pcValues && orderedAxes.length > 0) {
+                const maxAllowed = Math.min(
+                  orderedAxes.length,
+                  pcValues.length,
+                  analysis.appliedNumDimensions ?? Number.POSITIVE_INFINITY,
+                  analysis.varianceStats?.explainedVariances?.length ?? Number.POSITIVE_INFINITY,
+                  maxAbsByDim.length || Number.POSITIVE_INFINITY
+                );
+                orderedAxes.slice(0, maxAllowed).forEach(({ key, axisIndex }) => {
+                  const axis = effectiveAxisLabels?.[key];
+                  const raw = pcValues[axisIndex] ?? 0;
+                  const maxAbs = maxAbsByDim[axisIndex] || 1;
+                  const normalized = maxAbs > 0 ? Math.max(-1, Math.min(1, raw / maxAbs)) : 0;
+                  jurorAxes.push({
+                    axisIndex,
+                    key,
+                    positive: axis?.synthesizedPositive || axis?.positive,
+                    negative: axis?.synthesizedNegative || axis?.negative,
+                    value: normalized,
+                    raw,
+                    color: axisColorList[axisIndex % axisColorList.length],
+                  });
+                });
+              }
 
               return (
                 <div
@@ -236,37 +582,63 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
                   className="rounded-xl border border-slate-100 bg-slate-50/60 p-3"
                 >
                   <div className="mb-1 flex items-center justify-between">
-                    <div className="text-sm font-bold text-slate-900">{juror}</div>
+                      <Badge
+                        variant="outline"
+                        className="text-sm font-bold"
+                        style={{
+                          borderColor: jurorColors.get(juror)?.base ?? "#cbd5e1",
+                          color: "#0f172a",
+                          backgroundColor: jurorColors.get(juror)?.soft ?? "#f8fafc",
+                        }}
+                      >
+                        <span
+                          className="mr-1 inline-block h-2 w-2 rounded-full"
+                        style={{ backgroundColor: jurorColors.get(juror)?.base ?? "#0f172a" }}
+                      />
+                      {juror}
+                    </Badge>
                     <div className="flex items-center gap-2 text-[11px] text-slate-500">
                       <span>{sentences} sentences</span>
                       <span className="h-3 w-px bg-slate-200" />
                       <span>{conceptCoverage} concept links</span>
                     </div>
                   </div>
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Top raw terms</div>
-                  <div className="mt-1 flex flex-wrap gap-1.5">
-                    {rawTerms.slice(0, 6).map((term) => (
-                      <Badge key={term} variant="outline" className="border-slate-200 bg-white text-[11px] font-semibold">
-                        {term}
+                  <div className="mt-2 flex items-center justify-between">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Concept affinity
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="border-slate-200 bg-white text-[11px] font-semibold text-slate-600">
+                        {conceptWeights.length} concepts
                       </Badge>
-                    ))}
-                    {rawTerms.length === 0 && <span className="text-[11px] text-slate-400">No terms extracted</span>}
-                  </div>
-                  <div className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    Concept affinity
+                      {conceptWeights.length > 3 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowAllJurorConcepts((prev) => ({
+                              ...prev,
+                              [juror]: !showAllConcepts,
+                            }))
+                          }
+                          className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
+                        >
+                          {showAllConcepts ? <Minus className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="mt-1 flex flex-wrap gap-2">
-                    {conceptWeights.map(([id, weight]) => {
+                    {visibleConceptWeights.map(([id, weight]) => {
                       const labelInfo = conceptLabelMap.get(id);
                       const colors = conceptColors.get(id);
                       return (
                         <Badge
                           key={id}
                           variant="secondary"
-                          className="text-indigo-900"
+                          className="text-slate-900"
                           style={{
                             backgroundColor: colors?.soft ?? "#eef2ff",
-                            color: colors?.base ?? "#312e81",
+                            color: "#0f172a",
                             borderColor: colors?.base ?? "transparent",
                             borderWidth: "1px",
                           }}
@@ -293,6 +665,94 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
                       <span className="text-[11px] text-slate-400">No concept weights available</span>
                     )}
                   </div>
+                  <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                    <section className="rounded-xl border border-slate-100 bg-white/90 shadow-sm">
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className="inline-flex items-center gap-2 rounded-full border border-black bg-slate-900 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-white"
+                          >
+                            <span
+                              className="h-2.5 w-2.5 rounded-full border border-black/60"
+                              style={{ backgroundColor: axisColorList[0] ?? "#9a859a" }}
+                            />
+                            Axis affinity
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
+                            onClick={() => adjustAxisScale(-0.1)}
+                          >
+                            <Minus className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
+                            onClick={() => adjustAxisScale(0.1)}
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      <AxisAffinityChart
+                        key={jurorAxes.map((a) => `${a.key}-${a.positive}-${a.negative}`).join("|")}
+                        axes={jurorAxes}
+                        color={jurorColors.get(juror)?.base ?? "#0f172a"}
+                        scale={axisScale}
+                      />
+                    </section>
+                    <section className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 shadow-sm">
+                      <div className="mb-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                            Semantic fingerprint
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {allTerms.length > 6 && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setShowAllJurorRawTerms((prev) => ({
+                                  ...prev,
+                                  [juror]: !showAllRaw,
+                                }))
+                              }
+                              className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
+                            >
+                              {showAllRaw ? <Minus className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                            </button>
+                          )}
+                          <Badge variant="outline" className="border-slate-200 bg-white text-[11px] font-semibold text-slate-600">
+                            {allTerms.length}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {visibleRawTerms.map(({ term, matchType }) => {
+                          let badgeClasses = "text-[10px] px-2 py-0.5 font-medium border";
+                          if (matchType === "keyphrase-only") {
+                            badgeClasses += " text-blue-700 border-blue-200 bg-blue-50";
+                          } else if (matchType === "semantic-only") {
+                            badgeClasses += " text-red-700 border-red-200 bg-red-50";
+                          } else if (matchType === "exact-match") {
+                            badgeClasses += " text-purple-100 border-purple-500 bg-purple-700";
+                          } else {
+                            badgeClasses += " text-purple-900 border-purple-200 bg-purple-100";
+                          }
+                          return (
+                            <Badge key={`${juror}-${term}`} className={badgeClasses}>
+                              {term}
+                            </Badge>
+                          );
+                        })}
+                    {allTerms.length === 0 && <span className="text-[11px] text-slate-400">No terms extracted</span>}
+                  </div>
+                </section>
+              </div>
                 </div>
               );
             })}
@@ -336,28 +796,23 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
               );
               let min: { label: string; value: number } | null = null;
               let max: { label: string; value: number } | null = null;
-              nodesWithPc.forEach((node) => {
+              for (const node of nodesWithPc) {
                 const value = node.pcValues?.[axisIndex] ?? 0;
                 if (min === null || value < min.value) min = { label: node.label, value };
                 if (max === null || value > max.value) max = { label: node.label, value };
-              });
+              }
 
               return (
                 <div key={axisKey} className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
                   <div className="mb-1 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
-                      <Compass className="h-4 w-4 text-slate-500" />
-                      <Badge
-                        variant="outline"
-                        className="border text-[11px] font-semibold"
-                        style={{
-                          borderColor: axisColorList[axisIndex % axisColorList.length],
-                          color: axisColorList[axisIndex % axisColorList.length],
-                          backgroundColor: lightenColor(axisColorList[axisIndex % axisColorList.length], 0.85),
-                        }}
-                      >
-                        Axis {axisIndex + 1}
-                      </Badge>
+                    <div className="flex items-center gap-2 text-sm font-bold text-slate-900 overflow-hidden">
+                      <span
+                        className="inline-block h-3 w-3 rounded-full border border-black flex-shrink-0"
+                        style={{ backgroundColor: axisColorList[axisIndex % axisColorList.length] }}
+                      />
+                      <span className="truncate max-w-[180px]">
+                        {axis?.synthesizedPositive || axis?.positive || `Axis ${axisIndex + 1}`}
+                      </span>
                     </div>
                     <Badge variant="outline" className="border-slate-200 bg-white text-[11px] font-semibold text-slate-500">
                       {formatPercent(variance)}
@@ -369,40 +824,54 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-700">
                     <Badge
                       variant="secondary"
-                      className="bg-white text-slate-700"
+                      className="bg-white text-slate-800"
                       style={{
-                        backgroundColor: lightenColor(axisColorList[axisIndex % axisColorList.length], 0.9),
-                        color: axisColorList[axisIndex % axisColorList.length],
-                        borderColor: axisColorList[axisIndex % axisColorList.length],
+                        backgroundColor: lightenColor(axisColorList[axisIndex % axisColorList.length], 0.93),
+                        borderColor: "black",
                         borderWidth: "1px",
                       }}
                     >
+                      <span
+                        className="mr-1 inline-block h-2 w-2 rounded-full border border-black/30"
+                        style={{ backgroundColor: axisColorList[axisIndex % axisColorList.length] }}
+                      />
                       {axis?.synthesizedNegative || axis?.negative || "Negative"}
                     </Badge>
                     <span className="text-[11px] text-slate-400">vs</span>
                     <Badge
                       variant="secondary"
-                      className="bg-white text-slate-700"
+                      className="bg-white text-slate-800"
                       style={{
-                        backgroundColor: lightenColor(axisColorList[axisIndex % axisColorList.length], 0.9),
-                        color: axisColorList[axisIndex % axisColorList.length],
-                        borderColor: axisColorList[axisIndex % axisColorList.length],
+                        backgroundColor: lightenColor(axisColorList[axisIndex % axisColorList.length], 0.93),
+                        borderColor: "black",
                         borderWidth: "1px",
                       }}
                     >
+                      <span
+                        className="mr-1 inline-block h-2 w-2 rounded-full border border-black/30"
+                        style={{ backgroundColor: axisColorList[axisIndex % axisColorList.length] }}
+                      />
                       {axis?.synthesizedPositive || axis?.positive || "Positive"}
                     </Badge>
                   </div>
                   <div className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                     Extremes
                   </div>
-                  <div className="mt-1 flex items-center gap-2 text-xs text-slate-700">
-                    <Badge variant="outline" className="border-slate-200 bg-white text-slate-600">
-                      Low: {min?.label ?? "–"}
-                    </Badge>
-                    <Badge variant="outline" className="border-slate-200 bg-white text-slate-600">
-                      High: {max?.label ?? "–"}
-                    </Badge>
+                  <div className="mt-1 flex items-center gap-3 text-xs text-slate-800">
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className="inline-block h-2.5 w-2.5 rounded-full border border-black"
+                        style={{ backgroundColor: axisColorList[axisIndex % axisColorList.length] }}
+                      />
+                      <span>Low: {min?.label ?? "N/A"}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className="inline-block h-2.5 w-2.5 rounded-full border border-black"
+                        style={{ backgroundColor: axisColorList[axisIndex % axisColorList.length] }}
+                      />
+                      <span>High: {max?.label ?? "N/A"}</span>
+                    </div>
                   </div>
                 </div>
               );
@@ -498,7 +967,9 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
               const distribution = (conceptJurorDistribution.get(concept.id) || [])
                 .slice()
                 .sort((a, b) => b.weight - a.weight)
-                .slice(0, 3);
+                .slice();
+              const showAll = showAllJurorContribs[concept.id] ?? false;
+              const visibleDistribution = showAll ? distribution : distribution.slice(0, 3);
               const topSentence = concept.representativeSentences?.[0];
               const conceptInsight = insights?.[concept.id];
               const aiLabel = conceptInsight?.shortLabel;
@@ -536,37 +1007,59 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
                       {concept.topTerms.slice(0, 3).join(" • ")}
                     </Badge>
                   </div>
+                <div className="flex items-center justify-between">
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                     Juror attribution
                   </div>
-                  <div className="mt-1 flex flex-wrap gap-1.5">
-                    {distribution.length > 0 ? (
-                      distribution.map((entry) => {
-                        const colors = conceptColors.get(concept.id);
-                        return (
-                          <Badge
-                            key={entry.juror}
-                            variant="secondary"
-                            className="bg-white text-slate-700"
-                            style={{
-                              backgroundColor: colors?.soft ?? "#f8fafc",
-                              color: colors?.base ?? "#334155",
-                              borderColor: colors?.base ?? "transparent",
-                              borderWidth: "1px",
-                            }}
-                          >
-                            <span
-                              className="mr-1 inline-block h-2 w-2 rounded-full"
-                              style={{ backgroundColor: colors?.base ?? "#334155" }}
-                            />
-                            {entry.juror} • {formatPercent(entry.weight)}
-                          </Badge>
-                        );
-                      })
-                    ) : (
-                      <span className="text-[11px] text-slate-400">No juror distribution available</span>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="border-slate-200 bg-white text-[11px] font-semibold text-slate-600">
+                      {distribution.length} jurors
+                    </Badge>
+                    {distribution.length > 3 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowAllJurorContribs((prev) => ({
+                            ...prev,
+                            [concept.id]: !showAll,
+                          }))
+                        }
+                        className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
+                      >
+                        {showAll ? <Minus className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                      </button>
                     )}
                   </div>
+                </div>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {visibleDistribution.length > 0 ? (
+                    visibleDistribution.map((entry) => {
+                      const colors = conceptColors.get(concept.id);
+                      const jurorColor = jurorColors.get(entry.juror);
+                      return (
+                        <Badge
+                          key={entry.juror}
+                          variant="secondary"
+                          className="bg-white text-slate-700"
+                          style={{
+                            backgroundColor: jurorColor?.soft ?? colors?.soft ?? "#f8fafc",
+                            color: jurorColor?.base ?? colors?.base ?? "#334155",
+                            borderColor: jurorColor?.base ?? colors?.base ?? "transparent",
+                            borderWidth: "1px",
+                          }}
+                        >
+                          <span
+                            className="mr-1 inline-block h-2 w-2 rounded-full"
+                            style={{ backgroundColor: jurorColor?.base ?? colors?.base ?? "#334155" }}
+                          />
+                          {entry.juror} • {formatPercent(entry.weight)}
+                        </Badge>
+                      );
+                    })
+                  ) : (
+                    <span className="text-[11px] text-slate-400">No juror distribution available</span>
+                  )}
+                </div>
                   {topSentence && (
                     <div className="mt-2 rounded-lg border border-slate-100 bg-white/80 p-2 text-xs text-slate-600">
                       <div className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">

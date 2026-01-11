@@ -3,7 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Users, MessageSquare, Lightbulb, Hash, Link as LinkIcon, Layers, Activity } from "lucide-react";
 import { getAxisColors } from "@/lib/utils/graph-color-utils";
-import { formatCost } from "@/lib/utils/api-utils";
+import { formatCostReadable } from "@/lib/utils/api-utils";
 import type { Stance } from "@/types/nlp";
 import type { AnalysisResult } from "@/types/analysis";
 
@@ -37,6 +37,8 @@ export function GraphLegend({
   apiCallCount = 0,
   apiCostTotal = 0
 }: GraphLegendProps) {
+  const { amount: formattedCost, unit: costUnit } = formatCostReadable(apiCostTotal);
+
   return (
     <div className="mt-3 flex items-center justify-between gap-4 text-xs text-slate-700">
       {/* Legend on the left */}
@@ -97,7 +99,7 @@ export function GraphLegend({
           <div className="flex items-center gap-1.5">
             <span>{apiCallCount} calls</span>
             <span className="h-4 w-px bg-slate-200" />
-            <span>{formatCost(apiCostTotal)} cost</span>
+            <span>{formattedCost} {costUnit}</span>
           </div>
         </Badge>
         <Badge variant="secondary" className="flex items-center gap-1.5 border border-indigo-100 bg-indigo-50 px-3 py-1 text-indigo-700">

@@ -40,3 +40,24 @@ export function formatCost(cost: number): string {
   return `$${cost.toFixed(4)}`;
 }
 
+/**
+ * Returns a human-readable cost display. Values under one dollar are shown as cents
+ * (still prefixed with $) and labeled accordingly.
+ */
+export function formatCostReadable(cost: number): { amount: string; unit: "cost" | "cents" } {
+  if (!Number.isFinite(cost) || cost <= 0) {
+    return { amount: "$0.00", unit: "cents" };
+  }
+
+  if (cost < 1) {
+    const cents = cost * 100;
+    if (cents < 0.01) {
+      return { amount: "<$0.01", unit: "cents" };
+    }
+    const precision = cents < 1 ? 2 : cents < 10 ? 1 : 0;
+    return { amount: `$${cents.toFixed(precision)}`, unit: "cents" };
+  }
+
+  const amount = cost >= 100 ? `$${cost.toFixed(0)}` : `$${cost.toFixed(2)}`;
+  return { amount, unit: "cost" };
+}
