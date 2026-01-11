@@ -264,7 +264,7 @@ export async function buildAnalysis(
   }
 
   // Compute 3D positions
-  const { positions: positions3D, conceptPcValues } = computeNode3DPositions(
+  const { positions: positions3D, conceptPcValues, jurorPcValues } = computeNode3DPositions(
     jurorVectors,
     centroids,
     jurorList,
@@ -282,11 +282,12 @@ export async function buildAnalysis(
       id: `juror:${j}`, 
       type: "juror", 
       label: j, 
-      size: 20, 
+      size: 28, 
       meta: {},
       x: pos.x,
       y: pos.y,
       z: pos.z,
+      pcValues: jurorPcValues.get(`juror:${j}`),
     });
   }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { AnalysisResult } from "@/types/analysis";
 import type { LogEntry } from "@/components/inspector/InspectorConsole";
 
@@ -23,6 +23,12 @@ export function useAxisLabelEnhancer(
 ) {
   const [enhancedLabels, setEnhancedLabels] = useState<EnhancedAxisLabels | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  const refreshAxisLabels = useCallback(() => {
+    setEnhancedLabels(null);
+    setRefreshTrigger((prev) => prev + 1);
+  }, []);
 
   // Reset enhanced labels when analysis changes
   useEffect(() => {
@@ -108,7 +114,7 @@ export function useAxisLabelEnhancer(
     };
 
     enhanceLabels();
-  }, [analysis, enabled, enhancedLabels, selectedModel]);
+  }, [analysis, enabled, enhancedLabels, selectedModel, onAddLog, refreshTrigger]);
 
-  return { enhancedLabels, isLoading };
+  return { enhancedLabels, isLoading, refreshAxisLabels };
 }

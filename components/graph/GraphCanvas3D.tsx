@@ -13,6 +13,7 @@ import { Link3D } from "./Link3D";
 import { Graph3DControls } from "./Graph3DControls";
 import { GraphLegend } from "./GraphLegend";
 import { generateSymmetricAxisDirections, AxisDirection } from "@/lib/graph/dimensionality-reduction";
+import { getAxisColors } from "@/lib/utils/graph-color-utils";
 import type { GraphNode, GraphLink } from "@/types/graph";
 import type { AnalysisCheckpoint, AnalysisResult } from "@/types/analysis";
 import type { OrbitControls as OrbitControlsType } from "three-stdlib";
@@ -35,6 +36,8 @@ interface GraphCanvas3DProps {
   axisLabels?: AnalysisResult["axisLabels"];
   enableAxisLabelAI?: boolean;
   onToggleAxisLabelAI?: (enabled: boolean) => void;
+  onRefreshAxisLabels?: () => void;
+  isRefreshingAxisLabels?: boolean;
   analysis?: AnalysisResult | null;
   filteredNodesCount?: number;
   filteredLinksCount?: number;
@@ -76,21 +79,6 @@ function AxesHelper({ visible }: { visible: boolean }) {
   return <axesHelper args={[10]} />;
 }
 
-// Helper to generate axis colors
-export function getAxisColors(numDimensions: number): string[] {
-  const colors: string[] = [];
-  // For 3 dimensions, use standard RGB colors
-  if (numDimensions === 3) {
-    return ["#ef4444", "#22c55e", "#3b82f6"]; // Red, Green, Blue
-  }
-  
-  for (let i = 0; i < numDimensions; i++) {
-    const hue = (i / numDimensions) * 360;
-    colors.push(`hsl(${hue}, 70%, 50%)`);
-  }
-  return colors;
-}
-
 // Axis end labels component - memoized to prevent unnecessary re-renders
 const DynamicAxisLabel = ({ 
   position, 
@@ -128,7 +116,14 @@ const DynamicAxisLabel = ({
   });
 
   return (
-    <Html position={position} center distanceFactor={15} pointerEvents="none">
+    <Html
+      position={position}
+      center
+      distanceFactor={15}
+      pointerEvents="none"
+      zIndexRange={[0, 0]}
+      style={{ zIndex: 0 }}
+    >
       <div 
         className={cn(
           "flex flex-col items-center gap-1 transition-opacity duration-300",
@@ -326,9 +321,18 @@ function SceneContent({
   return (
     <>
       {/* Lighting */}
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[10, 10, 5]} intensity={0.8} />
-      <directionalLight position={[-10, -10, -5]} intensity={0.3} />
+      <ambientLight intensity={0.35} />
+      <hemisphereLight skyColor="#f8fafc" groundColor="#0b1220" intensity={0.45} />
+      <directionalLight position={[10, 10, 5]} intensity={0.9} />
+      <directionalLight position={[-10, -10, -5]} intensity={0.35} />
+      <pointLight position={[0, 12, 6]} intensity={0.3} color="#fdfdfd" />
+      <spotLight 
+        position={[-12, 18, 10]} 
+        angle={0.5} 
+        penumbra={0.6} 
+        intensity={0.25} 
+        castShadow={false} 
+      />
       
       {/* Environment for reflections */}
       <Environment preset="city" />
@@ -454,6 +458,8 @@ export function GraphCanvas3D({
   axisLabels,
   enableAxisLabelAI = false,
   onToggleAxisLabelAI,
+  onRefreshAxisLabels,
+  isRefreshingAxisLabels = false,
   analysis = null,
   filteredNodesCount = 0,
   filteredLinksCount = 0,
@@ -466,7 +472,7 @@ export function GraphCanvas3D({
   numDimensions = 3,
 }: GraphCanvas3DProps) {
   const controlsRef = useRef<OrbitControlsType>(null);
-  const [showGrid, setShowGrid] = useState(true);
+  const [showGrid, setShowGrid] = useState(false);
   
   // Use props if provided, otherwise fall back to internal state (for backwards compatibility)
   const checkpointIndex = checkpointIndexProp;
@@ -537,19 +543,21 @@ export function GraphCanvas3D({
             </Canvas>
             
             {/* Controls overlay */}
-            <Graph3DControls
-              showGrid={showGrid}
-              onToggleGrid={() => setShowGrid(!showGrid)}
-              showAxes={showAxes}
-              onToggleAxes={onToggleAxes ? () => onToggleAxes(!showAxes) : () => {}}
-              showGraph={showGraph}
-              onToggleGraph={onToggleGraph ? () => onToggleGraph(!showGraph) : () => {}}
-              onResetCamera={handleResetCamera}
-              axisLabels={axisLabels}
-              enableAxisLabelAI={enableAxisLabelAI}
-              onToggleAxisLabelAI={onToggleAxisLabelAI}
-              numDimensions={numDimensions}
-            />
+              <Graph3DControls
+                showGrid={showGrid}
+                onToggleGrid={() => setShowGrid(!showGrid)}
+                showAxes={showAxes}
+                onToggleAxes={onToggleAxes ? () => onToggleAxes(!showAxes) : () => {}}
+                showGraph={showGraph}
+                onToggleGraph={onToggleGraph ? () => onToggleGraph(!showGraph) : () => {}}
+                onResetCamera={handleResetCamera}
+                axisLabels={axisLabels}
+                enableAxisLabelAI={enableAxisLabelAI}
+                onToggleAxisLabelAI={onToggleAxisLabelAI}
+                onRefreshAxisLabels={onRefreshAxisLabels}
+                isRefreshingAxisLabels={isRefreshingAxisLabels}
+                numDimensions={numDimensions}
+              />
             
             {/* Instructions */}
             <div className="absolute bottom-3 right-3 rounded-xl border bg-white/95 px-3 py-2 text-xs text-slate-700 shadow-sm">
@@ -572,5 +580,3 @@ export function GraphCanvas3D({
     </>
   );
 }
-
-

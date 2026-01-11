@@ -37,10 +37,10 @@ export function generateSymmetricAxisDirections(numDimensions: number): AxisDire
   const phi = Math.PI * (3 - Math.sqrt(5)); // Golden angle
 
   for (let i = 0; i < numDimensions; i++) {
-    const y = 1 - (i / (numDimensions - 1)) * 2; // y goes from 1 to -1
+    const y = 1 - ((i + 0.5) / numDimensions) * 2; // step inside [-1,1] without hitting exact poles
     const radius = Math.sqrt(Math.max(0, 1 - y * y)); // radius at y
 
-    const theta = phi * i;
+    const theta = (2 * Math.PI * i) / numDimensions;
 
     const x = Math.cos(theta) * radius;
     const z = Math.sin(theta) * radius;
@@ -301,9 +301,14 @@ export function computeNode3DPositions(
   numDimensions: number = 3,
   scale: number = 10,
   seed: number = 42
-): { positions: Map<string, { x: number; y: number; z: number }>; conceptPcValues: Map<string, number[]> } {
+): { 
+  positions: Map<string, { x: number; y: number; z: number }>; 
+  conceptPcValues: Map<string, number[]>;
+  jurorPcValues: Map<string, number[]>;
+} {
   const positions = new Map<string, { x: number; y: number; z: number }>();
   const conceptPcValues = new Map<string, number[]>();
+  const jurorPcValues = new Map<string, number[]>();
   
   // First, get N-D positions for concepts from centroids
   const { coords: conceptCoords, pcValues: conceptRawPcValues } = reduceToND(conceptCentroids, numDimensions, scale, seed);
@@ -313,40 +318,48 @@ export function computeNode3DPositions(
     conceptPcValues.set(conceptIds[i], conceptRawPcValues[i] ?? []);
   }
   
-  // For jurors, compute weighted average of their concept positions
+  // For jurors, compute weighted average of their concept positions AND their PC values
   for (const juror of jurorList) {
     const vec = jurorVectors[juror] || {};
     let totalWeight = 0;
     let x = 0, y = 0, z = 0;
     
+    // Weighted average for PC values
+    const mixedPc = new Array(numDimensions).fill(0);
+    
     for (const [conceptId, weight] of Object.entries(vec)) {
       const conceptPos = positions.get(conceptId);
-      if (conceptPos && weight > 0) {
+      const cPc = conceptPcValues.get(conceptId);
+      
+      if (conceptPos && cPc && weight > 0) {
         x += conceptPos.x * weight;
         y += conceptPos.y * weight;
         z += conceptPos.z * weight;
+        
+        for (let i = 0; i < numDimensions; i++) {
+          mixedPc[i] += cPc[i] * weight;
+        }
+        
         totalWeight += weight;
       }
     }
     
     if (totalWeight > 0) {
-      // Remove artificial jitter; use pure mathematical average
-      // This ensures node positions are perfectly faithful to the data
       positions.set(`juror:${juror}`, {
         x: x / totalWeight,
         y: y / totalWeight,
         z: z / totalWeight,
       });
+      
+      jurorPcValues.set(`juror:${juror}`, mixedPc.map(v => v / totalWeight));
     } else {
-      // Use origin [0,0,0] as a neutral fallback instead of a random position
       positions.set(`juror:${juror}`, { x: 0, y: 0, z: 0 });
+      jurorPcValues.set(`juror:${juror}`, new Array(numDimensions).fill(0));
     }
   }
   
-  return { positions, conceptPcValues };
+  return { positions, conceptPcValues, jurorPcValues };
 }
-
-
 
 
 

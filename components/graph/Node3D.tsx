@@ -4,25 +4,9 @@ import { useRef, useState, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Text, Billboard } from "@react-three/drei";
 import * as THREE from "three";
-import { getAxisColors } from "./GraphCanvas3D";
+import { getPCColor, lightenColor } from "@/lib/utils/graph-color-utils";
 import type { GraphNode, NodeType } from "@/types/graph";
 import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
-
-// Helper function to lighten a hex color by mixing with white
-function lightenColor(hex: string, amount: number): string {
-  // Remove # if present
-  const hexClean = hex.replace("#", "");
-  // Convert to RGB
-  const r = parseInt(hexClean.substring(0, 2), 16);
-  const g = parseInt(hexClean.substring(2, 4), 16);
-  const b = parseInt(hexClean.substring(4, 6), 16);
-  // Mix with white (255, 255, 255)
-  const newR = Math.round(r + (255 - r) * amount);
-  const newG = Math.round(g + (255 - g) * amount);
-  const newB = Math.round(b + (255 - b) * amount);
-  // Convert back to hex
-  return `#${newR.toString(16).padStart(2, "0")}${newG.toString(16).padStart(2, "0")}${newB.toString(16).padStart(2, "0")}`;
-}
 
 interface Node3DProps {
   node: GraphNode;
@@ -59,44 +43,9 @@ const nodeColors: Record<NodeType, NodeColorScheme> = {
   },
 };
 
-// Helper to mix colors based on PC values
-function mixAxisColors(pcValues: number[] | undefined): string {
-  if (!pcValues || pcValues.length === 0) return "#8b5cf6"; // Default concept color
-  
-  const numDimensions = pcValues.length;
-  const axisColors = getAxisColors(numDimensions);
-  
-  // 1. Normalize PC values (absolute values)
-  const absPC = pcValues.map(Math.abs);
-  const maxPC = Math.max(...absPC);
-  if (maxPC === 0) return "#8b5cf6";
-  const normalized = absPC.map(v => v / maxPC);
-  
-  // 2. Identify strong axes (top 3)
-  const indexed = normalized.map((val, i) => ({ val, i }));
-  indexed.sort((a, b) => b.val - a.val);
-  const topIndices = indexed.slice(0, 3).filter(x => x.val > 0.1);
-  
-  if (topIndices.length === 0) return "#8b5cf6";
-  
-  // 3. Mix colors
-  let r = 0, g = 0, b = 0;
-  let totalWeight = 0;
-  
-  topIndices.forEach(({ val, i }) => {
-    const color = new THREE.Color(axisColors[i]);
-    r += color.r * val;
-    g += color.g * val;
-    b += color.b * val;
-    totalWeight += val;
-  });
-  
-  const finalColor = new THREE.Color(r / totalWeight, g / totalWeight, b / totalWeight);
-  return `#${finalColor.getHexString()}`;
-}
-
 export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insight }: Node3DProps) {
   const meshRef = useRef<THREE.Mesh>(null);
+  const selectionCageRef = useRef<THREE.Group>(null);
   const [hovered, setHovered] = useState(false);
   
   // Get position from node (3D coordinates from PCA)
@@ -118,40 +67,53 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
     return [0, 0, 0] as [number, number, number];
   }, [node.id, node.type]);
 
-  let color: string;
-  
-  // Custom axis-based color for concept nodes
-  const conceptAxisColor = useMemo(() => {
-    if (node.type === "concept" && node.pcValues) {
-      return mixAxisColors(node.pcValues);
+  // Unified color logic for both jurors and concepts
+  const nodeColor = useMemo(() => {
+    if (node.pcValues) {
+      return getPCColor(node.pcValues, colors.base);
     }
-    return null;
-  }, [node.type, node.pcValues]);
+    return isSelected ? colors.selected : hovered ? colors.hover : colors.base;
+  }, [node.pcValues, colors, isSelected, hovered]);
 
+  let color: string;
   if (opacity === 0) {
-    color = "#e2e8f0"; // Very light gray - no hover effect when not visible
+    color = "#94a3b8"; // Slightly darker slate so transparency stays visible against light background
+  } else if (opacity === 0.7) {
+    color = lightenColor(nodeColor, 0.5);
   } else {
-    const baseColor = conceptAxisColor ?? (isSelected ? colors.selected : hovered ? colors.hover : colors.base);
-    // If opacity is 0.7 (connected node), lighten the color
-    if (opacity === 0.7) {
-      // Lighten the color by mixing with white (50% original, 50% white)
-      color = lightenColor(baseColor, 0.5);
-    } else {
-      color = baseColor;
-    }
+    color = nodeColor;
   }
-  // Mesh opacity: use the provided opacity value (0, 0.7, or 1.0), but keep at 1.0 for color visibility
-  const meshOpacity = opacity === 0 ? 0.35 : 1.0;
+
+  // Mesh opacity: 1.0 for selected/primary, 0.3 for others to create "x-ray" effect
+  // This ensures both connected (0.7) and grayed out (0) nodes are transparent
+  const meshOpacity = opacity === 1.0 ? 1.0 : 0.3;
+  const isGhost = meshOpacity < 1.0;
   const radius = (node.size / 16) * 0.3; // Scale down for 3D space
+  const cageRadius = radius + 0.55;
+  const cageColor = "#fbbf24";
+  const cageRingOrientations: [number, number, number][] = [
+    [Math.PI / 4, 0, 0],
+    [0, Math.PI / 3, 0],
+  ];
+  const highlightColor = "#000000";
+  const selectionPulseOffset = useMemo(() => Math.random() * Math.PI * 2, []);
   
   // Animate on hover/select (only if visible)
-  useFrame((state) => {
+  useFrame((state, delta) => {
     if (!meshRef.current) return;
     const targetScale = (hovered || isSelected) && isVisible ? 1.2 : 1;
     meshRef.current.scale.lerp(
       new THREE.Vector3(targetScale, targetScale, targetScale),
       0.1
     );
+
+    if (selectionCageRef.current && isSelected) {
+      const time = state.clock.getElapsedTime();
+      const pulse = 1 + Math.sin(time * 2.6 + selectionPulseOffset) * 0.07;
+      selectionCageRef.current.scale.setScalar(pulse);
+      selectionCageRef.current.rotation.y += delta * 0.5;
+      selectionCageRef.current.rotation.x += delta * 0.45;
+    }
   });
   
   // Handle click with debounce for double-click detection
@@ -193,12 +155,16 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
         ) : (
           <sphereGeometry args={[radius, 32, 32]} />
         )}
-        <meshStandardMaterial
+        <meshPhysicalMaterial
           color={color}
-          metalness={0.3}
-          roughness={0.4}
           opacity={meshOpacity}
-          transparent={meshOpacity < 1}
+          transparent={true} // Always allow the material to blend
+          depthWrite={!isGhost}
+          roughness={isGhost ? 1 : 0.45}
+          metalness={0.18}
+          clearcoat={0.35}
+          clearcoatRoughness={0.2}
+          envMapIntensity={isGhost ? 0.3 : 0.8}
           emissive={isSelected ? color : "#000000"}
           emissiveIntensity={isSelected ? 0.3 : 0}
         />
@@ -215,7 +181,8 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
           <Text
             position={[0, radius + 0.3, 0]}
             fontSize={0.25}
-            color={!isVisible ? "#000000" : isSelected || hovered ? "#1e293b" : "#64748b"}
+            color={!isVisible ? "#94a3b8" : isSelected || hovered ? "#1e293b" : "#64748b"}
+            fillOpacity={!isVisible ? 0.6 : 1}
             anchorX="center"
             anchorY="bottom"
             maxWidth={3}
@@ -226,14 +193,26 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
         </Billboard>
       ) : null}
       
-      {/* Selection ring */}
+      {/* Selection cage highlight */}
       {isSelected && (
-        <group>
-          <mesh rotation={[Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[radius + 0.1, radius + 0.15, 32]} />
-            <meshBasicMaterial color="#fbbf24" side={THREE.DoubleSide} />
-          </mesh>
-          
+        <>
+          <group ref={selectionCageRef}>
+            {cageRingOrientations.map((rotation, index) => (
+              <mesh key={`cage-ring-${index}`} rotation={rotation}>
+                <torusGeometry args={[cageRadius, 0.02, 6, 60]} />
+              <meshBasicMaterial
+                color={highlightColor}
+                transparent
+                opacity={0.85}
+                wireframe
+                depthWrite={false}
+                blending={THREE.AdditiveBlending}
+                toneMapped={false}
+              />
+              </mesh>
+            ))}
+          </group>
+
           {/* Internal count/weight label */}
           <Billboard>
             <Text
@@ -249,7 +228,7 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
                 : ""}
             </Text>
           </Billboard>
-        </group>
+        </>
       )}
     </group>
   );

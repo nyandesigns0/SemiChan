@@ -175,7 +175,8 @@ export default function HomePage() {
   const { insights, fetchSummary } = useConceptSummarizer(analysis, selectedModel);
   
   // Axis Label Enhancement
-  const { enhancedLabels } = useAxisLabelEnhancer(analysis, enableAxisLabelAI, selectedModel, addLog);
+  const { enhancedLabels, isLoading: isRefreshingAxisLabels, refreshAxisLabels } =
+    useAxisLabelEnhancer(analysis, enableAxisLabelAI, selectedModel, addLog);
   
   // Merge enhanced axis labels with analysis axis labels
   const displayAxisLabels = useMemo(() => {
@@ -746,6 +747,8 @@ export default function HomePage() {
                   axisLabels={displayAxisLabels}
                   enableAxisLabelAI={enableAxisLabelAI}
                   onToggleAxisLabelAI={setEnableAxisLabelAI}
+                  onRefreshAxisLabels={enableAxisLabelAI ? refreshAxisLabels : undefined}
+                  isRefreshingAxisLabels={isRefreshingAxisLabels}
                   analysis={analysis}
                   filteredNodesCount={filteredNodes.length}
                   filteredLinksCount={filteredLinks.length}
@@ -835,4 +838,3 @@ export default function HomePage() {
     </div>
   );
 }
-

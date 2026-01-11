@@ -2,7 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Users, MessageSquare, Lightbulb, Hash, Link as LinkIcon, Layers } from "lucide-react";
-import { getAxisColors } from "./GraphCanvas3D";
+import { getAxisColors } from "@/lib/utils/graph-color-utils";
 import type { Stance } from "@/types/nlp";
 import type { AnalysisResult } from "@/types/analysis";
 

@@ -84,7 +84,7 @@ export function Link3D({ link, nodes, isSelected, opacity, onClick }: Link3DProp
   const isVisible = opacity > 0;
   let color = baseColor;
   if (opacity === 0) {
-    color = hovered ? "#64748b" : "#e2e8f0"; // Darker slate on hover when grayed out
+    color = hovered ? "#64748b" : "#94a3b8"; // Neutral slate to keep ghosting visible
   } else if (isSelected) {
     color = "#fbbf24";
   } else if (hovered) {
@@ -94,13 +94,14 @@ export function Link3D({ link, nodes, isSelected, opacity, onClick }: Link3DProp
     color = lightenColor(baseColor, 0.5);
   }
   
-  // Link opacity: keep at 1.0 for color visibility, except when grayed out
-  const linkOpacity = opacity === 0
-    ? (isSelected ? 0.4 : (hovered ? 0.6 : 0.25)) // Increased opacity on hover when grayed out
-    : 1.0;
+  // Link opacity: 1.0 for selected/primary, 0.2-0.3 for x-ray effect
+  const linkOpacity = opacity === 1.0 
+    ? 1.0 
+    : (opacity === 0.7 ? 0.4 : 0.2); 
+  const isGhost = linkOpacity < 1.0;
 
   // Line width based on weight
-  const lineWidth = Math.max(1, Math.min(4, link.weight * 10));
+  const lineWidth = Math.max(2, Math.min(5, link.weight * 12));
   
   // Apply hover/select width increase
   // Note: For grayed out elements, we follow the node behavior of not changing size on hover
@@ -116,7 +117,8 @@ export function Link3D({ link, nodes, isSelected, opacity, onClick }: Link3DProp
         color={color}
         lineWidth={finalLineWidth}
         opacity={linkOpacity}
-        transparent={linkOpacity < 1}
+        transparent={true}
+        depthWrite={!isGhost}
         onClick={(e) => {
           e.stopPropagation();
           onClick(link, e.nativeEvent as MouseEvent);
@@ -138,7 +140,5 @@ export function Link3D({ link, nodes, isSelected, opacity, onClick }: Link3DProp
     </group>
   );
 }
-
-
 
 

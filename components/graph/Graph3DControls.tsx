@@ -1,11 +1,11 @@
 "use client";
 
-import { RotateCcw, Grid3X3, Box, Layers, Eye, EyeOff } from "lucide-react";
+import { RotateCcw, Grid3X3, Box, Layers, Eye, EyeOff, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { getAxisColors } from "./GraphCanvas3D";
+import { getAxisColors } from "@/lib/utils/graph-color-utils";
 import type { AnalysisResult } from "@/types/analysis";
 import { cn } from "@/lib/utils/cn";
 
@@ -20,6 +20,8 @@ interface Graph3DControlsProps {
   axisLabels?: AnalysisResult["axisLabels"];
   enableAxisLabelAI?: boolean;
   onToggleAxisLabelAI?: (enabled: boolean) => void;
+  onRefreshAxisLabels?: () => void;
+  isRefreshingAxisLabels?: boolean;
   numDimensions?: number;
 }
 
@@ -34,6 +36,8 @@ export function Graph3DControls({
   axisLabels,
   enableAxisLabelAI = false,
   onToggleAxisLabelAI,
+  onRefreshAxisLabels,
+  isRefreshingAxisLabels = false,
   numDimensions = 3,
 }: Graph3DControlsProps) {
   const axisColors = getAxisColors(numDimensions);
@@ -96,6 +100,19 @@ export function Graph3DControls({
               Axis Dimensions
             </div>
             <div className="flex items-center gap-2">
+              {onRefreshAxisLabels && (
+                <Button
+                  variant="ghost"
+                  className="h-7 w-7 rounded-full p-0 text-slate-500 shadow-sm hover:text-slate-900 bg-white/90"
+                  onClick={onRefreshAxisLabels}
+                  disabled={isRefreshingAxisLabels}
+                  title="Refresh AI axis labels"
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 ${isRefreshingAxisLabels ? "animate-spin" : ""}`}
+                  />
+                </Button>
+              )}
               <label className="text-[9px] font-bold uppercase text-slate-400">AI Labels</label>
               <Switch
                 checked={enableAxisLabelAI}
