@@ -53,7 +53,8 @@ export interface AxisLabelsRequest {
     negative: string; 
     positive: string; 
     negativeContext: { keywords: string[], sentences: string[] }; 
-    positiveContext: { keywords: string[], sentences: string[] } 
+    positiveContext: { keywords: string[], sentences: string[] };
+    name?: string;
   }>;
   model?: string;
 }
@@ -63,7 +64,9 @@ export interface AxisLabelsResponse {
     negative: string; 
     positive: string; 
     synthesizedNegative: string; 
-    synthesizedPositive: string 
+    synthesizedPositive: string;
+    name?: string;
+    synthesizedName?: string;
   }>;
   usage?: TokenUsage;
 }

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { 
-  Brain, 
+  Brain,
   BarChart3, 
   Fingerprint, 
   Layers, 
@@ -60,10 +60,6 @@ interface AnalysisControlsProps {
   onDimensionModeChange: (mode: "manual" | "elbow" | "threshold") => void;
   varianceThreshold: number;
   onVarianceThresholdChange: (value: number) => void;
-  
-  // Model selection
-  selectedModel: string;
-  onModelChange: (model: string) => void;
   appliedNumDimensions?: number;
 }
 
@@ -96,8 +92,6 @@ export function AnalysisControls({
   onDimensionModeChange,
   varianceThreshold,
   onVarianceThresholdChange,
-  selectedModel,
-  onModelChange,
   appliedNumDimensions,
 }: AnalysisControlsProps) {
   const [showClusteringSettings, setShowClusteringSettings] = useState(false);
@@ -109,15 +103,6 @@ export function AnalysisControls({
   const axisBadgeLabel = isAutoDimensionMode
     ? `${effectiveAxes} Axis${effectiveAxes === 1 ? "" : "es"} (auto)`
     : `${numDimensions} Axis${numDimensions === 1 ? "" : "es"}`;
-
-  const models = [
-    "GPT-5.1",
-    "GPT-5",
-    "GPT-4.1",
-    "GPT-4.1 mini",
-    "GPT-4.1-nano",
-    "GPT-4o-mini"
-  ];
 
   // Helper to determine the current preset
   const currentPreset = (() => {
@@ -133,32 +118,6 @@ export function AnalysisControls({
 
   return (
     <div className="space-y-4">
-      {/* Category: Language Model */}
-      <div className="space-y-2">
-        <Label 
-          className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-900"
-        >
-          <Brain className="h-3 w-3" />
-          Language Model
-        </Label>
-        <div className="relative group">
-          <select 
-            value={selectedModel}
-            onChange={(e) => onModelChange(e.target.value)}
-            className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-1.5 text-xs font-bold uppercase tracking-tight text-slate-700 outline-none transition-all hover:border-slate-300 focus:ring-2 focus:ring-indigo-500/20"
-          >
-            {models.map(m => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
-          <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 group-hover:text-slate-600">
-            <ChevronDown className="h-3.5 w-3.5" />
-          </div>
-        </div>
-      </div>
-
-      <Separator className="bg-slate-100/80" />
-
       {/* Category: Clustering Engine */}
       <div className="space-y-2">
         <Label 

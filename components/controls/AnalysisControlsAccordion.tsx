@@ -37,10 +37,6 @@ interface AnalysisControlsAccordionProps {
   onDimensionModeChange: (mode: "manual" | "elbow" | "threshold") => void;
   varianceThreshold: number;
   onVarianceThresholdChange: (value: number) => void;
-
-  // Model selection
-  selectedModel: string;
-  onModelChange: (model: string) => void;
   appliedNumDimensions?: number;
 }
 
@@ -73,8 +69,6 @@ export function AnalysisControlsAccordion({
   onDimensionModeChange,
   varianceThreshold,
   onVarianceThresholdChange,
-  selectedModel,
-  onModelChange,
   appliedNumDimensions,
 }: AnalysisControlsAccordionProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -129,8 +123,6 @@ export function AnalysisControlsAccordion({
             onDimensionModeChange={onDimensionModeChange}
             varianceThreshold={varianceThreshold}
             onVarianceThresholdChange={onVarianceThresholdChange}
-            selectedModel={selectedModel}
-            onModelChange={onModelChange}
             appliedNumDimensions={appliedNumDimensions}
           />
         </div>

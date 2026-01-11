@@ -53,7 +53,9 @@ export interface AnalysisResult {
     negativeId: string; 
     positiveId: string; 
     synthesizedNegative?: string; 
-    synthesizedPositive?: string 
+    synthesizedPositive?: string;
+    name?: string;
+    synthesizedName?: string;
   }>;
   varianceStats?: {
     totalVariance: number;

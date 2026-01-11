@@ -223,7 +223,9 @@ export default function HomePage() {
           labels[key] = {
             ...labels[key],
             synthesizedNegative: (enhancedLabels as any)[key].synthesizedNegative,
-            synthesizedPositive: (enhancedLabels as any)[key].synthesizedPositive
+            synthesizedPositive: (enhancedLabels as any)[key].synthesizedPositive,
+            name: (enhancedLabels as any)[key].name ?? labels[key].name,
+            synthesizedName: (enhancedLabels as any)[key].synthesizedName ?? labels[key].synthesizedName,
           };
         }
       });
@@ -662,6 +664,8 @@ export default function HomePage() {
             onToggleAxisLabelAI={setEnableAxisLabelAI}
             autoSynthesize={autoSynthesize}
             onToggleAutoSynthesize={setAutoSynthesize}
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
           />
 
           <AnalysisControlsAccordion
@@ -691,12 +695,10 @@ export default function HomePage() {
             onNumDimensionsChange={setNumDimensions}
             dimensionMode={dimensionMode}
             onDimensionModeChange={setDimensionMode}
-                  varianceThreshold={varianceThreshold}
-                  onVarianceThresholdChange={setVarianceThreshold}
-                  selectedModel={selectedModel}
-                  onModelChange={setSelectedModel}
-                  appliedNumDimensions={appliedNumDimensions}
-                />
+            varianceThreshold={varianceThreshold}
+            onVarianceThresholdChange={setVarianceThreshold}
+            appliedNumDimensions={appliedNumDimensions}
+          />
 
         </div>
       </CollapsibleSidebar>

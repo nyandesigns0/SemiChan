@@ -8,7 +8,9 @@ export type EnhancedAxisLabels = Record<string, {
   negative: string; 
   positive: string; 
   synthesizedNegative: string; 
-  synthesizedPositive: string 
+  synthesizedPositive: string;
+  name?: string;
+  synthesizedName?: string;
 }>;
 
 /**
@@ -54,6 +56,8 @@ export function useAxisLabelEnhancer(
           positive: axis.positive,
           synthesizedNegative: axis.synthesizedNegative!,
           synthesizedPositive: axis.synthesizedPositive!,
+          name: axis.name,
+          synthesizedName: axis.synthesizedName,
         };
       });
       setEnhancedLabels(enhanced);
@@ -86,7 +90,8 @@ export function useAxisLabelEnhancer(
             negative: axis.negative,
             positive: axis.positive,
             negativeContext: getConceptContext(axis.negativeId),
-            positiveContext: getConceptContext(axis.positiveId)
+            positiveContext: getConceptContext(axis.positiveId),
+            name: axis.name || axis.synthesizedName,
           };
         });
 

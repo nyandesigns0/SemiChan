@@ -34,7 +34,7 @@ function AxisAffinityChart({
   const formatAxisPolarity = (axis: AxisPlotDatum) => {
     const negativeLabel = axis.negative?.trim() || "Negative";
     const positiveLabel = axis.positive?.trim() || "Positive";
-    return `${negativeLabel} vs ${positiveLabel}`;
+    return `Negative: ${negativeLabel} | Positive: ${positiveLabel}`;
   };
   const getLuminanceFromHex = (hex: string) => {
     const cleaned = hex.replace(/^#/, "");
@@ -873,8 +873,8 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
                         className="mr-1 inline-block h-2 w-2 rounded-full border border-black flex-shrink-0"
                         style={{ backgroundColor: axisColor }}
                       />
-                      <span className="truncate max-w-[180px]">
-                        {axis?.synthesizedPositive || axis?.positive || `Axis ${axisIndex + 1}`}
+                      <span className="whitespace-normal break-words">
+                        {axis?.synthesizedName || axis?.name || `Axis ${axisIndex + 1}`}
                       </span>
                     </Badge>
                     <Badge variant="outline" className="border-slate-200 bg-white text-[11px] font-semibold text-slate-500">
@@ -895,9 +895,11 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
                       }}
                     >
                       <span
-                        className="mr-1 inline-block h-2 w-2 rounded-full border border-black/30"
+                        className="mr-1 inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-black text-white"
                         style={{ backgroundColor: axisColorList[axisIndex % axisColorList.length] }}
-                      />
+                      >
+                        -
+                      </span>
                       {axis?.synthesizedNegative || axis?.negative || "Negative"}
                     </Badge>
                     <span className="text-[11px] text-slate-400">vs</span>
@@ -911,9 +913,11 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
                       }}
                     >
                       <span
-                        className="mr-1 inline-block h-2 w-2 rounded-full border border-black/30"
+                        className="mr-1 inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-black text-white"
                         style={{ backgroundColor: axisColorList[axisIndex % axisColorList.length] }}
-                      />
+                      >
+                        +
+                      </span>
                       {axis?.synthesizedPositive || axis?.positive || "Positive"}
                     </Badge>
                   </div>
@@ -1115,12 +1119,12 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
                           >
                             <span
                               className="mr-1 inline-block h-2 w-2 rounded-full"
-                              style={{ backgroundColor: jurorColor?.base ?? colors?.base ?? "#334155" }}
-                            />
-                            {entry.juror} ??? {formatPercent(entry.weight)}
-                          </Badge>
-                        );
-                      })
+                            style={{ backgroundColor: jurorColor?.base ?? colors?.base ?? "#334155" }}
+                          />
+                          {entry.juror} | {formatPercent(entry.weight)}
+                        </Badge>
+                      );
+                    })
                     ) : (
                       <span className="text-[11px] text-slate-400">No juror distribution available</span>
                     )}

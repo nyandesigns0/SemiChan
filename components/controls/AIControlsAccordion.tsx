@@ -9,6 +9,8 @@ interface AIControlsAccordionProps {
   onToggleAxisLabelAI: (enabled: boolean) => void;
   autoSynthesize: boolean;
   onToggleAutoSynthesize: (enabled: boolean) => void;
+  selectedModel: string;
+  onModelChange: (model: string) => void;
 }
 
 export function AIControlsAccordion({
@@ -16,6 +18,8 @@ export function AIControlsAccordion({
   onToggleAxisLabelAI,
   autoSynthesize,
   onToggleAutoSynthesize,
+  selectedModel,
+  onModelChange,
 }: AIControlsAccordionProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -45,6 +49,8 @@ export function AIControlsAccordion({
             onToggleAxisLabelAI={onToggleAxisLabelAI}
             autoSynthesize={autoSynthesize}
             onToggleAutoSynthesize={onToggleAutoSynthesize}
+            selectedModel={selectedModel}
+            onModelChange={onModelChange}
           />
         </div>
       )}
