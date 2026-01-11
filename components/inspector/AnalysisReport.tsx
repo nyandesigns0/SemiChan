@@ -29,8 +29,8 @@ function AxisAffinityChart({
   scale?: number;
 }) {
   const [hoveredAxisKey, setHoveredAxisKey] = useState<string | null>(null);
-  const dotBaseSize = 10;
-  const dotHoverSize = dotBaseSize + 2;
+  const dotBaseSize = 18;
+  const dotHoverSize = dotBaseSize + 4;
   const formatAxisPolarity = (axis: AxisPlotDatum) => {
     const negativeLabel = axis.negative?.trim() || "Negative";
     const positiveLabel = axis.positive?.trim() || "Positive";
@@ -113,15 +113,16 @@ function AxisAffinityChart({
         <circle cx={center} cy={center} r={3} fill="#94a3b8" />
           {renderShape}
           {points.map((p) => (
-            <circle
-              key={`point-${p.axis.key}`}
-              cx={p.x}
-              cy={p.y}
-              r={4}
-              fill={p.axis.color || color}
-              stroke="#fff"
-              strokeWidth={1.25}
-            />
+            <g key={`point-${p.axis.key}`} aria-label={`${p.axis.key} axis point`}>
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r={4}
+                fill={p.axis.color || color}
+                stroke="#fff"
+                strokeWidth={1.25}
+              />
+            </g>
           ))}
         </svg>
 
@@ -143,7 +144,7 @@ function AxisAffinityChart({
                 }}
               >
                 <div
-                  className="pointer-events-auto rounded-full border border-black shadow-sm"
+                  className="pointer-events-auto rounded-full border border-black shadow-sm flex items-center justify-center"
                   style={{
                     backgroundColor: p.axis.color,
                     width: dotSize,
@@ -154,7 +155,11 @@ function AxisAffinityChart({
                   aria-label={axisTooltip}
                   onMouseEnter={() => setHoveredAxisKey(p.axis.key)}
                   onMouseLeave={() => setHoveredAxisKey((current) => (current === p.axis.key ? null : current))}
-                />
+                >
+                  <span className="text-[16px] font-black leading-none text-black pointer-events-none">
+                    {p.axis.value >= 0 ? "+" : "-"}
+                  </span>
+                </div>
               </div>
             );
           })}
