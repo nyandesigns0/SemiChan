@@ -1,21 +1,25 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { 
-  Terminal, 
-  Book, 
-  ChevronDown, 
-  ChevronUp, 
-} from "lucide-react";
+import { Terminal, BarChart3, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { InspectorConsole, type LogEntry } from "./InspectorConsole";
-import { SchemaExplanation } from "@/components/schema/SchemaExplanation";
+import { AnalysisReport } from "@/components/inspector/AnalysisReport";
+import type { AnalysisResult } from "@/types/analysis";
+import type { JurorBlock } from "@/types/nlp";
+import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
 
 interface InspectorPanelProps {
   logs: LogEntry[];
+  analysis: AnalysisResult | null;
+  jurorBlocks: JurorBlock[];
+  axisLabels?: AnalysisResult["axisLabels"];
+  enableAxisLabelAI?: boolean;
+  isRefreshingAxisLabels?: boolean;
+  insights?: Record<string, ConceptInsight>;
 }
 
-type TabType = "console" | "schema";
+type TabType = "console" | "analysis";
 
 const MIN_HEIGHT = 40;
 const DEFAULT_HEIGHT = 350;
@@ -23,6 +27,12 @@ const MAX_HEIGHT = 800;
 
 export function InspectorPanel({
   logs,
+  analysis,
+  jurorBlocks,
+  axisLabels,
+  enableAxisLabelAI,
+  isRefreshingAxisLabels,
+  insights,
 }: InspectorPanelProps) {
   const [activeTab, setActiveTab] = useState<TabType>("console");
   const [height, setHeight] = useState(MIN_HEIGHT);
@@ -105,10 +115,10 @@ export function InspectorPanel({
             count={logs.length}
           />
           <TabButton
-            active={activeTab === "schema"}
-            onClick={() => { setActiveTab("schema"); setIsCollapsed(false); }}
-            icon={<Book className="h-3.5 w-3.5" />}
-            label="Schema"
+            active={activeTab === "analysis"}
+            onClick={() => { setActiveTab("analysis"); setIsCollapsed(false); }}
+            icon={<BarChart3 className="h-3.5 w-3.5" />}
+            label="Analysis"
           />
         </div>
 
@@ -116,7 +126,7 @@ export function InspectorPanel({
         {isCollapsed && (
           <div className="flex flex-1 items-center justify-center px-4 overflow-hidden">
             <span className="truncate text-[10px] font-medium text-slate-400 uppercase tracking-tight">
-              {activeTab === "console" ? "System Logs Active" : "Explainable NLP Schema"}
+              {activeTab === "console" ? "System Logs Active" : "Analysis Report"}
             </span>
           </div>
         )}
@@ -142,11 +152,16 @@ export function InspectorPanel({
             />
           )}
 
-          {activeTab === "schema" && (
-            <div className="h-full overflow-y-auto p-8 bg-white">
-              <div className="mx-auto max-w-5xl">
-                <SchemaExplanation />
-              </div>
+          {activeTab === "analysis" && (
+            <div className="h-full overflow-y-auto bg-white">
+              <AnalysisReport 
+                analysis={analysis} 
+                jurorBlocks={jurorBlocks} 
+                axisLabels={axisLabels}
+                enableAxisLabelAI={enableAxisLabelAI}
+                isRefreshingAxisLabels={isRefreshingAxisLabels}
+                insights={insights}
+              />
             </div>
           )}
         </div>

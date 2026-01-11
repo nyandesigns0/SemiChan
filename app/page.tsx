@@ -15,7 +15,6 @@ import { GraphFiltersAccordion } from "@/components/controls/GraphFiltersAccordi
 import { GraphCanvas3D } from "@/components/graph/GraphCanvas3D";
 import { InspectorPanel } from "@/components/inspector/InspectorPanel";
 import { FloatingDetailsPanel } from "@/components/inspector/FloatingDetailsPanel";
-import { CorpusSummary } from "@/components/inspector/CorpusSummary";
 import { CollapsibleSidebar } from "@/components/ui/collapsible-sidebar";
 import { useConceptSummarizer } from "@/hooks/useConceptSummarizer";
 import { useAxisLabelEnhancer } from "@/hooks/useAxisLabelEnhancer";
@@ -829,6 +828,12 @@ export default function HomePage() {
           {/* Bottom Integrated Inspector Panel */}
           <InspectorPanel
             logs={logs}
+            analysis={analysis}
+            jurorBlocks={jurorBlocks}
+            axisLabels={displayAxisLabels}
+            enableAxisLabelAI={enableAxisLabelAI}
+            isRefreshingAxisLabels={isRefreshingAxisLabels}
+            insights={insights}
           />
 
         </div>
@@ -870,9 +875,6 @@ export default function HomePage() {
             onShowSuggestionChange={setShowSuggestion}
             onShowNeutralChange={setShowNeutral}
           />
-
-          <CorpusSummary analysis={analysis} empty={emptyState} />
-
           <SearchBarAccordion value={search} onChange={setSearch} />
         </div>
       </CollapsibleSidebar>
