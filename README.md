@@ -35,10 +35,11 @@ jury-concept-graph/
 
 - **Text Ingestion**: Paste text or upload PDF/TXT files
 - **Juror Segmentation**: Automatic detection and segmentation of juror comments
-- **Concept Analysis**: TF-IDF vectorization and k-means clustering
-- **Interactive Graph**: D3 force-directed graph with multiple view modes
-- **Explainability**: Every edge links to supporting evidence excerpts
-- **Export**: Download analysis results as JSON
+- **Hybrid Analysis**: Combines semantic embeddings (Transformer-based) with BM25 frequency vectors for rich concept discovery
+- **Advanced Clustering**: Hierarchical clustering (default) or K-Means with automatic K recommendation and soft membership support
+- **Interactive 3D Graph**: WebGL-powered 3D visualization with PCA-based dimensionality reduction
+- **Explainability**: Every edge links to supporting evidence excerpts with stance classification (praise, critique, suggestion, neutral)
+- **Export**: Download analysis results as JSON or PDF reports
 
 ## Getting Started
 
@@ -65,7 +66,10 @@ The application follows a clean separation of concerns:
 ### API Routes
 
 - `POST /api/segment` - Segments raw text into juror blocks
-- `POST /api/analyze` - Performs TF-IDF analysis and k-means clustering
+- `POST /api/analyze` - Performs hybrid semantic-frequency analysis and clustering
+- `POST /api/analyze/axis-labels` - Generates AI-enhanced axis labels for 3D visualization
+- `POST /api/synthesize` - Synthesizes concept summaries using AI
+- `POST /api/export-pdf` - Exports analysis results as PDF
 
 ### Key Components
 
@@ -79,9 +83,11 @@ The application follows a clean separation of concerns:
 - **Next.js 14** - React framework with App Router
 - **TypeScript** - Type safety
 - **Tailwind CSS** - Styling
-- **D3 Force** - Graph layout simulation
+- **React Three Fiber** - 3D graph visualization
+- **@xenova/transformers** - Semantic embeddings (all-MiniLM-L6-v2)
+- **wink-bm25-text-search** - BM25 frequency analysis
 - **Recharts** - Data visualization
-- **pdfjs-dist** - PDF parsing (optional)
+- **pdfjs-dist** - PDF parsing
 
 ## Development
 

@@ -22,7 +22,7 @@ graph TD
     BM25 --> Hybrid[7. Hybrid Vector Construction<br/>Combined Representation]
     SemanticVecs --> Hybrid
     
-    Hybrid --> Clustering[8. Clustering<br/>K-Means or Hierarchical]
+    Hybrid --> Clustering[8. Clustering<br/>Hierarchical (default) or K-Means]
     Clustering --> Centroids[8.1 Cluster Centroids<br/>Theme Centers]
     Clustering --> Assignments[8.2 Sentence Assignments<br/>Which Concept Each Sentence Belongs To]
     
@@ -32,7 +32,7 @@ graph TD
     Centroids --> ConceptSim[12.4 Concept Similarity Calculation<br/>Cosine Similarity]
     ConceptSim --> ConceptConceptLinks[12.5 Concept-Concept Links<br/>Purple Color<br/>Related Themes]
     
-    Assignments --> JurorMapping[11. Juror-Concept Mapping<br/>Count Sentences per Concept<br/>Normalize per Juror]
+    Assignments --> JurorMapping[11. Juror-Concept Mapping<br/>Aggregate Sentence Weights<br/>Normalize per Juror<br/>Supports Soft Membership]
     StancePath --> JurorMapping
     JurorBlocks --> JurorMapping
     
@@ -304,18 +304,24 @@ This step blends "what it means" (Semantic) with "what words it uses" (Frequency
 
 **Technical Detail:** The system supports multiple clustering algorithms, all governed by a **strict deterministic pipeline** to ensure reproducible results.
 
-**K-Means Clustering (Default):** The system implements a K-Means clustering algorithm tailored for high-dimensional cosine similarity. It initializes $K$ centroids using a **seeded pseudo-random number generator (PRNG)** derived from the user's "Solution Seed". This ensures that for a given seed, the initial "picks" are always identical. The algorithm then iteratively performs two sub-steps: Assignment, where each sentence vector is assigned to the cluster with the highest cosine similarity to its centroid; and Update, where each centroid is re-calculated as the normalized average of all vectors assigned to it. This process continues for up to 25 iterations or until assignments stop changing.
+**Hierarchical Clustering (Default):** The system uses agglomerative hierarchical clustering as the default method, which builds a complete dendrogram tree of all possible cluster merges. This method is inherently deterministic as it relies on calculating distances between all pairs of vectors using cosine similarity.
+- **Cut by Count:** The dendrogram is cut to produce exactly $K$ clusters (default mode).
+- **Cut by Granularity:** The dendrogram is cut at a distance threshold determined by a granularity percentage (0-100%), allowing the number of concepts to emerge naturally.
 
-**Hierarchical Clustering (Tree-based):** The system also supports agglomerative hierarchical clustering, which builds a complete dendrogram tree of all possible cluster merges. This method is inherently deterministic as it relies on calculating distances between all pairs of vectors.
-- **Cut by Count:** The dendrogram is cut to produce exactly $K$ clusters.
-- **Cut by Granularity:** The dendrogram is cut at a distance threshold determined by a granularity percentage (0-100%).
+**K-Means Clustering (Optional):** The system also supports K-Means clustering tailored for high-dimensional cosine similarity. It initializes $K$ centroids using a **seeded pseudo-random number generator (PRNG)** derived from the user's "Solution Seed". This ensures that for a given seed, the initial "picks" are always identical. The algorithm then iteratively performs two sub-steps: Assignment, where each sentence vector is assigned to the cluster with the highest cosine similarity to its centroid; and Update, where each centroid is re-calculated as the normalized average of all vectors assigned to it. This process continues for up to 25 iterations or until assignments stop changing.
 
-**Location:** `lib/analysis/kmeans.ts` (`kmeansCosine`), `lib/analysis/hierarchical-clustering.ts` (`buildDendrogram`, `cutDendrogramByCount`, `cutDendrogramByThreshold`)
+**Auto-K Recommendation (Default: Enabled):** When enabled, the system automatically evaluates a range of cluster counts ($K_{min}$ to $K_{max}$) and recommends an optimal value based on separation metrics. This helps users identify the most appropriate number of concepts for their data.
+
+**Soft Membership (Default: Enabled):** By default, sentences can belong to multiple concepts with fractional weights (top-$N$ concepts, default $N=2$). This allows for more nuanced representation where sentences can be partially associated with multiple themes, reflecting the natural overlap in architectural discourse.
+
+**Location:** `lib/analysis/kmeans.ts` (`kmeansCosine`), `lib/analysis/hierarchical-clustering.ts` (`buildDendrogram`, `cutDendrogramByCount`, `cutDendrogramByThreshold`), `lib/analysis/cluster-eval.ts` (`evaluateKRange`), `lib/analysis/soft-membership.ts` (`computeSoftMembership`)
 
 ### Explanation
+**Hierarchical:** The algorithm builds a complete tree of all possible merges, then cuts it at a chosen level. This allows exploration of the data at different granularities—you can "zoom in" to see fine distinctions or "zoom out" to see broader themes. The granularity-based approach is particularly intuitive for exploring how concepts naturally emerge at different scales.
+
 **K-Means:** The algorithm iteratively assigns sentences to the nearest cluster center (centroid) and recomputes the centers until they stabilize. This effectively discovers emergent themes like "Lighting" or "Circulation" without being told what they are.
 
-**Hierarchical:** The algorithm builds a complete tree of all possible merges, then cuts it at a chosen level. This allows exploration of the data at different granularities—you can "zoom in" to see fine distinctions or "zoom out" to see broader themes. The granularity-based approach is particularly intuitive for exploring how concepts naturally emerge at different scales.
+**Soft Membership:** When enabled, sentences are assigned to their top-$N$ most similar concepts with normalized weights. This creates a more nuanced graph where jurors can have partial associations with multiple concepts, better reflecting the complexity of architectural feedback.
 
 ### Example Tracking
 *   **Sentence A:** "I appreciated the careful attention to daylight and the sun path."
@@ -326,7 +332,7 @@ This step blends "what it means" (Semantic) with "what words it uses" (Frequency
 *   **B2* (Explanation):** Clustered into **Concept 2** because it shares the "Atmosphere" and "Light" theme.
 *   **State (Assignments):** `assignments: [2, 2, 2, 0, 5, 2, 1]` (array of cluster indices for all sentences in the corpus).
 
-**Note:** When using hierarchical clustering with granularity-based cutting, the number of clusters ($K$) is determined dynamically based on the selected threshold, allowing the number of concepts to emerge naturally rather than being predetermined.
+**Note:** When using hierarchical clustering with granularity-based cutting, the number of clusters ($K$) is determined dynamically based on the selected threshold, allowing the number of concepts to emerge naturally rather than being predetermined. When soft membership is enabled, sentence assignments include fractional weights across multiple concepts, which are then aggregated when computing juror-concept relationships.
 
 ---
 
@@ -335,7 +341,7 @@ This step blends "what it means" (Semantic) with "what words it uses" (Frequency
 
 **Technical Detail:** Once clusters are formed, the system analyzes the "Frequency" portion of each hybrid centroid to identify the n-grams with the highest collective weights. It extracts the top 2 to 4 n-grams and semantic terms, performs a deduplication check to ensure labels like "light" and "light conditions" don't both appear, and joins the remaining high-value terms using a bullet separator (" · "). This results in a human-readable label that summarizes the dominant architectural theme of that specific cluster.
 
-**Location:** `lib/analysis/hybrid-concept-labeler.ts` (`hybridLabelCluster`), called from `lib/graph/graph-builder.ts` (lines 157-178)
+**Location:** `lib/analysis/hybrid-concept-labeler.ts` (`hybridLabelCluster`), called from `lib/graph/graph-builder.ts` (around lines 179-184)
 
 ### Explanation
 The labeler looks at the "Frequency" portion of the hybrid centroid to pick out the most important BM25 n-grams. It joins the top 2-4 terms with " · " to create a readable label.
@@ -351,9 +357,9 @@ The labeler looks at the "Frequency" portion of the hybrid centroid to pick out 
 ## Step 11: Juror-Concept Mapping
 **Plain Language:** We calculate how much each juror cares about each concept.
 
-**Technical Detail:** The system builds a weight matrix by counting the number of sentences from each juror that were assigned to each concept. These counts are then normalized per juror: if a juror wrote 10 sentences and 4 were assigned to Concept A, the weight for that Juror→Concept edge is 0.4. This creates a relative influence score that accounts for the varying lengths of juror comments, ensuring that a juror who wrote a single long paragraph has a proportional impact compared to one who wrote several short notes.
+**Technical Detail:** The system builds a weight matrix by aggregating sentence assignments from each juror to each concept. When soft membership is enabled, it sums the fractional weights from each sentence's concept memberships; otherwise, it counts the number of sentences assigned to each concept. These values are then normalized per juror: if a juror wrote 10 sentences and their total concept weights sum to 4.0 (either from 4 hard assignments or from fractional soft memberships), the normalized weight for that Juror→Concept edge is 0.4. This creates a relative influence score that accounts for the varying lengths of juror comments, ensuring that a juror who wrote a single long paragraph has a proportional impact compared to one who wrote several short notes.
 
-**Location:** `lib/graph/graph-builder.ts` (lines 194-221)
+**Location:** `lib/graph/graph-builder.ts` (around lines 210-237)
 
 ### Explanation
 If Sarah Broadstock has 10 sentences and 3 are in the "Lighting" concept, her weight for that concept is 0.3. These weights become the "edges" in the graph.
@@ -376,7 +382,7 @@ If Sarah Broadstock has 10 sentences and 3 are in the "Lighting" concept, her we
 
 **Technical Detail:** This combined step performs two related operations in a single loop for efficiency. First, for each juror, the system calculates a weighted average of all concept centroids using the normalized juror-concept weights from Step 11, then L2-normalizes the result to create a high-dimensional vector: $V_{juror} = Normalize(\Sigma_{c \in concepts} weight_{juror}[c] \times centroid[c])$. This vector represents the juror's position in the same semantic space as the concept centroids. Second, using the same `getClusterTopTerms()` function applied to concept centroids (Step 10), the system extracts the top 12 terms from each juror's high-dimensional vector by analyzing both the semantic portion (384 dimensions) and the frequency portion (n-gram vocabulary). These terms provide a human-readable summary of each juror's thematic interests, displayed in the inspector panel when a juror node is selected.
 
-**Location:** `lib/graph/graph-builder.ts` (lines 223-258), `lib/analysis/hybrid-concept-labeler.ts` (`getClusterTopTerms`)
+**Location:** `lib/graph/graph-builder.ts` (around lines 239-274), `lib/analysis/hybrid-concept-labeler.ts` (`getClusterTopTerms`)
 
 ### Explanation
 This step makes explicit the high-dimensional representation of each juror by combining their concept interests into a single vector, then extracts meaningful terms from that vector. The weighted average combines semantic and frequency information from all concepts a juror discussed, creating a comprehensive representation of their interests. The term extraction uses the same methodology as concept labeling (Step 10), ensuring consistency in how themes are identified.
@@ -399,7 +405,7 @@ This step makes explicit the high-dimensional representation of each juror by co
 - **Thematic Summary:** The top terms extracted from their high-dimensional vector in Step 11.5
 - **Metadata:** Sizing information based on their total sentence count
 
-**Location:** `lib/graph/graph-builder.ts` (lines 271-283)
+**Location:** `lib/graph/graph-builder.ts` (around lines 309-323)
 
 ---
 
@@ -408,7 +414,7 @@ This step makes explicit the high-dimensional representation of each juror by co
 
 **Technical Detail:** The system generates three types of graph links: `jurorConcept` links represent direct mentions and are assigned a dominant "stance" (praise, critique, etc.) based on the majority stance of the supporting sentences; `jurorJuror` links are created if the cosine similarity between two jurors' concept vectors exceeds a user-defined threshold; and `conceptConcept` links are similarly created based on the similarity between cluster centroids. Each link is assigned a `weight` and a set of `evidenceIds` that allow the UI to show the specific sentences justifying the connection.
 
-**Location:** `lib/graph/projections.ts`, `lib/graph/graph-builder.ts` (lines 307-340)
+**Location:** `lib/graph/projections.ts` (`buildJurorSimilarityLinks`, `buildConceptSimilarityLinks`), `lib/graph/graph-builder.ts` (around lines 340-380)
 
 ### Explanation
 Links are created if the weight exceeds a threshold. "Juror-Juror" links are created if two jurors talk about the same concepts in similar proportions (computed via cosine similarity of their concept vectors).
