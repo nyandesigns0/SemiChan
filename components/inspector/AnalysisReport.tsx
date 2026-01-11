@@ -178,7 +178,7 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
       .filter((n) => n.type === "concept")
       .forEach((n) => {
         const base = getPCColor(n.pcValues, "#4f46e5");
-        const soft = lightenColor(base, 0.8);
+        const soft = lightenColor(base, 0.85);
         map.set(n.id, { base, soft });
       });
     return map;
@@ -669,16 +669,13 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
                     <section className="rounded-xl border border-slate-100 bg-white/90 shadow-sm">
                       <div className="mb-3 flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
-                          <Badge
-                            variant="outline"
-                            className="inline-flex items-center gap-2 rounded-full border border-black bg-slate-900 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-white"
-                          >
-                            <span
-                              className="h-2.5 w-2.5 rounded-full border border-black/60"
-                              style={{ backgroundColor: axisColorList[0] ?? "#9a859a" }}
-                            />
+                          <span
+                            className="inline-block h-2.5 w-2.5 rounded-full border border-slate-300"
+                            style={{ backgroundColor: axisColorList[0] ?? "#9a859a" }}
+                          />
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                             Axis affinity
-                          </Badge>
+                          </span>
                         </div>
                         <div className="flex items-center gap-1">
                           <button
@@ -704,7 +701,7 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
                         scale={axisScale}
                       />
                     </section>
-                    <section className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 shadow-sm">
+                    <section className="rounded-xl border border-slate-100 bg-slate-50/60 shadow-sm">
                       <div className="mb-3 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -712,6 +709,9 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="border-slate-200 bg-white text-[11px] font-semibold text-slate-600">
+                            {allTerms.length}
+                          </Badge>
                           {allTerms.length > 6 && (
                             <button
                               type="button"
@@ -726,9 +726,6 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
                               {showAllRaw ? <Minus className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
                             </button>
                           )}
-                          <Badge variant="outline" className="border-slate-200 bg-white text-[11px] font-semibold text-slate-600">
-                            {allTerms.length}
-                          </Badge>
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
@@ -790,6 +787,7 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
               const explained = analysis.varianceStats?.explainedVariances?.[axisIndex] ?? 0;
               const totalVar = analysis.varianceStats?.totalVariance ?? 0;
               const variance = totalVar > 0 ? explained / totalVar : explained || 0;
+              const axisColor = axisColorList[axisIndex % axisColorList.length];
 
               const nodesWithPc = analysis.nodes.filter(
                 (n) => Array.isArray(n.pcValues) && n.pcValues && n.pcValues.length > axisIndex
@@ -805,15 +803,23 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
               return (
                 <div key={axisKey} className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
                   <div className="mb-1 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm font-bold text-slate-900 overflow-hidden">
+                    <Badge
+                      variant="outline"
+                      className="text-sm font-bold"
+                      style={{
+                        borderColor: axisColor,
+                        color: "#0f172a",
+                        backgroundColor: lightenColor(axisColor, 0.85),
+                      }}
+                    >
                       <span
-                        className="inline-block h-3 w-3 rounded-full border border-black flex-shrink-0"
-                        style={{ backgroundColor: axisColorList[axisIndex % axisColorList.length] }}
+                        className="mr-1 inline-block h-2 w-2 rounded-full border border-black flex-shrink-0"
+                        style={{ backgroundColor: axisColor }}
                       />
                       <span className="truncate max-w-[180px]">
                         {axis?.synthesizedPositive || axis?.positive || `Axis ${axisIndex + 1}`}
                       </span>
-                    </div>
+                    </Badge>
                     <Badge variant="outline" className="border-slate-200 bg-white text-[11px] font-semibold text-slate-500">
                       {formatPercent(variance)}
                     </Badge>
@@ -978,15 +984,29 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
               return (
                 <div key={concept.id} className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
                   <div className="mb-1 flex items-center justify-between">
-                    <div className="text-sm font-bold text-slate-900">
-                      {aiLabel || concept.label}
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className="text-sm font-bold"
+                        style={{
+                          borderColor: conceptColors.get(concept.id)?.base ?? "#cbd5e1",
+                          color: "#0f172a",
+                          backgroundColor: conceptColors.get(concept.id)?.soft ?? "#f8fafc",
+                        }}
+                      >
+                        <span
+                          className="mr-1 inline-block h-2 w-2 rounded-full border border-black flex-shrink-0"
+                          style={{ backgroundColor: conceptColors.get(concept.id)?.base ?? "#334155" }}
+                        />
+                        {aiLabel || concept.label}
+                      </Badge>
                       {aiLabel && (
-                        <Badge variant="outline" className="ml-2 border-indigo-100 bg-white text-[10px] font-semibold text-indigo-700">
+                        <Badge variant="outline" className="border-indigo-100 bg-white text-[10px] font-semibold text-indigo-700">
                           AI label
                         </Badge>
                       )}
                       {isLoadingLabel && !aiLabel && (
-                        <Badge variant="outline" className="ml-2 border-slate-200 bg-white text-[10px] font-semibold text-slate-500">
+                        <Badge variant="outline" className="border-slate-200 bg-white text-[10px] font-semibold text-slate-500">
                           Labeling…
                         </Badge>
                       )}
