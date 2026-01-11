@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { BarChart2, Layers, Users, Sparkles, CircleDot, RefreshCw, ListFilter, Filter, Plus, Minus } from "lucide-react";
+import { BarChart2, Layers, Users, Sparkles, CircleDot, RefreshCw, ListFilter, Filter, Plus, Minus, ChevronDown, ChevronUp } from "lucide-react";
 import type { AnalysisResult } from "@/types/analysis";
 import type { JurorBlock } from "@/types/nlp";
 import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
@@ -246,6 +246,8 @@ function formatPercent(value: number | undefined, digits = 1): string {
 }
 
 export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLabelAI, isRefreshingAxisLabels = false, insights, rawExportContext }: AnalysisReportProps) {
+  const [isAxisSectionExpanded, setIsAxisSectionExpanded] = useState(false);
+
   const sentencesByJuror = useMemo(() => {
     if (!analysis) return new Map<string, number>();
     const counts = new Map<string, number>();
@@ -987,15 +989,21 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
         </div>
 
         {/* Dimension Analysis */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="bg-amber-50 text-amber-700">
-                Dimension Analysis
-              </Badge>
-              <span className="text-xs font-semibold text-slate-500">Why points sit where they do</span>
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md">
+          <button
+            onClick={() => setIsAxisSectionExpanded(!isAxisSectionExpanded)}
+            className="flex w-full items-center justify-between px-5 py-3 transition-colors hover:bg-slate-50"
+          >
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-amber-50 p-2 text-amber-600">
+                <Layers className="h-5 w-5" />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-800">Dimension Analysis</span>
+                <span className="text-xs font-semibold text-slate-500">Why points sit where they do</span>
+              </div>
             </div>
-            <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+            <div className="flex items-center gap-3">
               {enableAxisLabelAI && (
                 <Badge variant="outline" className="border-indigo-100 bg-indigo-50 text-indigo-700">
                   AI labels
@@ -1007,10 +1015,17 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                   Updating
                 </div>
               )}
-              <Layers className="h-4 w-4 text-slate-400" />
+              {isAxisSectionExpanded ? (
+                <ChevronUp className="h-5 w-5 text-slate-400" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-slate-400" />
+              )}
             </div>
-          </div>
-          <div className="space-y-3">
+          </button>
+
+          {isAxisSectionExpanded && (
+            <div className="px-5 pb-5">
+              <div className="space-y-3">
             {orderedAxes.length === 0 && <div className="text-xs text-slate-400">No axis labels available.</div>}
             {orderedAxes.map(({ key: axisKey, axisIndex }) => {
               const axis = effectiveAxisLabels?.[axisKey];
@@ -1116,7 +1131,9 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                 </div>
               );
             })}
-          </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Concept Analysis */}
