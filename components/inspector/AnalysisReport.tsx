@@ -204,7 +204,7 @@ function sanitizeForExport(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sanitizeForExport);
   if (value instanceof Date) return value.toISOString();
   if (ArrayBuffer.isView(value)) {
-    return Array.from(value as ArrayLike<number>);
+    return Array.from(value as unknown as ArrayLike<number>);
   }
   if (value instanceof Map) {
     return Object.fromEntries(
@@ -451,20 +451,18 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
   const exportSections = useMemo<ExportSection[]>(() => {
     if (!analysis || !rawExportContext) return [];
 
+    // Remove pcValues (factor values) from nodes - only keep metadata
     const nodes = analysis.nodes.map((node) => ({
       id: node.id,
       label: node.label,
       type: node.type,
       size: node.size,
-      x: node.x,
-      y: node.y,
-      z: node.z,
-      vx: node.vx,
-      vy: node.vy,
-      fx: node.fx,
-      fy: node.fy,
-      pcValues: node.pcValues,
-      meta: node.meta,
+      // Remove x, y, z, vx, vy, fx, fy - these are visualization-only
+      // Remove pcValues - user doesn't want factor values
+      meta: node.meta ? {
+        // Keep only essential meta, remove heavy data
+        ...(node.meta.topTerms ? { topTerms: node.meta.topTerms } : {}),
+      } : undefined,
     }));
 
     const links = analysis.links.map((link) => ({
@@ -473,40 +471,66 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
       target: resolveNodeReference(link.target),
       weight: link.weight,
       stance: link.stance,
-      evidenceIds: link.evidenceIds,
+      // Remove evidenceIds - too many, just keep count
+      evidenceCount: link.evidenceIds?.length ?? 0,
       kind: link.kind,
     }));
 
     const checkpoints = (analysis.checkpoints || []).map((checkpoint) => ({
       id: checkpoint.id,
       label: checkpoint.label,
-      nodeIds: checkpoint.nodes.map((node) => node.id),
-      linkIds: checkpoint.links.map((link) => link.id),
+      nodeCount: checkpoint.nodes.length,
+      linkCount: checkpoint.links.length,
     }));
+
+    // Summarize jurorVectors - only keep top 5 concepts per juror
+    const summarizedJurorVectors: Record<string, Record<string, number>> = {};
+    Object.entries(analysis.jurorVectors || {}).forEach(([juror, vector]) => {
+      const sorted = Object.entries(vector)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5); // Top 5 only
+      summarizedJurorVectors[juror] = Object.fromEntries(sorted);
+    });
+
+    // Summarize sentences - just counts and samples, not full array
+    const sentenceSummary = {
+      total: analysis.sentences.length,
+      byJuror: analysis.jurors.reduce((acc, juror) => {
+        const count = analysis.sentences.filter(s => s.juror === juror).length;
+        return { ...acc, [juror]: count };
+      }, {} as Record<string, number>),
+      byStance: analysis.stats.stanceCounts,
+      sample: analysis.sentences.slice(0, 3).map(s => ({
+        id: s.id,
+        juror: s.juror,
+        stance: s.stance,
+        sentencePreview: s.sentence.substring(0, 100) + (s.sentence.length > 100 ? '...' : ''),
+      })),
+    };
 
     return [
       {
         title: "Input Data",
-        description: "Raw text, juror blocks, and parameter settings",
+        description: "Parameter settings and summary",
         payload: {
-          rawText: rawExportContext.rawText,
-          jurorBlocks: rawExportContext.jurorBlocks,
           analysisParams: rawExportContext.analysisParams,
+          jurorBlockCount: rawExportContext.jurorBlocks.length,
+          rawTextLength: rawExportContext.rawText.length,
         },
       },
       {
         title: "Juror Data",
-        description: "Sentences, vector weights, and stance counts",
+        description: "Summarized vector weights and stance counts",
         payload: {
-          sentences: analysis.sentences,
-          jurorVectors: analysis.jurorVectors,
+          sentenceSummary,
+          jurorVectors: summarizedJurorVectors, // Summarized - top 5 only
           jurorTopTerms: analysis.jurorTopTerms,
           stats: analysis.stats,
         },
       },
       {
-        title: "Graph & Vector Data",
-        description: "Nodes, links, and checkpoint snapshots",
+        title: "Graph Data",
+        description: "Node and link metadata (no coordinates or vectors)",
         payload: {
           nodes,
           links,
@@ -515,22 +539,34 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
       },
       {
         title: "Concept & Analysis",
-        description: "Concept metadata, variance metrics, and axis labels",
+        description: "Concept metadata and analysis metrics",
         payload: {
-          concepts: analysis.concepts,
-          varianceStats: analysis.varianceStats,
+          concepts: analysis.concepts.map(c => ({
+            id: c.id,
+            label: c.label,
+            shortLabel: c.shortLabel,
+            summary: c.summary,
+            size: c.size,
+            topTerms: c.topTerms,
+            // Remove representativeSentences - too verbose
+          })),
+          varianceStats: analysis.varianceStats ? {
+            totalVariance: analysis.varianceStats.totalVariance,
+            explainedVariances: analysis.varianceStats.explainedVariances,
+            cumulativeVariances: analysis.varianceStats.cumulativeVariances,
+          } : undefined,
           axisLabels: analysis.axisLabels,
           recommendedK: analysis.recommendedK,
-          kSearchMetrics: analysis.kSearchMetrics,
           requestedNumDimensions: analysis.requestedNumDimensions,
           appliedNumDimensions: analysis.appliedNumDimensions,
+          dimensionMode: analysis.dimensionMode,
         },
       },
       {
         title: "Processing Data",
-        description: "Logs, model info, and export metadata",
+        description: "Log summary and model info",
         payload: {
-          logs: rawExportContext.logs,
+          logCount: rawExportContext.logs.length,
           apiCallCount: rawExportContext.apiCallCount,
           apiCostTotal: rawExportContext.apiCostTotal,
           selectedModel: rawExportContext.selectedModel,
@@ -1304,7 +1340,7 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
         {exportSections.length > 0 && (
           <section
             aria-hidden="true"
-            className="hidden print:block"
+            className="hidden"
           >
             <div className="mx-auto max-w-5xl space-y-4 rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-sm print:border-slate-300 print:bg-white print:shadow-none print:p-6">
               <div className="flex items-center justify-between">

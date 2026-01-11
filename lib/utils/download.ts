@@ -23,23 +23,37 @@ function createPrintDocument(targetHtml: string, filename: string): string {
     <html>
       <head>
         <title>${filename}</title>
+        <meta charset="utf-8">
         ${styles}
         <style>
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
           body {
             margin: 0;
-            background: #f8fafc;
-            font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+            padding: 0;
+            background: #ffffff;
+            font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
             -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
           }
           #export-root {
             width: 100%;
+            background: #ffffff;
           }
           @media print {
+            @page {
+              margin: 0.5in;
+            }
             body {
-              padding: 24px;
+              background: #ffffff;
+              padding: 0;
             }
             #export-root {
               width: 100%;
+              background: #ffffff;
             }
           }
         </style>
@@ -51,7 +65,7 @@ function createPrintDocument(targetHtml: string, filename: string): string {
             window.print();
           }
           window.addEventListener("load", () => {
-            setTimeout(triggerPrint, 100);
+            setTimeout(triggerPrint, 200);
           });
         </script>
       </body>

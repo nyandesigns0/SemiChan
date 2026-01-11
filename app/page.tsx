@@ -94,70 +94,6 @@ export default function HomePage() {
     return numDimensions;
   }, [analysis, numDimensions]);
 
-  const rawDataExportContext = useMemo<RawDataExportContext>(() => ({
-    rawText,
-    jurorBlocks,
-    analysisParams: {
-      kConcepts,
-      minEdgeWeight,
-      similarityThreshold,
-      semanticWeight,
-      frequencyWeight,
-      clusteringMode,
-      autoK,
-      clusterSeed,
-      softMembership,
-      cutType,
-      granularityPercent,
-      numDimensions,
-      appliedNumDimensions,
-      dimensionMode,
-      varianceThreshold,
-      showAxes,
-      showGraph,
-      enableAxisLabelAI,
-      autoSynthesize,
-    },
-    logs: logs.map((log) => ({
-      id: log.id,
-      timestamp: log.timestamp instanceof Date ? log.timestamp.toISOString() : String(log.timestamp),
-      type: log.type,
-      message: log.message,
-      data: log.data,
-    })),
-    apiCallCount,
-    apiCostTotal,
-    selectedModel,
-    exportTimestamp,
-  }), [
-    rawText,
-    jurorBlocks,
-    kConcepts,
-    minEdgeWeight,
-    similarityThreshold,
-    semanticWeight,
-    frequencyWeight,
-    clusteringMode,
-    autoK,
-    clusterSeed,
-    softMembership,
-    cutType,
-    granularityPercent,
-    numDimensions,
-    appliedNumDimensions,
-    dimensionMode,
-    varianceThreshold,
-    showAxes,
-    showGraph,
-    enableAxisLabelAI,
-    autoSynthesize,
-    logs,
-    apiCallCount,
-    apiCostTotal,
-    selectedModel,
-    exportTimestamp,
-  ]);
-
   // AI controls
   const [enableAxisLabelAI, setEnableAxisLabelAI] = useState(false);
   const [autoSynthesize, setAutoSynthesize] = useState(false);
@@ -302,6 +238,73 @@ export default function HomePage() {
     
     return labels as AnalysisResult["axisLabels"];
   }, [analysis?.axisLabels, enhancedLabels]);
+
+  // Raw data export context for analysis report
+  const rawDataExportContext = useMemo(() => {
+    return {
+      rawText,
+      jurorBlocks,
+      analysisParams: {
+        kConcepts,
+        minEdgeWeight,
+        similarityThreshold,
+        semanticWeight,
+        frequencyWeight,
+        clusteringMode,
+        autoK,
+        clusterSeed,
+        softMembership,
+        cutType,
+        granularityPercent,
+        numDimensions,
+        appliedNumDimensions,
+        dimensionMode,
+        varianceThreshold,
+        showAxes,
+        showGraph,
+        enableAxisLabelAI,
+        autoSynthesize,
+      },
+      logs: logs.map(log => ({
+        id: log.id,
+        timestamp: log.timestamp.toISOString(),
+        type: log.type,
+        message: log.message,
+        data: log.data,
+      })),
+      apiCallCount,
+      apiCostTotal,
+      selectedModel,
+      exportTimestamp,
+    };
+  }, [
+    rawText,
+    jurorBlocks,
+    kConcepts,
+    minEdgeWeight,
+    similarityThreshold,
+    semanticWeight,
+    frequencyWeight,
+    clusteringMode,
+    autoK,
+    clusterSeed,
+    softMembership,
+    cutType,
+    granularityPercent,
+    numDimensions,
+    appliedNumDimensions,
+    dimensionMode,
+    varianceThreshold,
+    showAxes,
+    showGraph,
+    enableAxisLabelAI,
+    autoSynthesize,
+    logs,
+    apiCallCount,
+    apiCostTotal,
+    selectedModel,
+    exportTimestamp,
+  ]);
 
   // Call segment API when rawText changes
   useEffect(() => {
