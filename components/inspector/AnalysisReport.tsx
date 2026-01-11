@@ -28,6 +28,15 @@ function AxisAffinityChart({
   color: string;
   scale?: number;
 }) {
+  const [hoveredAxisKey, setHoveredAxisKey] = useState<string | null>(null);
+  const dotBaseSize = 10;
+  const dotHoverSize = dotBaseSize + 2;
+  const formatAxisPolarity = (axis: AxisPlotDatum) => {
+    const negativeLabel = axis.negative?.trim() || "Negative";
+    const positiveLabel = axis.positive?.trim() || "Positive";
+    return `${negativeLabel} vs ${positiveLabel}`;
+  };
+
   if (axes.length === 0) {
     return (
       <div className="flex h-32 flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white text-slate-400">
@@ -111,6 +120,10 @@ function AxisAffinityChart({
         {/* Labels rendered separately so zoom only affects geometry */}
         <div className="pointer-events-none absolute inset-0">
           {points.map((p) => {
+            const isHovered = hoveredAxisKey === p.axis.key;
+            const dotSize = isHovered ? dotHoverSize : dotBaseSize;
+            const axisTooltip = formatAxisPolarity(p.axis);
+
             return (
               <div
                 key={`label-group-${p.axis.key}`}
@@ -121,9 +134,18 @@ function AxisAffinityChart({
                   transform: "translate(-50%, -50%)",
                 }}
               >
-                <div 
-                  className="h-2 w-2 rounded-full border border-black shadow-sm"
-                  style={{ backgroundColor: p.axis.color }}
+                <div
+                  className="pointer-events-auto rounded-full border border-black shadow-sm"
+                  style={{
+                    backgroundColor: p.axis.color,
+                    width: dotSize,
+                    height: dotSize,
+                    transition: "width 0.15s ease, height 0.15s ease",
+                  }}
+                  title={axisTooltip}
+                  aria-label={axisTooltip}
+                  onMouseEnter={() => setHoveredAxisKey(p.axis.key)}
+                  onMouseLeave={() => setHoveredAxisKey((current) => (current === p.axis.key ? null : current))}
                 />
               </div>
             );
