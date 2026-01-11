@@ -42,6 +42,7 @@ export function Graph3DControls({
 }: Graph3DControlsProps) {
   const axisColors = getAxisColors(numDimensions);
   const [axisPanelOpen, setAxisPanelOpen] = useState(true);
+  const axisLabelsMap = axisLabels ?? {};
   const showAxisPanel = showAxes && Boolean(axisLabels);
 
   return (
@@ -140,7 +141,7 @@ export function Graph3DControls({
                 <div className="space-y-3 text-xs">
                   {Array.from({ length: numDimensions }).map((_, i) => {
                     const axisIdx = i.toString();
-                    const data = axisLabels[axisIdx];
+                    const data = axisLabelsMap[axisIdx];
                     if (!data) return null;
                     const color = axisColors[i];
 

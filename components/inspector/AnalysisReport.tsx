@@ -196,7 +196,7 @@ function AxisAffinityChart({
 type ExportSection = {
   title: string;
   description?: string;
-  payload: unknown;
+  content: string; // Compact formatted text instead of JSON payload
 };
 
 function sanitizeForExport(value: unknown): unknown {
@@ -451,129 +451,135 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
   const exportSections = useMemo<ExportSection[]>(() => {
     if (!analysis || !rawExportContext) return [];
 
-    // Remove pcValues (factor values) from nodes - only keep metadata
-    const nodes = analysis.nodes.map((node) => ({
-      id: node.id,
-      label: node.label,
-      type: node.type,
-      size: node.size,
-      // Remove x, y, z, vx, vy, fx, fy - these are visualization-only
-      // Remove pcValues - user doesn't want factor values
-      meta: node.meta ? {
-        // Keep only essential meta, remove heavy data
-        ...(node.meta.topTerms ? { topTerms: node.meta.topTerms } : {}),
-      } : undefined,
-    }));
+    const p = rawExportContext.analysisParams;
+    const separator = "─".repeat(80);
 
-    const links = analysis.links.map((link) => ({
-      id: link.id,
-      source: resolveNodeReference(link.source),
-      target: resolveNodeReference(link.target),
-      weight: link.weight,
-      stance: link.stance,
-      // Remove evidenceIds - too many, just keep count
-      evidenceCount: link.evidenceIds?.length ?? 0,
-      kind: link.kind,
-    }));
-
-    const checkpoints = (analysis.checkpoints || []).map((checkpoint) => ({
-      id: checkpoint.id,
-      label: checkpoint.label,
-      nodeCount: checkpoint.nodes.length,
-      linkCount: checkpoint.links.length,
-    }));
-
-    // Summarize jurorVectors - only keep top 5 concepts per juror
-    const summarizedJurorVectors: Record<string, Record<string, number>> = {};
-    Object.entries(analysis.jurorVectors || {}).forEach(([juror, vector]) => {
-      const sorted = Object.entries(vector)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5); // Top 5 only
-      summarizedJurorVectors[juror] = Object.fromEntries(sorted);
-    });
-
-    // Summarize sentences - just counts and samples, not full array
-    const sentenceSummary = {
-      total: analysis.sentences.length,
-      byJuror: analysis.jurors.reduce((acc, juror) => {
-        const count = analysis.sentences.filter(s => s.juror === juror).length;
-        return { ...acc, [juror]: count };
-      }, {} as Record<string, number>),
-      byStance: analysis.stats.stanceCounts,
-      sample: analysis.sentences.slice(0, 3).map(s => ({
-        id: s.id,
-        juror: s.juror,
-        stance: s.stance,
-        sentencePreview: s.sentence.substring(0, 100) + (s.sentence.length > 100 ? '...' : ''),
-      })),
+    // Format parameters section
+    const formatParameters = () => {
+      return `ANALYSIS PARAMETERS
+${separator}
+kConcepts: ${p.kConcepts} | minEdgeWeight: ${p.minEdgeWeight} | similarityThreshold: ${p.similarityThreshold}
+clusteringMode: ${p.clusteringMode} | autoK: ${p.autoK} | softMembership: ${p.softMembership}
+semanticWeight: ${p.semanticWeight} | frequencyWeight: ${p.frequencyWeight} | dimensionMode: ${p.dimensionMode}
+appliedDimensions: ${p.appliedNumDimensions} | varianceThreshold: ${p.varianceThreshold}
+Model: ${rawExportContext.selectedModel} | Export: ${rawExportContext.exportTimestamp || new Date().toISOString()}`;
     };
 
-    return [
-      {
-        title: "Input Data",
-        description: "Parameter settings and summary",
-        payload: {
-          analysisParams: rawExportContext.analysisParams,
-          jurorBlockCount: rawExportContext.jurorBlocks.length,
-          rawTextLength: rawExportContext.rawText.length,
-        },
-      },
-      {
-        title: "Juror Data",
-        description: "Summarized vector weights and stance counts",
-        payload: {
-          sentenceSummary,
-          jurorVectors: summarizedJurorVectors, // Summarized - top 5 only
-          jurorTopTerms: analysis.jurorTopTerms,
-          stats: analysis.stats,
-        },
-      },
-      {
-        title: "Graph Data",
-        description: "Node and link metadata (no coordinates or vectors)",
-        payload: {
-          nodes,
-          links,
-          checkpoints,
-        },
-      },
-      {
-        title: "Concept & Analysis",
-        description: "Concept metadata and analysis metrics",
-        payload: {
-          concepts: analysis.concepts.map(c => ({
-            id: c.id,
-            label: c.label,
-            shortLabel: c.shortLabel,
-            summary: c.summary,
-            size: c.size,
-            topTerms: c.topTerms,
-            // Remove representativeSentences - too verbose
-          })),
-          varianceStats: analysis.varianceStats ? {
-            totalVariance: analysis.varianceStats.totalVariance,
-            explainedVariances: analysis.varianceStats.explainedVariances,
-            cumulativeVariances: analysis.varianceStats.cumulativeVariances,
-          } : undefined,
-          axisLabels: analysis.axisLabels,
-          recommendedK: analysis.recommendedK,
-          requestedNumDimensions: analysis.requestedNumDimensions,
-          appliedNumDimensions: analysis.appliedNumDimensions,
-          dimensionMode: analysis.dimensionMode,
-        },
-      },
-      {
-        title: "Processing Data",
-        description: "Log summary and model info",
-        payload: {
-          logCount: rawExportContext.logs.length,
-          apiCallCount: rawExportContext.apiCallCount,
-          apiCostTotal: rawExportContext.apiCostTotal,
-          selectedModel: rawExportContext.selectedModel,
-          exportTimestamp: rawExportContext.exportTimestamp,
-        },
-      },
-    ];
+    // Format juror vectors (ALL weights, not just top 5)
+    const formatJurorVectors = () => {
+      const lines = analysis.jurors.map(juror => {
+        const vec = analysis.jurorVectors[juror] || {};
+        const weights = Object.entries(vec)
+          .sort((a, b) => b[1] - a[1]) // Sort by weight descending
+          .map(([cid, w]) => `${cid}:${(w * 100).toFixed(1)}%`)
+          .join(' ');
+        return `${juror.padEnd(25)} ${weights}`;
+      });
+      return `JUROR VECTORS (Concept Weights)
+${separator}
+${lines.join('\n')}`;
+    };
+
+    // Format concepts
+    const formatConcepts = () => {
+      const conceptMap = new Map(analysis.concepts.map((c, idx) => [c.id, { idx, concept: c }]));
+      const lines = analysis.concepts.map((c, idx) => {
+        const terms = c.topTerms.slice(0, 12).join(', ');
+        return `concept-${idx} | ${c.label} (${c.size} sentences)\n    Terms: ${terms}`;
+      });
+      return `CONCEPTS
+${separator}
+${lines.join('\n\n')}`;
+    };
+
+    // Format graph structure summary
+    const formatGraphStructure = () => {
+      const jurorNodes = analysis.nodes.filter(n => n.type === 'juror').length;
+      const conceptNodes = analysis.nodes.filter(n => n.type === 'concept').length;
+      const jurorConceptLinks = analysis.links.filter(l => l.kind === 'jurorConcept').length;
+      const jurorJurorLinks = analysis.links.filter(l => l.kind === 'jurorJuror').length;
+      const conceptConceptLinks = analysis.links.filter(l => l.kind === 'conceptConcept').length;
+      
+      // Find top links
+      const topLinks = analysis.links
+        .filter(l => l.kind === 'jurorConcept' && l.evidenceIds && l.evidenceIds.length > 0)
+        .sort((a, b) => (b.weight || 0) - (a.weight || 0))
+        .slice(0, 3)
+        .map(l => {
+          const sourceId = resolveNodeReference(l.source);
+          const targetId = resolveNodeReference(l.target);
+          const sourceLabel = sourceId.replace('juror:', '');
+          const targetLabel = analysis.concepts.find(c => c.id === targetId)?.label || targetId;
+          return `${sourceLabel}→${targetLabel} (${((l.weight || 0) * 100).toFixed(1)}%, ${l.evidenceIds?.length || 0} evidence)`;
+        })
+        .join(', ');
+
+      return `GRAPH STRUCTURE
+${separator}
+Nodes: ${analysis.nodes.length} (${jurorNodes} jurors, ${conceptNodes} concepts) | Links: ${analysis.links.length}
+  juror-concept: ${jurorConceptLinks} | juror-juror: ${jurorJurorLinks} | concept-concept: ${conceptConceptLinks}
+Top Links: ${topLinks || 'N/A'}`;
+    };
+
+    // Format statistics
+    const formatStatistics = () => {
+      const stats = analysis.stats;
+      const jurorCounts = analysis.jurors.map(j => {
+        const count = analysis.sentences.filter(s => s.juror === j).length;
+        return `${j}:${count}`;
+      }).join(', ');
+      
+      const stancePct = Object.entries(stats.stanceCounts).map(([s, c]) => 
+        `${s}:${c} (${Math.round(c / stats.totalSentences * 100)}%)`
+      ).join(', ');
+
+      let varInfo = 'N/A';
+      if (analysis.varianceStats && analysis.appliedNumDimensions) {
+        const cumVar = analysis.varianceStats.cumulativeVariances[analysis.appliedNumDimensions - 1] || 0;
+        const totalVar = analysis.varianceStats.totalVariance || 1;
+        const pct = Math.round((cumVar / totalVar) * 100 * 10) / 10;
+        const explained = analysis.varianceStats.explainedVariances.slice(0, analysis.appliedNumDimensions);
+        varInfo = `${analysis.appliedNumDimensions} dimensions explain ${pct}% (${explained.map(v => v.toFixed(2)).join(', ')} / ${totalVar.toFixed(2)} total)`;
+      }
+
+      let kSearchInfo = '';
+      if (analysis.recommendedK !== undefined) {
+        const score = analysis.kSearchMetrics?.find(m => m.k === analysis.recommendedK)?.score;
+        const scoreStr = score ? ` (score: ${score.toFixed(3)})` : '';
+        const tested = analysis.kSearchMetrics ? `, tested k=${analysis.kSearchMetrics[0]?.k}-${analysis.kSearchMetrics[analysis.kSearchMetrics.length - 1]?.k}` : '';
+        kSearchInfo = `\nK-search: recommended k=${analysis.recommendedK}${scoreStr}${tested}`;
+      }
+
+      const apiCost = rawExportContext.apiCostTotal > 0 
+        ? `, $${rawExportContext.apiCostTotal.toFixed(4)} total cost`
+        : '';
+
+      return `STATISTICS
+${separator}
+Sentences: ${stats.totalSentences} (by juror: ${jurorCounts})
+Stance: ${stancePct}
+Variance: ${varInfo}${kSearchInfo}
+API: ${rawExportContext.apiCallCount} calls${apiCost}`;
+    };
+
+    // Combine all sections into one compact export
+    const content = [
+      formatParameters(),
+      '',
+      formatJurorVectors(),
+      '',
+      formatConcepts(),
+      '',
+      formatGraphStructure(),
+      '',
+      formatStatistics()
+    ].join('\n');
+
+    return [{
+      title: "Raw Data Export",
+      description: "Compact formatted export",
+      content
+    }];
   }, [analysis, rawExportContext]);
   const orderedAxesAll = axisKeys
     .map((key, idx) => {
@@ -1340,44 +1346,25 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
         {exportSections.length > 0 && (
           <section
             aria-hidden="true"
-            className="hidden"
+            className="hidden print:block"
           >
-            <div className="mx-auto max-w-5xl space-y-4 rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-sm print:border-slate-300 print:bg-white print:shadow-none print:p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.4em] text-slate-500">
-                    Raw Data Export
-                  </p>
-                  <p className="text-[10px] text-slate-500">
-                    Full analysis state serialized for diagnostics.
-                  </p>
-                </div>
-                <span className="text-[10px] font-semibold text-slate-400">
-                  {exportSections.length} sections
-                </span>
+            <div className="mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 print:border-slate-300 print:bg-white print:shadow-none print:p-5 print:break-inside-avoid">
+              <div className="mb-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                  Raw Data Export
+                </p>
+                <p className="text-[10px] text-slate-500">
+                  Compact formatted analysis data for reference
+                </p>
               </div>
-              <div className="space-y-4">
-                {exportSections.map((section) => {
-                  const payload = sanitizeForExport(section.payload);
-                  const json = JSON.stringify(payload, null, 2);
-                  return (
-                    <article
-                      key={section.title}
-                      className="rounded-2xl border border-slate-200 bg-slate-50/60 p-3 shadow-sm print:border-slate-200 print:bg-white print:shadow-none"
-                    >
-                      <header className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.3em] text-slate-500">
-                        <span>{section.title}</span>
-                        {section.description && (
-                          <span className="text-[9px] text-slate-400">{section.description}</span>
-                        )}
-                      </header>
-                      <pre className="max-h-[60vh] min-h-[20vh] overflow-auto whitespace-pre-wrap text-[10px] leading-snug text-slate-900 print:break-inside-avoid">
-                        {json}
-                      </pre>
-                    </article>
-                  );
-                })}
-              </div>
+              {exportSections.map((section) => (
+                <pre
+                  key={section.title}
+                  className="font-mono text-[9px] leading-tight text-slate-700 whitespace-pre-wrap break-words print:text-[8px]"
+                >
+                  {section.content}
+                </pre>
+              ))}
             </div>
           </section>
         )}
