@@ -2,7 +2,7 @@
 
 import { useRef, useState, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
-import { Text, Billboard, Line } from "@react-three/drei";
+import { Text, Billboard, Line, Html } from "@react-three/drei";
 import * as THREE from "three";
 import { getPCColor, lightenColor } from "@/lib/utils/graph-color-utils";
 import type { GraphNode, NodeType } from "@/types/graph";
@@ -58,6 +58,31 @@ const nodeColors: Record<NodeType, NodeColorScheme> = {
   },
 };
 
+// Custom Shader for the soft "Photoshop" outer glow halo
+const selectionHaloShader = {
+  uniforms: {
+    uColor: { value: new THREE.Color("#fef08a") }, // Lighter Yellow (Tailwind yellow-200)
+    uOpacity: { value: 0.6 },
+  },
+  vertexShader: `
+    varying vec3 vNormal;
+    void main() {
+      vNormal = normalize(normalMatrix * normal);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 uColor;
+    uniform float uOpacity;
+    varying vec3 vNormal;
+    void main() {
+      // Sharper, more vibrant halo
+      float intensity = pow(0.8 - dot(vNormal, vec3(0, 0, 1.0)), 3.0);
+      gl_FragColor = vec4(uColor, intensity * uOpacity);
+    }
+  `
+};
+
 interface RootSegment {
   points: THREE.Vector3[];
   depth: number;
@@ -76,6 +101,7 @@ interface ProceduralRootProps {
  */
 function ProceduralRoot({ segment, globalGrowth, pulseOffset }: ProceduralRootProps) {
   const { points, startT, endT } = segment;
+  const rootBaseColor = "#1a1a1a"; // Almost black
   
   // Calculate local growth for this specific segment
   const localGrowth = useMemo(() => {
@@ -93,27 +119,15 @@ function ProceduralRoot({ segment, globalGrowth, pulseOffset }: ProceduralRootPr
 
   return (
     <group>
-      {/* Base root path (growing) */}
+      {/* SIMPLE BLACK ROOTS - Removed outer glow as requested */}
       <Line
         points={visiblePoints}
-        color="#000000"
-        lineWidth={1}
+        color={rootBaseColor}
+        lineWidth={2.2}
         transparent
-        opacity={0.15}
+        opacity={1.0}
+        depthWrite={false}
       />
-      {/* Firing pulse (traveling) */}
-      {localGrowth > 0.1 && (
-        <Line
-          points={visiblePoints}
-          color="#000000"
-          lineWidth={2}
-          transparent
-          opacity={0.9}
-          dashArray={[0.2, 0.8]}
-          dashScale={1}
-          dashOffset={pulseOffset % 1}
-        />
-      )}
     </group>
   );
 }
@@ -163,12 +177,14 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
   const meshOpacity = opacity === 1.0 ? 1.0 : 0.3;
   const isGhost = meshOpacity < 1.0;
   const radius = (node.size / 16) * 0.3; // Scale down for 3D space
+  const labelText = insight?.shortLabel || node.label;
+  const shouldShowLabel = isSelected || hovered || isVisible;
   
   // Procedural root structure generation
   const rootSegments = useMemo(() => {
     const rng = createPRNG(node.id);
     const weight = (node.meta?.weight as number) || 10;
-    const mainBranchCount = Math.floor(5 + Math.min(weight / 2, 8));
+    const mainBranchCount = Math.floor(8 + Math.min(weight / 2, 12));
     const segments: RootSegment[] = [];
     
     const phi = Math.PI * (3 - Math.sqrt(5)); // golden angle
@@ -179,16 +195,17 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
       length: number, 
       depth: number,
       parentStartT: number,
-      parentEndT: number
+      parentEndT: number,
+      nodeWeight: number
     ) => {
       const segmentRes = 24; 
       const controlPoints = [start.clone()];
       
-      const midPoint = start.clone().add(direction.clone().multiplyScalar(length * 0.45));
+      const midPoint = start.clone().add(direction.clone().multiplyScalar(length * 0.5));
       midPoint.add(new THREE.Vector3(
-        (rng() - 0.5) * length * 0.4,
-        (rng() - 0.5) * length * 0.4,
-        (rng() - 0.5) * length * 0.4
+        (rng() - 0.5) * length * 0.45,
+        (rng() - 0.5) * length * 0.45,
+        (rng() - 0.5) * length * 0.45
       ));
       controlPoints.push(midPoint);
       
@@ -203,8 +220,6 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
       const curve = new THREE.CatmullRomCurve3(controlPoints);
       const points = curve.getPoints(segmentRes);
 
-      // Define growth timing for this segment
-      // Trunks (depth 0) grow first, then sub-branches (depth 1)
       const startT = depth === 0 ? 0 : 0.6;
       const endT = depth === 0 ? 0.6 : 1.0;
 
@@ -215,15 +230,23 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
         endT
       });
 
-      if (depth < 1) { // 2 levels total
-        const subBranchCount = rng() > 0.3 ? 2 : 1;
+      // Procedural branching based on weight
+      // Level 0 -> Level 1 -> Level 2
+      if (depth < 2) { 
+        // More branches for higher weight nodes
+        const maxSubBranches = depth === 0 
+          ? Math.floor(1 + Math.min(nodeWeight / 15, 3)) // Up to 4 branches from trunk
+          : Math.floor(1 + Math.min(nodeWeight / 30, 1)); // Up to 2 branches from sub-branches
+          
+        const subBranchCount = rng() > 0.3 ? maxSubBranches : 0; 
+
         for (let i = 0; i < subBranchCount; i++) {
-          const splitPoint = points[Math.floor(points.length * 0.75)];
+          const splitPoint = points[Math.floor(points.length * (0.6 + rng() * 0.3))];
           const splitDir = direction.clone();
-          const angle = (rng() - 0.5) * 1.5;
+          const angle = (rng() - 0.5) * 1.4;
           const axis = new THREE.Vector3(rng() - 0.5, rng() - 0.5, rng() - 0.5).normalize();
           splitDir.applyAxisAngle(axis, angle);
-          generateBranch(splitPoint, splitDir, length * 0.5, depth + 1, endT, 1.0);
+          generateBranch(splitPoint, splitDir, length * 0.65, depth + 1, endT, 1.0, nodeWeight);
         }
       }
     };
@@ -236,7 +259,7 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
       const dir = new THREE.Vector3(Math.cos(theta) * r, y, Math.sin(theta) * r).normalize();
       
       const start = dir.clone().multiplyScalar(radius);
-      generateBranch(start, dir, radius * 0.6 + 0.3, 0, 0, 0.6);
+      generateBranch(start, dir, radius * 0.7 + 0.4, 0, 0, 0.6, weight);
     }
     
     return segments;
@@ -329,28 +352,64 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
           emissiveIntensity={isSelected ? 0.3 : 0}
         />
       </mesh>
+      {isSelected && (
+        <mesh scale={[1.4, 1.4, 1.4]}>
+          {node.type === "juror" ? (
+            <dodecahedronGeometry args={[radius * 0.8, 0]} />
+          ) : (
+            <sphereGeometry args={[radius, 32, 32]} />
+          )}
+          <shaderMaterial
+            attach="material"
+            args={[selectionHaloShader]}
+            transparent={true}
+            depthWrite={false}
+            side={THREE.BackSide}
+          />
+        </mesh>
+      )}
       
-      {/* Node label - always faces camera */}
-      {isVisible || hovered ? (
-        <Billboard
-          follow={true}
-          lockX={false}
-          lockY={false}
-          lockZ={false}
-        >
-          <Text
-            position={[0, radius + 0.3, 0]}
-            fontSize={0.25}
-            color={!isVisible ? "#94a3b8" : isSelected || hovered ? "#1e293b" : "#64748b"}
-            fillOpacity={!isVisible ? 0.6 : 1}
-            anchorX="center"
-            anchorY="bottom"
-            maxWidth={3}
-            textAlign="center"
+      {/* Node label - elevated card when selected, minimalist text otherwise */}
+      {shouldShowLabel ? (
+        isSelected ? (
+          <Html
+            position={[0, radius + 0.65, 0]}
+            center
+            distanceFactor={12}
+            style={{ pointerEvents: "none", userSelect: "none" }}
           >
-            {insight?.shortLabel || node.label}
-          </Text>
-        </Billboard>
+            <div className="flex items-center gap-2 rounded-lg border border-white/60 bg-white/95 px-3 py-1.5 text-[16px] leading-tight font-semibold text-slate-800 shadow-lg backdrop-blur-sm">
+              <span
+                className="h-2.5 w-2.5 rounded-full shadow-sm"
+                style={{
+                  backgroundColor: nodeColor,
+                  boxShadow: `0 0 0 3px ${nodeColor}33`
+                }}
+              />
+              <span className="whitespace-nowrap">{labelText}</span>
+            </div>
+          </Html>
+        ) : (
+          <Billboard
+            follow={true}
+            lockX={false}
+            lockY={false}
+            lockZ={false}
+          >
+            <Text
+              position={[0, radius + 0.3, 0]}
+              fontSize={0.25}
+              color={!isVisible ? "#94a3b8" : hovered ? "#1e293b" : "#64748b"}
+              fillOpacity={!isVisible ? 0.6 : 1}
+              anchorX="center"
+              anchorY="bottom"
+              maxWidth={3}
+              textAlign="center"
+            >
+              {labelText}
+            </Text>
+          </Billboard>
+        )
       ) : null}
       
       {/* Selection branch highlight */}
