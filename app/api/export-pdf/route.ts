@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { access, constants as fsConstants } from "fs/promises";
+import path from "path";
 import chromium from "@sparticuz/chromium-min";
 import puppeteer from "puppeteer-core";
 
@@ -15,17 +17,76 @@ const DEFAULT_FILENAME = "analysis-report.pdf";
 
 async function getExecutablePath(): Promise<string> {
   const isVercel = Boolean(process.env.VERCEL);
-  if (isVercel) {
-    return (await chromium.executablePath()) ?? "";
-  }
-
   const envPath =
     process.env.CHROME_PATH ||
     process.env.PUPPETEER_EXECUTABLE_PATH ||
     process.env.CHROMIUM_PATH;
   if (envPath) return envPath;
 
-  return (await chromium.executablePath()) ?? "";
+  if (!isVercel) {
+    const localPath = await findLocalChrome();
+    if (localPath) return localPath;
+  }
+
+  // Fallback: try bundled chromium (used in Vercel/Linux)
+  try {
+    return (await chromium.executablePath()) ?? "";
+  } catch (error) {
+    console.error("[export-pdf] chromium.executablePath failed", error);
+    return await findPackagedChromium();
+  }
+}
+
+async function fileExists(targetPath: string) {
+  try {
+    await access(targetPath, fsConstants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function findPackagedChromium() {
+  const candidate = path.join(
+    process.cwd(),
+    "node_modules",
+    "@sparticuz",
+    "chromium-min",
+    "bin",
+    "chromium"
+  );
+  return (await fileExists(candidate)) ? candidate : "";
+}
+
+async function findLocalChrome() {
+  const platform = process.platform;
+  const candidates: string[] = [];
+
+  if (platform === "win32") {
+    candidates.push(
+      "C:\\\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+      "C:\\\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
+    );
+  } else if (platform === "darwin") {
+    candidates.push(
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"
+    );
+  } else {
+    candidates.push(
+      "/usr/bin/google-chrome",
+      "/usr/bin/google-chrome-stable",
+      "/usr/bin/chromium",
+      "/usr/bin/chromium-browser"
+    );
+  }
+
+  for (const candidate of candidates) {
+    if (await fileExists(candidate)) return candidate;
+  }
+  return "";
 }
 
 export async function POST(request: Request) {

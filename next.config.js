@@ -6,6 +6,12 @@ const nextConfig = {
   reactStrictMode: true,
   experimental: {
     serverComponentsExternalPackages: ["puppeteer-core", "@sparticuz/chromium-min"],
+    outputFileTracingIncludes: {
+      "/api/export-pdf": [
+        "./node_modules/@sparticuz/chromium-min/bin/**",
+        "./node_modules/@sparticuz/chromium-min/lib/**",
+      ],
+    },
   },
   webpack(config, { isServer }) {
     config.resolve.fallback = config.resolve.fallback ?? {};
