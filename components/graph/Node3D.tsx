@@ -540,7 +540,6 @@ export function Node3D({
               color="white"
               anchorX="center"
               anchorY="middle"
-              fontWeight="bold"
             >
               {node.type === "concept" && node.meta?.weight 
                 ? Math.round(node.meta.weight as number).toString() 
