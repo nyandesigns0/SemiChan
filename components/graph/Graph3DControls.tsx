@@ -105,7 +105,7 @@ export function Graph3DControls({
             </div>
           </div>
           
-          <ScrollArea className={cn("pr-2", numDimensions > 4 ? "h-[200px]" : "h-auto")}>
+          <ScrollArea className={cn("pr-2", numDimensions > 4 ? "h-[480px]" : "h-auto")}>
             <div className="space-y-3 text-xs">
               {Array.from({ length: numDimensions }).map((_, i) => {
                 const axisIdx = i.toString();

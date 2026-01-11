@@ -25,9 +25,9 @@ export function InspectorPanel({
   logs,
 }: InspectorPanelProps) {
   const [activeTab, setActiveTab] = useState<TabType>("console");
-  const [height, setHeight] = useState(DEFAULT_HEIGHT);
+  const [height, setHeight] = useState(MIN_HEIGHT);
   const [isResizing, setIsResizing] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Resizing logic

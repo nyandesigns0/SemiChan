@@ -112,7 +112,7 @@ export default function HomePage() {
   const [checkpointIndex, setCheckpointIndex] = useState(-1);
   
   // Graph view toggles
-  const [showAxes, setShowAxes] = useState(false);
+  const [showAxes, setShowAxes] = useState(true);
   const [showGraph, setShowGraph] = useState(true);
 
   // Console logging state

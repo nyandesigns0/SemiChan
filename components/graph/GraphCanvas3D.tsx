@@ -346,21 +346,57 @@ function SceneContent({
         <meshBasicMaterial transparent opacity={0} visible={false} />
       </mesh>
       
-      {/* Grid */}
+      {/* Grids */}
       {showGrid && (
-        <Grid
-          position={[0, 0, 0]}
-          args={[30, 30]}
-          cellSize={1}
-          cellThickness={0.5}
-          cellColor="#94a3b8"
-          sectionSize={5}
-          sectionThickness={1}
-          sectionColor="#64748b"
-          fadeDistance={50}
-          fadeStrength={1}
-          followCamera={false}
-        />
+        <group>
+          {/* XZ Plane (Ground) */}
+          <Grid
+            position={[0, 0, 0]}
+            args={[30, 30]}
+            cellSize={0.3}
+            cellThickness={0.3}
+            cellColor="#b4c1d1"
+            sectionSize={1.5}
+            sectionThickness={0.6}
+            sectionColor="#7f8fa3"
+            fadeDistance={30}
+            fadeStrength={1.5}
+            followCamera={false}
+            infiniteGrid
+          />
+          {/* XY Plane (Vertical) */}
+          <Grid
+            position={[0, 0, 0]}
+            rotation={[Math.PI / 2, 0, 0]}
+            args={[30, 30]}
+            cellSize={0.3}
+            cellThickness={0.3}
+            cellColor="#b4c1d1"
+            sectionSize={1.5}
+            sectionThickness={0.6}
+            sectionColor="#7f8fa3"
+            fadeDistance={30}
+            fadeStrength={1.5}
+            followCamera={false}
+            infiniteGrid
+          />
+          {/* YZ Plane (Side) */}
+          <Grid
+            position={[0, 0, 0]}
+            rotation={[0, 0, Math.PI / 2]}
+            args={[30, 30]}
+            cellSize={0.3}
+            cellThickness={0.3}
+            cellColor="#b4c1d1"
+            sectionSize={1.5}
+            sectionThickness={0.6}
+            sectionColor="#7f8fa3"
+            fadeDistance={30}
+            fadeStrength={1.5}
+            followCamera={false}
+            infiniteGrid
+          />
+        </group>
       )}
       
       {/* Axes */}
@@ -423,7 +459,7 @@ export function GraphCanvas3D({
   filteredLinksCount = 0,
   checkpointIndex: checkpointIndexProp = -1,
   onCheckpointIndexChange,
-  showAxes: showAxesProp = false,
+  showAxes: showAxesProp = true,
   onToggleAxes,
   showGraph: showGraphProp = true,
   onToggleGraph,
