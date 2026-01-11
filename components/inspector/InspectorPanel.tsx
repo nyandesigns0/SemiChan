@@ -5,6 +5,7 @@ import { Terminal, BarChart3, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { InspectorConsole, type LogEntry } from "./InspectorConsole";
 import { AnalysisReport } from "@/components/inspector/AnalysisReport";
+import type { RawDataExportContext } from "@/components/inspector/export-types";
 import type { AnalysisResult } from "@/types/analysis";
 import type { JurorBlock } from "@/types/nlp";
 import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
@@ -27,6 +28,8 @@ interface InspectorPanelProps {
   autoExpandOnAnalysis?: boolean;
   /** Ref to the scrollable analysis container for export/snapshot purposes. */
   analysisContainerRef?: React.RefObject<HTMLDivElement>;
+  /** Optional context used by hidden export sections */
+  rawExportContext?: RawDataExportContext;
 }
 
 const MIN_HEIGHT = 40;
@@ -45,6 +48,7 @@ export function InspectorPanel({
   onTabChange,
   autoExpandOnAnalysis = false,
   analysisContainerRef,
+  rawExportContext,
 }: InspectorPanelProps) {
   const [internalTab, setInternalTab] = useState<InspectorTab>("console");
   const [height, setHeight] = useState(MIN_HEIGHT);
@@ -187,16 +191,17 @@ export function InspectorPanel({
 
           {currentTab === "analysis" && (
             <div ref={analysisContainerRef} className="h-full overflow-y-auto bg-white">
-              <AnalysisReport 
-                analysis={analysis} 
-                jurorBlocks={jurorBlocks} 
-                axisLabels={axisLabels}
-                enableAxisLabelAI={enableAxisLabelAI}
-                isRefreshingAxisLabels={isRefreshingAxisLabels}
-                insights={insights}
-              />
-            </div>
-          )}
+            <AnalysisReport 
+              analysis={analysis} 
+              jurorBlocks={jurorBlocks} 
+              axisLabels={axisLabels}
+              enableAxisLabelAI={enableAxisLabelAI}
+              isRefreshingAxisLabels={isRefreshingAxisLabels}
+              insights={insights}
+              rawExportContext={rawExportContext}
+            />
+          </div>
+        )}
         </div>
       )}
     </div>

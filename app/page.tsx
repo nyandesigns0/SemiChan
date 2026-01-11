@@ -14,6 +14,7 @@ import { SearchBarAccordion } from "@/components/controls/SearchBarAccordion";
 import { GraphFiltersAccordion } from "@/components/controls/GraphFiltersAccordion";
 import { GraphCanvas3D } from "@/components/graph/GraphCanvas3D";
 import { InspectorPanel, type InspectorTab } from "@/components/inspector/InspectorPanel";
+import type { RawDataExportContext } from "@/components/inspector/export-types";
 import { FloatingDetailsPanel } from "@/components/inspector/FloatingDetailsPanel";
 import { CollapsibleSidebar } from "@/components/ui/collapsible-sidebar";
 import { useConceptSummarizer } from "@/hooks/useConceptSummarizer";
@@ -93,6 +94,70 @@ export default function HomePage() {
     return numDimensions;
   }, [analysis, numDimensions]);
 
+  const rawDataExportContext = useMemo<RawDataExportContext>(() => ({
+    rawText,
+    jurorBlocks,
+    analysisParams: {
+      kConcepts,
+      minEdgeWeight,
+      similarityThreshold,
+      semanticWeight,
+      frequencyWeight,
+      clusteringMode,
+      autoK,
+      clusterSeed,
+      softMembership,
+      cutType,
+      granularityPercent,
+      numDimensions,
+      appliedNumDimensions,
+      dimensionMode,
+      varianceThreshold,
+      showAxes,
+      showGraph,
+      enableAxisLabelAI,
+      autoSynthesize,
+    },
+    logs: logs.map((log) => ({
+      id: log.id,
+      timestamp: log.timestamp instanceof Date ? log.timestamp.toISOString() : String(log.timestamp),
+      type: log.type,
+      message: log.message,
+      data: log.data,
+    })),
+    apiCallCount,
+    apiCostTotal,
+    selectedModel,
+    exportTimestamp,
+  }), [
+    rawText,
+    jurorBlocks,
+    kConcepts,
+    minEdgeWeight,
+    similarityThreshold,
+    semanticWeight,
+    frequencyWeight,
+    clusteringMode,
+    autoK,
+    clusterSeed,
+    softMembership,
+    cutType,
+    granularityPercent,
+    numDimensions,
+    appliedNumDimensions,
+    dimensionMode,
+    varianceThreshold,
+    showAxes,
+    showGraph,
+    enableAxisLabelAI,
+    autoSynthesize,
+    logs,
+    apiCallCount,
+    apiCostTotal,
+    selectedModel,
+    exportTimestamp,
+  ]);
+
   // AI controls
   const [enableAxisLabelAI, setEnableAxisLabelAI] = useState(false);
   const [autoSynthesize, setAutoSynthesize] = useState(false);
@@ -111,6 +176,7 @@ export default function HomePage() {
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("console");
   const analysisContainerRef = useRef<HTMLDivElement | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportTimestamp, setExportTimestamp] = useState<string | null>(null);
   const lastVarianceLogSignature = useRef<string | null>(null);
   const addLog = useCallback((type: LogEntry["type"], message: string, data?: any) => {
     let finalMessage = message;
@@ -646,14 +712,19 @@ export default function HomePage() {
 
   const handleExportPdf = useCallback(async () => {
     if (!analysis || emptyState) return;
+    const timestamp = new Date().toISOString();
+    setExportTimestamp(timestamp);
     setInspectorTab("analysis");
     setExportingPdf(true);
     try {
-      // Wait for the analysis tab to render before capturing
-      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => resolve());
+        });
+      });
       const container = analysisContainerRef.current;
       if (!container) throw new Error("Analysis panel not ready");
-      await downloadPdf(container, `analysis-report-${new Date().toISOString().slice(0, 10)}.pdf`);
+      await downloadPdf(container, `analysis-report-${timestamp.slice(0, 10)}.pdf`);
     } catch (error) {
       console.error("[Export PDF] Failed to export analysis report", error);
     } finally {
@@ -869,6 +940,7 @@ export default function HomePage() {
             onTabChange={setInspectorTab}
             autoExpandOnAnalysis
             analysisContainerRef={analysisContainerRef}
+            rawExportContext={rawDataExportContext}
           />
 
         </div>

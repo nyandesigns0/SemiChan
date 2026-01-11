@@ -6,8 +6,10 @@ import { BarChart2, Layers, Users, Sparkles, CircleDot, RefreshCw, ListFilter, F
 import type { AnalysisResult } from "@/types/analysis";
 import type { JurorBlock } from "@/types/nlp";
 import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
+import type { GraphNode } from "@/types/graph";
 import { getPCColor, lightenColor, getAxisColors } from "@/lib/utils/graph-color-utils";
 import { extractKeyphrases } from "@/lib/nlp/keyphrase-extractor";
+import type { RawDataExportContext } from "./export-types";
 
 type AxisPlotDatum = {
   axisIndex: number;
@@ -188,7 +190,44 @@ function AxisAffinityChart({
         </div>
       </div>
     );
+}
+
+
+type ExportSection = {
+  title: string;
+  description?: string;
+  payload: unknown;
+};
+
+function sanitizeForExport(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.map(sanitizeForExport);
+  if (value instanceof Date) return value.toISOString();
+  if (ArrayBuffer.isView(value)) {
+    return Array.from(value as ArrayLike<number>);
   }
+  if (value instanceof Map) {
+    return Object.fromEntries(
+      Array.from(value.entries()).map(([key, val]) => [String(key), sanitizeForExport(val)])
+    );
+  }
+  if (value instanceof Set) {
+    return Array.from(value.values()).map(sanitizeForExport);
+  }
+  if (typeof value === "object") {
+    const accumulator: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      accumulator[key] = sanitizeForExport(val);
+    }
+    return accumulator;
+  }
+  return value;
+}
+
+function resolveNodeReference(endpoint: string | GraphNode): string {
+  if (typeof endpoint === "string") return endpoint;
+  return endpoint?.id ?? "unknown";
+}
 
 
 interface AnalysisReportProps {
@@ -198,6 +237,7 @@ interface AnalysisReportProps {
   enableAxisLabelAI?: boolean;
   isRefreshingAxisLabels?: boolean;
   insights?: Record<string, ConceptInsight>;
+  rawExportContext?: RawDataExportContext;
 }
 
 function formatPercent(value: number | undefined, digits = 1): string {
@@ -205,7 +245,7 @@ function formatPercent(value: number | undefined, digits = 1): string {
   return `${(value * 100).toFixed(digits)}%`;
 }
 
-export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLabelAI, isRefreshingAxisLabels = false, insights }: AnalysisReportProps) {
+export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLabelAI, isRefreshingAxisLabels = false, insights, rawExportContext }: AnalysisReportProps) {
   const sentencesByJuror = useMemo(() => {
     if (!analysis) return new Map<string, number>();
     const counts = new Map<string, number>();
@@ -408,6 +448,97 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
 
   const effectiveAxisLabels = axisLabels || analysis?.axisLabels || {};
   const axisKeys = Object.keys(effectiveAxisLabels);
+  const exportSections = useMemo<ExportSection[]>(() => {
+    if (!analysis || !rawExportContext) return [];
+
+    const nodes = analysis.nodes.map((node) => ({
+      id: node.id,
+      label: node.label,
+      type: node.type,
+      size: node.size,
+      x: node.x,
+      y: node.y,
+      z: node.z,
+      vx: node.vx,
+      vy: node.vy,
+      fx: node.fx,
+      fy: node.fy,
+      pcValues: node.pcValues,
+      meta: node.meta,
+    }));
+
+    const links = analysis.links.map((link) => ({
+      id: link.id,
+      source: resolveNodeReference(link.source),
+      target: resolveNodeReference(link.target),
+      weight: link.weight,
+      stance: link.stance,
+      evidenceIds: link.evidenceIds,
+      kind: link.kind,
+    }));
+
+    const checkpoints = (analysis.checkpoints || []).map((checkpoint) => ({
+      id: checkpoint.id,
+      label: checkpoint.label,
+      nodeIds: checkpoint.nodes.map((node) => node.id),
+      linkIds: checkpoint.links.map((link) => link.id),
+    }));
+
+    return [
+      {
+        title: "Input Data",
+        description: "Raw text, juror blocks, and parameter settings",
+        payload: {
+          rawText: rawExportContext.rawText,
+          jurorBlocks: rawExportContext.jurorBlocks,
+          analysisParams: rawExportContext.analysisParams,
+        },
+      },
+      {
+        title: "Juror Data",
+        description: "Sentences, vector weights, and stance counts",
+        payload: {
+          sentences: analysis.sentences,
+          jurorVectors: analysis.jurorVectors,
+          jurorTopTerms: analysis.jurorTopTerms,
+          stats: analysis.stats,
+        },
+      },
+      {
+        title: "Graph & Vector Data",
+        description: "Nodes, links, and checkpoint snapshots",
+        payload: {
+          nodes,
+          links,
+          checkpoints,
+        },
+      },
+      {
+        title: "Concept & Analysis",
+        description: "Concept metadata, variance metrics, and axis labels",
+        payload: {
+          concepts: analysis.concepts,
+          varianceStats: analysis.varianceStats,
+          axisLabels: analysis.axisLabels,
+          recommendedK: analysis.recommendedK,
+          kSearchMetrics: analysis.kSearchMetrics,
+          requestedNumDimensions: analysis.requestedNumDimensions,
+          appliedNumDimensions: analysis.appliedNumDimensions,
+        },
+      },
+      {
+        title: "Processing Data",
+        description: "Logs, model info, and export metadata",
+        payload: {
+          logs: rawExportContext.logs,
+          apiCallCount: rawExportContext.apiCallCount,
+          apiCostTotal: rawExportContext.apiCostTotal,
+          selectedModel: rawExportContext.selectedModel,
+          exportTimestamp: rawExportContext.exportTimestamp,
+        },
+      },
+    ];
+  }, [analysis, rawExportContext]);
   const orderedAxesAll = axisKeys
     .map((key, idx) => {
       const parsed = Number.parseInt(key, 10);
@@ -1169,6 +1300,51 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
             })}
           </div>
         </div>
+
+        {exportSections.length > 0 && (
+          <section
+            aria-hidden="true"
+            className="hidden print:block"
+          >
+            <div className="mx-auto max-w-5xl space-y-4 rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-sm print:border-slate-300 print:bg-white print:shadow-none print:p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.4em] text-slate-500">
+                    Raw Data Export
+                  </p>
+                  <p className="text-[10px] text-slate-500">
+                    Full analysis state serialized for diagnostics.
+                  </p>
+                </div>
+                <span className="text-[10px] font-semibold text-slate-400">
+                  {exportSections.length} sections
+                </span>
+              </div>
+              <div className="space-y-4">
+                {exportSections.map((section) => {
+                  const payload = sanitizeForExport(section.payload);
+                  const json = JSON.stringify(payload, null, 2);
+                  return (
+                    <article
+                      key={section.title}
+                      className="rounded-2xl border border-slate-200 bg-slate-50/60 p-3 shadow-sm print:border-slate-200 print:bg-white print:shadow-none"
+                    >
+                      <header className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.3em] text-slate-500">
+                        <span>{section.title}</span>
+                        {section.description && (
+                          <span className="text-[9px] text-slate-400">{section.description}</span>
+                        )}
+                      </header>
+                      <pre className="max-h-[60vh] min-h-[20vh] overflow-auto whitespace-pre-wrap text-[10px] leading-snug text-slate-900 print:break-inside-avoid">
+                        {json}
+                      </pre>
+                    </article>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );
