@@ -44,7 +44,7 @@ function AxisAffinityChart({
   const startAngle = -Math.PI / 2;
   const angleStep = (Math.PI * 2) / axes.length;
 
-  const labelDistance = baseRadius + 18;
+  const labelDistance = baseRadius + 22;
   const points = axes.map((axis, idx) => {
     const angle = startAngle + angleStep * idx;
     const x = center + Math.cos(angle) * radius * axis.value;
@@ -116,13 +116,13 @@ function AxisAffinityChart({
                 key={`label-group-${p.axis.key}`}
                 className="absolute flex items-center justify-center"
                 style={{
-                  left: `${p.posX}px`,
-                  top: `${p.posY}px`,
+                  left: `${(p.posX / size) * 100}%`,
+                  top: `${(p.posY / size) * 100}%`,
                   transform: "translate(-50%, -50%)",
                 }}
               >
                 <div 
-                  className="h-3 w-3 rounded-full border border-black shadow-sm"
+                  className="h-2 w-2 rounded-full border border-black shadow-sm"
                   style={{ backgroundColor: p.axis.color }}
                 />
               </div>
@@ -581,7 +581,7 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
                   key={juror}
                   className="rounded-xl border border-slate-100 bg-slate-50/60 p-3"
                 >
-                  <div className="mb-1 flex items-center justify-between">
+                  <div className="mb-1 flex items-center gap-2">
                       <Badge
                         variant="outline"
                         className="text-sm font-bold"
@@ -802,7 +802,7 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
 
               return (
                 <div key={axisKey} className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
-                  <div className="mb-1 flex items-center justify-between">
+                  <div className="mb-1 flex items-center gap-2">
                     <Badge
                       variant="outline"
                       className="text-sm font-bold"
@@ -980,10 +980,11 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
               const conceptInsight = insights?.[concept.id];
               const aiLabel = conceptInsight?.shortLabel;
               const isLoadingLabel = conceptInsight?.isLoadingLabel;
+              const topTerms = Array.isArray(concept.topTerms) ? concept.topTerms : [];
 
               return (
                 <div key={concept.id} className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
-                  <div className="mb-1 flex items-center justify-between">
+                  <div className="mb-1 flex items-center gap-2">
                     <div className="flex items-center gap-2">
                       <Badge
                         variant="outline"
@@ -1007,86 +1008,99 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
                       )}
                       {isLoadingLabel && !aiLabel && (
                         <Badge variant="outline" className="border-slate-200 bg-white text-[10px] font-semibold text-slate-500">
-                          Labeling…
+                          Labeling...
                         </Badge>
                       )}
                     </div>
-                    <Badge
-                      variant="outline"
-                      className="border-slate-200 bg-white text-[11px] font-semibold text-slate-500"
-                      style={{
-                        borderColor: (conceptColors.get(concept.id)?.base ?? "#cbd5e1"),
-                        color: conceptColors.get(concept.id)?.base ?? "#334155",
-                        backgroundColor: conceptColors.get(concept.id)?.soft ?? "#f8fafc",
-                      }}
-                    >
-                      <span
-                        className="mr-1 inline-block h-2 w-2 rounded-full"
-                        style={{ backgroundColor: conceptColors.get(concept.id)?.base ?? "#334155" }}
-                      />
-                      {concept.topTerms.slice(0, 3).join(" • ")}
-                    </Badge>
                   </div>
-                <div className="flex items-center justify-between">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    Juror attribution
+
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Juror attribution
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="border-slate-200 bg-white text-[11px] font-semibold text-slate-600">
+                        {distribution.length} jurors
+                      </Badge>
+                      {distribution.length > 3 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowAllJurorContribs((prev) => ({
+                              ...prev,
+                              [concept.id]: !showAll,
+                            }))
+                          }
+                          className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
+                        >
+                          {showAll ? <Minus className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="border-slate-200 bg-white text-[11px] font-semibold text-slate-600">
-                      {distribution.length} jurors
-                    </Badge>
-                    {distribution.length > 3 && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setShowAllJurorContribs((prev) => ({
-                            ...prev,
-                            [concept.id]: !showAll,
-                          }))
-                        }
-                        className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
-                      >
-                        {showAll ? <Minus className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
-                      </button>
+
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {visibleDistribution.length > 0 ? (
+                      visibleDistribution.map((entry) => {
+                        const colors = conceptColors.get(concept.id);
+                        const jurorColor = jurorColors.get(entry.juror);
+                        return (
+                          <Badge
+                            key={entry.juror}
+                            variant="secondary"
+                            className="bg-white text-slate-700"
+                            style={{
+                              backgroundColor: jurorColor?.soft ?? colors?.soft ?? "#f8fafc",
+                              color: jurorColor?.base ?? colors?.base ?? "#334155",
+                              borderColor: jurorColor?.base ?? colors?.base ?? "transparent",
+                              borderWidth: "1px",
+                            }}
+                          >
+                            <span
+                              className="mr-1 inline-block h-2 w-2 rounded-full"
+                              style={{ backgroundColor: jurorColor?.base ?? colors?.base ?? "#334155" }}
+                            />
+                            {entry.juror} ??? {formatPercent(entry.weight)}
+                          </Badge>
+                        );
+                      })
+                    ) : (
+                      <span className="text-[11px] text-slate-400">No juror distribution available</span>
                     )}
                   </div>
-                </div>
-                <div className="mt-1 flex flex-wrap gap-1.5">
-                  {visibleDistribution.length > 0 ? (
-                    visibleDistribution.map((entry) => {
-                      const colors = conceptColors.get(concept.id);
-                      const jurorColor = jurorColors.get(entry.juror);
-                      return (
-                        <Badge
-                          key={entry.juror}
-                          variant="secondary"
-                          className="bg-white text-slate-700"
-                          style={{
-                            backgroundColor: jurorColor?.soft ?? colors?.soft ?? "#f8fafc",
-                            color: jurorColor?.base ?? colors?.base ?? "#334155",
-                            borderColor: jurorColor?.base ?? colors?.base ?? "transparent",
-                            borderWidth: "1px",
-                          }}
-                        >
-                          <span
-                            className="mr-1 inline-block h-2 w-2 rounded-full"
-                            style={{ backgroundColor: jurorColor?.base ?? colors?.base ?? "#334155" }}
-                          />
-                          {entry.juror} • {formatPercent(entry.weight)}
-                        </Badge>
-                      );
-                    })
-                  ) : (
-                    <span className="text-[11px] text-slate-400">No juror distribution available</span>
-                  )}
-                </div>
+
                   {topSentence && (
                     <div className="mt-2 rounded-lg border border-slate-100 bg-white/80 p-2 text-xs text-slate-600">
                       <div className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
                         <CircleDot className="h-3 w-3" />
                         Evidence
                       </div>
-                      “{topSentence}”
+                      "{topSentence}"
+                    </div>
+                  )}
+
+                  {topTerms.length > 0 && (
+                    <div className="mt-3 rounded-lg border border-slate-100 bg-white/80 p-2">
+                      <div className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                        <Sparkles className="h-3 w-3" />
+                        Concept terms
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {topTerms.map((term) => (
+                          <Badge
+                            key={`${concept.id}-${term}`}
+                            variant="secondary"
+                            className="text-[10px] px-2 py-0.5 font-medium"
+                            style={{
+                              backgroundColor: conceptColors.get(concept.id)?.soft ?? "#f8fafc",
+                              color: conceptColors.get(concept.id)?.base ?? "#334155",
+                              borderColor: conceptColors.get(concept.id)?.base ?? "#e2e8f0",
+                            }}
+                          >
+                            {term}
+                          </Badge>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

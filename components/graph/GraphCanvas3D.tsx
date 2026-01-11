@@ -121,7 +121,7 @@ const DynamicAxisLabel = ({
     <Html
       position={position}
       center
-      distanceFactor={15}
+      distanceFactor={12}
       pointerEvents="none"
       zIndexRange={[0, 0]}
       style={{ zIndex: 0 }}
@@ -139,7 +139,7 @@ const DynamicAxisLabel = ({
       >
         <div 
           className={cn(
-            "px-1.5 py-0.5 rounded text-[10px] font-bold text-white shadow-sm border border-white/20",
+            "px-1 py-0.5 rounded text-[9px] font-bold text-white shadow-sm border border-white/20",
             !customColor && colorClass
           )}
           style={customColor ? { backgroundColor: customColor } : {}}
@@ -178,7 +178,7 @@ const MultiAxisLabels = memo(function MultiAxisLabels({
 }) {
   if (!visible || !axisLabels) return null;
   const size = 10;
-  const offset = 0.8;
+  const offset = 1.4;
   const axisColors = getAxisColors(numDimensions);
   
   // Helper to get display label
