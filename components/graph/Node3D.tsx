@@ -195,38 +195,61 @@ export function Node3D({
   // Procedural root structure generation
   const rootSegments = useMemo(() => {
     const rng = createPRNG(node.id);
-    const jurorLinks = connectedLinks?.filter((link) => link.kind === "jurorConcept") ?? [];
-    const jurorCount = jurorLinks.length;
+    
+    // Use full juror distribution if available (from meta), fallback to links
+    const jurorDistribution = (node.meta?.jurorDistribution as Array<{ juror: string; weight: number }>) || [];
+    
+    let contributions: { color: string; weight: number; identity: string }[] = [];
 
-    const contributions = jurorLinks
-      .map((link) => {
-        const sourceId = typeof link.source === "string" ? link.source : link.source.id;
-        const targetId = typeof link.target === "string" ? link.target : link.target.id;
-        const otherId = sourceId === node.id ? targetId : sourceId;
-        const otherNode = otherId ? allNodesMap?.get(otherId) : undefined;
-        const weight = Math.max(0, link.weight ?? 0);
-        if (weight === 0) return null;
+    if (jurorDistribution.length > 0) {
+      contributions = jurorDistribution
+        .map((d) => {
+          const jurorId = `juror:${d.juror}`;
+          const jurorNode = allNodesMap?.get(jurorId);
+          const weight = d.weight;
+          
+          const jurorColor = jurorNode?.pcValues
+            ? getPCColor(jurorNode.pcValues, "#3b82f6")
+            : "#3b82f6";
 
-        const jurorColor = otherNode?.pcValues
-          ? getPCColor(otherNode.pcValues, "#3b82f6")
-          : "#3b82f6";
+          return { color: jurorColor, weight, identity: d.juror };
+        });
+    } else {
+      // Fallback for older data or different node types
+      const jurorLinks = connectedLinks?.filter((link) => link.kind === "jurorConcept") ?? [];
+      contributions = jurorLinks
+        .map((link) => {
+          const sourceId = typeof link.source === "string" ? link.source : link.source.id;
+          const targetId = typeof link.target === "string" ? link.target : link.target.id;
+          const otherId = sourceId === node.id ? targetId : sourceId;
+          const otherNode = otherId ? allNodesMap?.get(otherId) : undefined;
+          const weight = Math.max(0, link.weight ?? 0);
+          if (weight === 0) return null;
 
-        return { color: jurorColor, weight, identity: otherNode?.label || otherId || "" };
-      })
-      .filter((c): c is { color: string; weight: number; identity: string } => !!c);
+          const jurorColor = otherNode?.pcValues
+            ? getPCColor(otherNode.pcValues, "#3b82f6")
+            : "#3b82f6";
 
+          return { color: jurorColor, weight, identity: otherNode?.label || otherId || "" };
+        })
+        .filter((c): c is { color: string; weight: number; identity: string } => !!c);
+    }
+
+    const jurorCount = contributions.length;
     const totalWeight = contributions.reduce((sum, c) => sum + c.weight, 0);
+    const maxJurorWeight = contributions.length > 0 ? Math.max(...contributions.map(c => c.weight)) : 0;
+    
     const weightedContributions = totalWeight > 0
       ? contributions
           .map((c) => ({ ...c, ratio: c.weight / totalWeight }))
           .sort((a, b) => b.weight - a.weight)
       : [];
 
-    const mainBranchCount = Math.floor(8 + Math.min(jurorCount * 1.5, 12));
-    const branchColors: string[] = [];
+    const mainBranchCount = Math.floor(10 + Math.min(jurorCount * 2, 15));
+    const branchData: { color: string; weight: number }[] = [];
 
     if (weightedContributions.length === 0) {
-      for (let i = 0; i < mainBranchCount; i++) branchColors.push(nodeColor);
+      for (let i = 0; i < mainBranchCount; i++) branchData.push({ color: nodeColor, weight: 1 });
     } else {
       const targets = weightedContributions.map((c) => c.ratio * mainBranchCount);
       const counts = targets.map((t) => Math.floor(t));
@@ -241,22 +264,23 @@ export function Node3D({
         counts[idx] = (counts[idx] ?? 0) + 1;
       }
 
-      let placed = 0;
-      while (placed < mainBranchCount) {
-        let advanced = false;
-        for (let i = 0; i < counts.length && placed < mainBranchCount; i++) {
-          if (counts[i] > 0) {
-            branchColors.push(weightedContributions[i].color);
-            counts[i]--;
-            placed++;
-            advanced = true;
-          }
+      for (let i = 0; i < counts.length; i++) {
+        for (let j = 0; j < counts[i]; j++) {
+          branchData.push({ 
+            color: weightedContributions[i].color, 
+            weight: weightedContributions[i].weight 
+          });
         }
-        if (!advanced) break;
       }
 
-      while (branchColors.length < mainBranchCount) {
-        branchColors.push(nodeColor);
+      // Shuffle branch data using deterministic seeded PRNG for even color distribution
+      for (let i = branchData.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [branchData[i], branchData[j]] = [branchData[j], branchData[i]];
+      }
+
+      while (branchData.length < mainBranchCount) {
+        branchData.push({ color: nodeColor, weight: 1 });
       }
     }
     const segments: RootSegment[] = [];
@@ -270,7 +294,8 @@ export function Node3D({
       length: number,
       depth: number,
       currentNodeWeight: number,
-      branchColor: string
+      branchColor: string,
+      individualWeight: number
     ) => {
       const segmentRes = 24;
       const controlPoints = [start.clone()];
@@ -308,9 +333,13 @@ export function Node3D({
       // Procedural branching based on weight
       // Level 0 -> Level 1 -> Level 2
       if (depth < 2) {
+        // Scale sub-branching by the individual contributor's weight relative to the dominant one
+        // This makes stronger contributors look "bushier" while weaker ones stay thin/single
+        const weightFactor = maxJurorWeight > 0 ? Math.sqrt(individualWeight / maxJurorWeight) : 1;
+        
         const maxSubBranches = depth === 0
-          ? Math.floor(1 + Math.min(currentNodeWeight / 15, 3)) // Up to 4 branches from trunk
-          : Math.floor(1 + Math.min(currentNodeWeight / 30, 1)); // Up to 2 branches from sub-branches
+          ? Math.floor(1 + Math.min((currentNodeWeight * weightFactor) / 15, 3)) // Up to 4 branches from trunk
+          : Math.floor(1 + Math.min((currentNodeWeight * weightFactor) / 30, 1)); // Up to 2 branches from sub-branches
 
         const subBranchCount = rng() > 0.3 ? maxSubBranches : 0;
 
@@ -320,13 +349,13 @@ export function Node3D({
           const angle = (rng() - 0.5) * 1.4;
           const axis = new THREE.Vector3(rng() - 0.5, rng() - 0.5, rng() - 0.5).normalize();
           splitDir.applyAxisAngle(axis, angle);
-          generateBranch(splitPoint, splitDir, length * 0.65, depth + 1, currentNodeWeight, branchColor);
+          generateBranch(splitPoint, splitDir, length * 0.65, depth + 1, currentNodeWeight, branchColor, individualWeight);
         }
       }
     };
 
     for (let i = 0; i < mainBranchCount; i++) {
-      const branchColor = branchColors[i] ?? nodeColor;
+      const { color: branchColor, weight: jurorWeight } = branchData[i] ?? { color: nodeColor, weight: 1 };
 
       const t = i / mainBranchCount;
       const y = 1 - t * 2;
@@ -335,11 +364,11 @@ export function Node3D({
       const dir = new THREE.Vector3(Math.cos(theta) * r, y, Math.sin(theta) * r).normalize();
 
       const start = dir.clone().multiplyScalar(radius);
-      generateBranch(start, dir, radius * 0.7 + 0.4, 0, nodeWeight, branchColor);
+      generateBranch(start, dir, radius * 0.7 + 0.4, 0, nodeWeight, branchColor, jurorWeight);
     }
 
     return segments;
-  }, [allNodesMap, connectedLinks, node.id, node.type, node.meta?.weight, radius, nodeColor]);
+  }, [allNodesMap, connectedLinks, node.id, node.type, node.meta, radius, nodeColor]);
 
   const [growthProgress, setGrowthProgress] = useState(0);
   const lastSelectedRef = useRef(isSelected);
@@ -428,7 +457,7 @@ export function Node3D({
           emissiveIntensity={isSelected ? 0.3 : 0}
         />
       </mesh>
-      {isSelected && (
+      {isSelected && opacity !== 0 && (
         <mesh scale={[1.4, 1.4, 1.4]}>
           {node.type === "juror" ? (
             <dodecahedronGeometry args={[radius * 0.8, 0]} />
@@ -452,7 +481,8 @@ export function Node3D({
             position={[0, radius + 0.65, 0]}
             center
             distanceFactor={12}
-            style={{ pointerEvents: "none", userSelect: "none" }}
+            zIndexRange={[0, 0]}
+            style={{ pointerEvents: "none", userSelect: "none", zIndex: 0 }}
           >
             <div className="flex items-center gap-2 rounded-lg border border-white/60 bg-white/95 px-3 py-1.5 text-[16px] leading-tight font-semibold text-slate-800 shadow-lg backdrop-blur-sm">
               <span
@@ -489,7 +519,7 @@ export function Node3D({
       ) : null}
       
       {/* Selection branch highlight */}
-      {isSelected && (
+      {isSelected && opacity !== 0 && (
         <>
           <group>
             {rootSegments.map((segment, index) => (

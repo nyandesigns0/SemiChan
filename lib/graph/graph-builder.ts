@@ -308,6 +308,15 @@ export async function buildAnalysis(
 
   for (const c of concepts) {
     const pos = positions3D.get(c.id) ?? { x: 0, y: 0, z: 0 };
+    
+    // Get full juror distribution for this concept (even weak ones)
+    const jurorDistribution = jurorList
+      .map(j => ({
+        juror: j,
+        weight: jurorVectors[j]?.[c.id] ?? 0
+      }))
+      .filter(d => d.weight > 0);
+
     nodes.push({ 
       id: c.id, 
       type: "concept", 
@@ -315,7 +324,8 @@ export async function buildAnalysis(
       size: c.size, 
       meta: { 
         topTerms: c.topTerms,
-        weight: c.weight
+        weight: c.weight,
+        jurorDistribution
       },
       x: pos.x,
       y: pos.y,
