@@ -113,7 +113,15 @@ function AxisAffinityChart({
         <circle cx={center} cy={center} r={3} fill="#94a3b8" />
           {renderShape}
           {points.map((p) => (
-            <circle key={`point-${p.axis.key}`} cx={p.x} cy={p.y} r={4} fill={color} stroke="#fff" strokeWidth={1.25} />
+            <circle
+              key={`point-${p.axis.key}`}
+              cx={p.x}
+              cy={p.y}
+              r={4}
+              fill={p.axis.color || color}
+              stroke="#fff"
+              strokeWidth={1.25}
+            />
           ))}
         </svg>
 
