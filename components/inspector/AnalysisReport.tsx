@@ -36,6 +36,25 @@ function AxisAffinityChart({
     const positiveLabel = axis.positive?.trim() || "Positive";
     return `${negativeLabel} vs ${positiveLabel}`;
   };
+  const getLuminanceFromHex = (hex: string) => {
+    const cleaned = hex.replace(/^#/, "");
+    const normalized = cleaned.length === 3
+      ? cleaned.split("").map((c) => c + c).join("")
+      : cleaned;
+    if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return 0;
+    const bigint = parseInt(normalized, 16);
+    const r = ((bigint >> 16) & 255) / 255;
+    const g = ((bigint >> 8) & 255) / 255;
+    const b = (bigint & 255) / 255;
+    const toLinear = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+    const luminance = 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+    return luminance;
+  };
+  const getSymbolColor = (axisColor?: string) => {
+    if (!axisColor) return "#000";
+    const luminance = getLuminanceFromHex(axisColor);
+    return luminance < 0.5 ? "#fff" : "#000";
+  };
 
   if (axes.length === 0) {
     return (
@@ -144,7 +163,7 @@ function AxisAffinityChart({
                 }}
               >
                 <div
-                  className="pointer-events-auto rounded-full border border-black shadow-sm flex items-center justify-center"
+                  className="pointer-events-auto rounded-full shadow-sm flex items-center justify-center"
                   style={{
                     backgroundColor: p.axis.color,
                     width: dotSize,
@@ -156,7 +175,10 @@ function AxisAffinityChart({
                   onMouseEnter={() => setHoveredAxisKey(p.axis.key)}
                   onMouseLeave={() => setHoveredAxisKey((current) => (current === p.axis.key ? null : current))}
                 >
-                  <span className="text-[16px] font-black leading-none text-black pointer-events-none">
+                  <span
+                    className="text-[16px] font-black leading-none pointer-events-none"
+                    style={{ color: getSymbolColor(p.axis.color) }}
+                  >
                     {p.axis.value >= 0 ? "+" : "-"}
                   </span>
                 </div>
