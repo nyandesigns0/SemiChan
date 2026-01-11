@@ -1,12 +1,27 @@
 "use client";
 
-import { useRef, useState, useMemo } from "react";
+import { useRef, useState, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
-import { Text, Billboard } from "@react-three/drei";
+import { Text, Billboard, Line } from "@react-three/drei";
 import * as THREE from "three";
 import { getPCColor, lightenColor } from "@/lib/utils/graph-color-utils";
 import type { GraphNode, NodeType } from "@/types/graph";
 import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
+
+// A simple seeded random number generator for deterministic procedural roots
+function createPRNG(seed: string) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash << 5) - hash + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  return function() {
+    hash = (hash + 0x6D2B79F5) | 0;
+    let t = Math.imul(hash ^ (hash >>> 15), 1 | hash);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 interface Node3DProps {
   node: GraphNode;
@@ -43,9 +58,68 @@ const nodeColors: Record<NodeType, NodeColorScheme> = {
   },
 };
 
+interface RootSegment {
+  points: THREE.Vector3[];
+  depth: number;
+  startT: number; // When this segment starts growing (0-1)
+  endT: number;   // When this segment finishes growing (0-1)
+}
+
+interface ProceduralRootProps {
+  segment: RootSegment;
+  globalGrowth: number;
+  pulseOffset: number;
+}
+
+/**
+ * Renders a single branching root with growth and firing pulse animation.
+ */
+function ProceduralRoot({ segment, globalGrowth, pulseOffset }: ProceduralRootProps) {
+  const { points, startT, endT } = segment;
+  
+  // Calculate local growth for this specific segment
+  const localGrowth = useMemo(() => {
+    if (globalGrowth <= startT) return 0;
+    if (globalGrowth >= endT) return 1;
+    return (globalGrowth - startT) / (endT - startT);
+  }, [globalGrowth, startT, endT]);
+
+  // Calculate the subset of points based on growth
+  const visiblePoints = useMemo(() => {
+    if (localGrowth <= 0) return [points[0], points[0]];
+    const count = Math.max(2, Math.floor(points.length * localGrowth));
+    return points.slice(0, count);
+  }, [points, localGrowth]);
+
+  return (
+    <group>
+      {/* Base root path (growing) */}
+      <Line
+        points={visiblePoints}
+        color="#000000"
+        lineWidth={1}
+        transparent
+        opacity={0.15}
+      />
+      {/* Firing pulse (traveling) */}
+      {localGrowth > 0.1 && (
+        <Line
+          points={visiblePoints}
+          color="#000000"
+          lineWidth={2}
+          transparent
+          opacity={0.9}
+          dashArray={[0.2, 0.8]}
+          dashScale={1}
+          dashOffset={pulseOffset % 1}
+        />
+      )}
+    </group>
+  );
+}
+
 export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insight }: Node3DProps) {
   const meshRef = useRef<THREE.Mesh>(null);
-  const selectionCageRef = useRef<THREE.Group>(null);
   const [hovered, setHovered] = useState(false);
   
   // Get position from node (3D coordinates from PCA)
@@ -89,14 +163,94 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
   const meshOpacity = opacity === 1.0 ? 1.0 : 0.3;
   const isGhost = meshOpacity < 1.0;
   const radius = (node.size / 16) * 0.3; // Scale down for 3D space
-  const cageRadius = radius + 0.55;
-  const cageColor = "#fbbf24";
-  const cageRingOrientations: [number, number, number][] = [
-    [Math.PI / 4, 0, 0],
-    [0, Math.PI / 3, 0],
-  ];
-  const highlightColor = "#000000";
-  const selectionPulseOffset = useMemo(() => Math.random() * Math.PI * 2, []);
+  
+  // Procedural root structure generation
+  const rootSegments = useMemo(() => {
+    const rng = createPRNG(node.id);
+    const weight = (node.meta?.weight as number) || 10;
+    const mainBranchCount = Math.floor(5 + Math.min(weight / 2, 8));
+    const segments: RootSegment[] = [];
+    
+    const phi = Math.PI * (3 - Math.sqrt(5)); // golden angle
+    
+    const generateBranch = (
+      start: THREE.Vector3, 
+      direction: THREE.Vector3, 
+      length: number, 
+      depth: number,
+      parentStartT: number,
+      parentEndT: number
+    ) => {
+      const segmentRes = 24; 
+      const controlPoints = [start.clone()];
+      
+      const midPoint = start.clone().add(direction.clone().multiplyScalar(length * 0.45));
+      midPoint.add(new THREE.Vector3(
+        (rng() - 0.5) * length * 0.4,
+        (rng() - 0.5) * length * 0.4,
+        (rng() - 0.5) * length * 0.4
+      ));
+      controlPoints.push(midPoint);
+      
+      const endPoint = start.clone().add(direction.clone().multiplyScalar(length));
+      endPoint.add(new THREE.Vector3(
+        (rng() - 0.5) * length * 0.2,
+        (rng() - 0.5) * length * 0.2,
+        (rng() - 0.5) * length * 0.2
+      ));
+      controlPoints.push(endPoint);
+
+      const curve = new THREE.CatmullRomCurve3(controlPoints);
+      const points = curve.getPoints(segmentRes);
+
+      // Define growth timing for this segment
+      // Trunks (depth 0) grow first, then sub-branches (depth 1)
+      const startT = depth === 0 ? 0 : 0.6;
+      const endT = depth === 0 ? 0.6 : 1.0;
+
+      segments.push({
+        points,
+        depth,
+        startT,
+        endT
+      });
+
+      if (depth < 1) { // 2 levels total
+        const subBranchCount = rng() > 0.3 ? 2 : 1;
+        for (let i = 0; i < subBranchCount; i++) {
+          const splitPoint = points[Math.floor(points.length * 0.75)];
+          const splitDir = direction.clone();
+          const angle = (rng() - 0.5) * 1.5;
+          const axis = new THREE.Vector3(rng() - 0.5, rng() - 0.5, rng() - 0.5).normalize();
+          splitDir.applyAxisAngle(axis, angle);
+          generateBranch(splitPoint, splitDir, length * 0.5, depth + 1, endT, 1.0);
+        }
+      }
+    };
+
+    for (let i = 0; i < mainBranchCount; i++) {
+      const t = i / mainBranchCount;
+      const y = 1 - t * 2;
+      const r = Math.sqrt(Math.max(0, 1 - y * y));
+      const theta = phi * i;
+      const dir = new THREE.Vector3(Math.cos(theta) * r, y, Math.sin(theta) * r).normalize();
+      
+      const start = dir.clone().multiplyScalar(radius);
+      generateBranch(start, dir, radius * 0.6 + 0.3, 0, 0, 0.6);
+    }
+    
+    return segments;
+  }, [node.id, node.meta?.weight, radius]);
+
+  const [growthProgress, setGrowthProgress] = useState(0);
+  const lastSelectedRef = useRef(isSelected);
+
+  useEffect(() => {
+    if (isSelected && !lastSelectedRef.current) {
+      setGrowthProgress(0);
+    }
+    lastSelectedRef.current = isSelected;
+  }, [isSelected]);
   
   // Animate on hover/select (only if visible)
   useFrame((state, delta) => {
@@ -107,12 +261,18 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
       0.1
     );
 
-    if (selectionCageRef.current && isSelected) {
-      const time = state.clock.getElapsedTime();
-      const pulse = 1 + Math.sin(time * 2.6 + selectionPulseOffset) * 0.07;
-      selectionCageRef.current.scale.setScalar(pulse);
-      selectionCageRef.current.rotation.y += delta * 0.5;
-      selectionCageRef.current.rotation.x += delta * 0.45;
+    if (isSelected) {
+      // Growth animation
+      if (growthProgress < 1) {
+        setGrowthProgress(prev => Math.min(1, prev + delta * 1.2));
+      }
+    }
+  });
+
+  const pulseRef = useRef(0);
+  useFrame((state, delta) => {
+    if (isSelected) {
+      pulseRef.current = (state.clock.elapsedTime * 0.8) % 1;
     }
   });
   
@@ -193,23 +353,17 @@ export function Node3D({ node, isSelected, opacity, onClick, onDoubleClick, insi
         </Billboard>
       ) : null}
       
-      {/* Selection cage highlight */}
+      {/* Selection branch highlight */}
       {isSelected && (
         <>
-          <group ref={selectionCageRef}>
-            {cageRingOrientations.map((rotation, index) => (
-              <mesh key={`cage-ring-${index}`} rotation={rotation}>
-                <torusGeometry args={[cageRadius, 0.02, 6, 60]} />
-              <meshBasicMaterial
-                color={highlightColor}
-                transparent
-                opacity={0.85}
-                wireframe
-                depthWrite={false}
-                blending={THREE.AdditiveBlending}
-                toneMapped={false}
+          <group>
+            {rootSegments.map((segment, index) => (
+              <ProceduralRoot 
+                key={`root-${index}`} 
+                segment={segment} 
+                globalGrowth={growthProgress}
+                pulseOffset={pulseRef.current + (index * 0.13)} // stagger the pulses
               />
-              </mesh>
             ))}
           </group>
 
