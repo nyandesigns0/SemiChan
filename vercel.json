@@ -1,10 +1,7 @@
 {
   "functions": {
     "app/api/export-pdf/route.ts": {
-      "includeFiles": [
-        "node_modules/@sparticuz/chromium-min/bin/**",
-        "node_modules/@sparticuz/chromium-min/lib/**"
-      ]
+      "includeFiles": "node_modules/@sparticuz/chromium-min/{bin,lib}/**"
     }
   }
 }
