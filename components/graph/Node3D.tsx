@@ -207,19 +207,11 @@ export function Node3D({
         const weight = Math.max(0, link.weight ?? 0);
         if (weight === 0) return null;
 
-        const otherBase = otherNode ? (nodeColors[otherNode.type as NodeType] ?? defaultNodeColors) : defaultNodeColors;
-        const otherNodeColor = otherNode?.pcValues
-          ? getPCColor(otherNode.pcValues, otherBase.base)
-          : otherBase.base;
+        const jurorColor = otherNode?.pcValues
+          ? getPCColor(otherNode.pcValues, "#3b82f6")
+          : "#3b82f6";
 
-        const baseColor = node.type === "concept" ? nodeColor : otherNodeColor;
-        const identitySeed = otherNode?.label || otherId || "";
-        const identityColor = offsetColorByIdentity(baseColor, identitySeed);
-        const stanceTint = link.stance
-          ? mixColors(identityColor, stanceColor(link.stance), 0.25)
-          : identityColor;
-
-        return { color: stanceTint, weight, identity: identitySeed };
+        return { color: jurorColor, weight, identity: otherNode?.label || otherId || "" };
       })
       .filter((c): c is { color: string; weight: number; identity: string } => !!c);
 
