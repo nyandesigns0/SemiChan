@@ -2,7 +2,6 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Users, MessageSquare, Lightbulb, Hash, Link as LinkIcon, Layers, Activity } from "lucide-react";
-import { getAxisColors } from "@/lib/utils/graph-color-utils";
 import { formatCostReadable } from "@/lib/utils/api-utils";
 import type { Stance } from "@/types/nlp";
 import type { AnalysisResult } from "@/types/analysis";
@@ -58,17 +57,6 @@ export function GraphLegend({
         <span className="inline-flex items-center gap-1">
           <span className="h-2 w-2 rounded-full" style={{ background: stanceColor("neutral") }} /> Neutral
         </span>
-        <span className="h-4 w-px bg-slate-200 mx-1" />
-        <div className="flex items-center gap-1.5 overflow-x-auto max-w-[200px] no-scrollbar">
-          {getAxisColors(numDimensions).map((color, i) => (
-            <div 
-              key={i} 
-              className="h-2 w-2 rounded-full flex-shrink-0" 
-              style={{ background: color }} 
-              title={`Axis ${i + 1}`}
-            />
-          ))}
-        </div>
       </div>
       
       {/* Stats badges on the right */}
@@ -87,12 +75,12 @@ export function GraphLegend({
               <Lightbulb className="h-3.5 w-3.5" />
               <span>{analysis.stats.totalConcepts} concepts found</span>
             </Badge>
-            <div className="mx-1 h-6 w-px bg-slate-200" />
+          <div className="mx-1 h-6 w-px bg-slate-200" />
           </>
         )}
         <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
           <Layers className="h-3.5 w-3.5" />
-          <span>{numDimensions} axes projection</span>
+          <span>{numDimensions} axes</span>
         </Badge>
         <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
           <Activity className="h-3.5 w-3.5" />
