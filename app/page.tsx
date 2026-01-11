@@ -20,7 +20,7 @@ import { CollapsibleSidebar } from "@/components/ui/collapsible-sidebar";
 import { useConceptSummarizer } from "@/hooks/useConceptSummarizer";
 import { useAxisLabelEnhancer } from "@/hooks/useAxisLabelEnhancer";
 import { segmentByJuror } from "@/lib/segmentation/juror-segmenter";
-import { downloadJson, downloadPdf } from "@/lib/utils/download";
+import { downloadJson, downloadPdfServer } from "@/lib/utils/download";
 import { cn } from "@/lib/utils/cn";
 import { DEFAULT_SAMPLE, DEFAULT_MODEL } from "@/constants/nlp-constants";
 import { calculateCost, formatCost } from "@/lib/utils/api-utils";
@@ -727,7 +727,7 @@ export default function HomePage() {
       });
       const container = analysisContainerRef.current;
       if (!container) throw new Error("Analysis panel not ready");
-      await downloadPdf(container, `analysis-report-${timestamp.slice(0, 10)}.pdf`);
+      await downloadPdfServer(container, `analysis-report-${timestamp.slice(0, 10)}.pdf`);
     } catch (error) {
       console.error("[Export PDF] Failed to export analysis report", error);
     } finally {

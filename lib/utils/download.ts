@@ -16,7 +16,7 @@ function gatherHeadStyles(): string {
     .join("\n");
 }
 
-function createPrintDocument(targetHtml: string, filename: string): string {
+function createPrintDocument(targetHtml: string, filename: string, includePrintScript = true): string {
   const styles = gatherHeadStyles();
   return `
     <!doctype html>
@@ -60,17 +60,43 @@ function createPrintDocument(targetHtml: string, filename: string): string {
       </head>
       <body>
         <div id="export-root">${targetHtml}</div>
-        <script>
+        ${includePrintScript ? `<script>
           function triggerPrint() {
             window.print();
           }
           window.addEventListener("load", () => {
             setTimeout(triggerPrint, 200);
           });
-        </script>
+        </script>` : ""}
       </body>
     </html>
   `;
+}
+
+export async function downloadPdfServer(target: HTMLElement, filename = "analysis-report.pdf"): Promise<void> {
+  if (!target) throw new Error("No target element provided for PDF export");
+
+  const html = createPrintDocument(target.outerHTML, filename, false);
+  const response = await fetch("/api/export-pdf", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ html, filename }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "Unknown error");
+    throw new Error(`PDF export failed: ${errorText || response.statusText}`);
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export async function downloadPdf(target: HTMLElement, filename = "analysis-report.pdf"): Promise<void> {

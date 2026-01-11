@@ -4,6 +4,9 @@ const path = require("path");
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  experimental: {
+    serverComponentsExternalPackages: ["puppeteer-core", "@sparticuz/chromium-min"],
+  },
   webpack(config, { isServer }) {
     config.resolve.fallback = config.resolve.fallback ?? {};
     config.resolve.fallback.canvas = false;
