@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { RotateCcw, Grid3X3, Box, Eye, EyeOff, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
@@ -43,7 +43,7 @@ export function Graph3DControls({
   const axisColors = getAxisColors(numDimensions);
   const [axisPanelOpen, setAxisPanelOpen] = useState(true);
   const axisLabelsMap = axisLabels ?? {};
-  const showAxisPanel = showAxes && Boolean(axisLabels);
+  const showAxisPanel = Boolean(axisLabels);
 
   return (
     <>
