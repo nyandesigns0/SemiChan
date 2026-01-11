@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { access, constants as fsConstants } from "fs/promises";
 import path from "path";
-import chromium from "@sparticuz/chromium-min";
+import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 
 export const runtime = "nodejs";
@@ -51,7 +51,7 @@ async function findPackagedChromium() {
     process.cwd(),
     "node_modules",
     "@sparticuz",
-    "chromium-min",
+    "chromium",
     "bin",
     "chromium"
   );

@@ -5,11 +5,11 @@ const path = require("path");
 const nextConfig = {
   reactStrictMode: true,
   experimental: {
-    serverComponentsExternalPackages: ["puppeteer-core", "@sparticuz/chromium-min"],
+    serverComponentsExternalPackages: ["puppeteer-core", "@sparticuz/chromium"],
     outputFileTracingIncludes: {
       "/api/export-pdf": [
-        "./node_modules/@sparticuz/chromium-min/bin/**",
-        "./node_modules/@sparticuz/chromium-min/lib/**",
+        "./node_modules/@sparticuz/chromium/bin/**",
+        "./node_modules/@sparticuz/chromium/lib/**",
       ],
     },
   },

@@ -246,7 +246,7 @@ function formatPercent(value: number | undefined, digits = 1): string {
 }
 
 export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLabelAI, isRefreshingAxisLabels = false, insights, rawExportContext }: AnalysisReportProps) {
-  const [isAxisSectionExpanded, setIsAxisSectionExpanded] = useState(false);
+  const [isAxisSectionExpanded, setIsAxisSectionExpanded] = useState(true);
 
   const sentencesByJuror = useMemo(() => {
     if (!analysis) return new Map<string, number>();
