@@ -46,11 +46,14 @@ export async function POST(request: Request) {
       );
     }
 
+    const headless =
+      (chromium as typeof chromium & { headless?: boolean | "shell" }).headless ?? true;
+
     browser = await puppeteer.launch({
       args: chromium.args,
       defaultViewport: { width: 1280, height: 720 },
       executablePath,
-      headless: chromium.headless ?? "new",
+      headless,
     });
 
     const page = await browser.newPage();
@@ -64,8 +67,13 @@ export async function POST(request: Request) {
       preferCSSPageSize: true,
     });
 
+    const pdfArrayBuffer = pdfBuffer.buffer.slice(
+      pdfBuffer.byteOffset,
+      pdfBuffer.byteOffset + pdfBuffer.byteLength
+    ) as ArrayBuffer;
+    const pdfBlob = new Blob([pdfArrayBuffer], { type: "application/pdf" });
     const safeFilename = (filename || DEFAULT_FILENAME).replace(/["]/g, "");
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(pdfBlob, {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
