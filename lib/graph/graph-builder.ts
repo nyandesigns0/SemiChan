@@ -1,5 +1,6 @@
 import type { JurorBlock, BM25Model } from "@/types/nlp";
-import type { AnalysisResult, SentenceRecord, AnalysisCheckpoint } from "@/types/analysis";
+import type { AnalysisResult, SentenceRecord, AnalysisCheckpoint, Concept } from "@/types/analysis";
+import type { AnchorAxis } from "@/types/anchor-axes";
 import type { GraphNode, GraphLink } from "@/types/graph";
 import type { Stance } from "@/types/nlp";
 import { sentenceSplit } from "@/lib/nlp/sentence-splitter";
@@ -14,20 +15,28 @@ import {
   reduceToND
 } from "./dimensionality-reduction";
 import { labelAxes } from "./axis-labeler";
+import { embedAnchorAxes, projectConceptCentroids, projectJurorVectors } from "@/lib/analysis/anchor-axes";
 
 // Core analysis imports
 import { embedSentences } from "@/lib/analysis/sentence-embeddings";
 import { buildBM25 } from "@/lib/analysis/bm25";
-import { contrastiveLabelCluster, getClusterTopTerms } from "@/lib/analysis/concept-labeler";
+import { contrastiveLabelCluster, getClusterTopTerms, computeContrastiveTermScores } from "@/lib/analysis/concept-labeler";
 import { rankEvidenceForConcept, DEFAULT_EVIDENCE_RANKING_PARAMS } from "@/lib/analysis/evidence-ranker";
 import { cosine } from "@/lib/analysis/tfidf";
 import { extractNgrams } from "@/lib/nlp/ngram-extractor";
 
 // Clustering algorithm imports
 import { evaluateKRange } from "@/lib/analysis/cluster-eval";
-import { buildDendrogram, cutDendrogramByCount, cutDendrogramByThreshold } from "@/lib/analysis/hierarchical-clustering";
+import { 
+  buildDendrogram, 
+  cutDendrogramByCount, 
+  cutDendrogramByThreshold,
+  cutDendrogramTwoLayer
+} from "@/lib/analysis/hierarchical-clustering";
 import { computeSoftMembership } from "@/lib/analysis/soft-membership";
 import { computeCentroids } from "@/lib/analysis/concept-centroids";
+
+import { evaluateCutQuality, CutQualityParams } from "@/lib/analysis/cut-constraints";
 
 /**
  * Build analysis using semantic clustering with BM25 labeling
@@ -50,6 +59,18 @@ export async function buildAnalysis(
     numDimensions?: number;
     dimensionMode?: "manual" | "elbow" | "threshold";
     varianceThreshold?: number;
+    cutQualityParams?: CutQualityParams;
+    softMembershipParams?: {
+      temperature?: number;
+      minWeight?: number;
+      entropyCap?: number;
+    };
+    useTwoLayer?: boolean;
+    primaryGranularity?: number;
+    detailGranularity?: number;
+    applyPopularityDampening?: boolean;
+    anchorAxes?: AnchorAxis[];
+    onLog?: (type: "analysis" | "quality" | "hierarchy", message: string, data?: any) => void;
   } = {}
 ): Promise<AnalysisResult> {
   const {
@@ -59,14 +80,31 @@ export async function buildAnalysis(
     kMin = 4,
     kMax = 20,
     softMembership = true,
-    softTopN = 2,
+    softTopN = 3,
     cutType = "count",
     granularityPercent = 50,
     seed = 42,
     numDimensions = 3,
     dimensionMode = "manual",
     varianceThreshold = 0.9,
+    cutQualityParams = {},
+    softMembershipParams = {
+      temperature: 1.0,
+      minWeight: 0.10,
+      entropyCap: 0.8
+    },
+    useTwoLayer = true,
+    primaryGranularity = 70,
+    detailGranularity = 30,
+    applyPopularityDampening = false,
+    anchorAxes = [],
+    onLog,
   } = options;
+
+  const log = (type: "analysis" | "quality" | "hierarchy", message: string, data?: any) => {
+    console.log(`[${type.toUpperCase()}] ${message}`);
+    onLog?.(type, message, data);
+  };
 
   const checkpoints: AnalysisCheckpoint[] = [];
   const jurors = jurorBlocks.map((b) => b.juror).filter((j) => j !== "Unattributed");
@@ -142,7 +180,7 @@ export async function buildAnalysis(
   const requestedNumDimensions = numDimensions;
 
   if (autoK) {
-    const evalResult = evaluateKRange(semanticVectors, kMin, kMax, seed);
+    const evalResult = evaluateKRange(semanticVectors, effectiveSentences, kMin, kMax, seed, cutQualityParams);
     recommendedK = evalResult.recommendedK;
     kSearchMetrics = evalResult.metrics;
     K = recommendedK;
@@ -150,15 +188,54 @@ export async function buildAnalysis(
 
   // Clustering
   let assignments: number[];
+  let detailAssignments: number[] | undefined;
+  let parentMap: Record<number, number> | undefined;
   let centroids: Float64Array[];
+  let detailCentroids: Float64Array[] | undefined;
 
   if (clusteringMode === "hierarchical") {
     // Build dendrogram once
     const dendrogram = buildDendrogram(semanticVectors);
     
-    if (cutType === "granularity") {
-      // Cut by granularity threshold
-      assignments = cutDendrogramByThreshold(dendrogram, semanticVectors, granularityPercent);
+    if (useTwoLayer) {
+      // Perform two-layer cut
+      const twoLayerResult = cutDendrogramTwoLayer(
+        dendrogram,
+        semanticVectors,
+        effectiveSentences,
+        cutQualityParams,
+        { ...cutQualityParams, minJurorSupportPerConcept: 1, minEffectiveMassPerConcept: 1 }, // Looser constraints for detail
+        primaryGranularity,
+        detailGranularity
+      );
+      assignments = twoLayerResult.primaryAssignments;
+      detailAssignments = twoLayerResult.detailAssignments;
+      parentMap = twoLayerResult.parentMap;
+      
+      K = new Set(assignments).size;
+      centroids = computeCentroids(semanticVectors, assignments, K);
+      
+      const numDetail = new Set(detailAssignments).size;
+      detailCentroids = computeCentroids(semanticVectors, detailAssignments, numDetail);
+      
+      log("analysis", `Two-layer cut complete: Primary=${K}, Detail=${numDetail} concepts`);
+      
+      // Compute avg detail per primary
+      const detailCounts = Object.values(parentMap).reduce((acc, pId) => {
+        acc[pId] = (acc[pId] || 0) + 1;
+        return acc;
+      }, {} as Record<number, number>);
+      const avgDetail = numDetail / K;
+      log("hierarchy", `Built hierarchy: ${K} primary → ${numDetail} detail (avg ${avgDetail.toFixed(1)}/primary)`);
+    } else if (cutType === "granularity") {
+      // Cut by granularity threshold with quality constraints
+      assignments = cutDendrogramByThreshold(
+        dendrogram, 
+        semanticVectors, 
+        effectiveSentences, 
+        granularityPercent, 
+        cutQualityParams
+      );
       // Get actual K from assignments
       K = new Set(assignments).size;
       centroids = computeCentroids(semanticVectors, assignments, K);
@@ -174,28 +251,25 @@ export async function buildAnalysis(
     centroids = km.centroids;
   }
 
-  // Build concept nodes
-  const conceptIds = Array.from({ length: K }, (_, i) => `concept:${i}`);
-  const conceptLabel = new Map<string, string>();
-  const conceptTopTerms = new Map<string, string[]>();
-  const representativeSentencesMap = new Map<string, string[]>();
+  // Quality check for primary layer
+  const quality = evaluateCutQuality(assignments, effectiveSentences, centroids, cutQualityParams);
+  log("quality", `Primary cut quality for K=${K}: score=${quality.score.toFixed(2)}, valid=${quality.isValid}`, quality);
+  if (quality.penalties.supportViolations > 0) {
+    log("quality", `Quality warning: ${quality.penalties.supportViolations} primary concepts violate minJurorSupport`);
+  }
 
+  // Build primary concept objects
+  const primaryConceptIds = Array.from({ length: K }, (_, i) => `concept:${i}`);
+  const primaryConcepts: Concept[] = [];
+  
   for (let c = 0; c < K; c++) {
-    const id = conceptIds[c];
-    
-    // Get sentences in this cluster
+    const id = primaryConceptIds[c];
     const clusterSentenceIndices = assignments.map((a, i) => a === c ? i : -1).filter(i => i >= 0);
     const clusterSentences = clusterSentenceIndices.map(i => docs[i]);
-
-    // Contrastive labeling
+    
     const label = contrastiveLabelCluster(centroids[c], bm25Model, clusterSentences, docs, 4);
-    conceptLabel.set(id, label);
-
-    // Top terms (also contrastive)
     const topTerms = getClusterTopTerms(centroids[c], bm25Model, clusterSentences, docs, 12);
-    conceptTopTerms.set(id, topTerms);
-
-    // Find representative sentences using evidence ranking (semantic + BM25)
+    
     const rankedEvidence = rankEvidenceForConcept(
       docs,
       clusterSentenceIndices,
@@ -206,43 +280,123 @@ export async function buildAnalysis(
       evidenceRankingParams,
       3
     );
-    representativeSentencesMap.set(id, rankedEvidence.map(r => r.sentence));
+
+    primaryConcepts.push({
+      id,
+      label,
+      size: 0, // Will be computed later
+      topTerms,
+      representativeSentences: rankedEvidence.map(r => r.sentence)
+    });
   }
 
-  // Assign concept to sentence
+  // Build detail concept objects if in two-layer mode
+  let detailConcepts: Concept[] = [];
+  let conceptHierarchy: Record<string, string[]> = {};
+  
+  if (useTwoLayer && detailAssignments && parentMap && detailCentroids) {
+    const numDetail = detailCentroids.length;
+    const detailConceptIds = Array.from({ length: numDetail }, (_, i) => `concept:detail:${i}`);
+    
+    for (let d = 0; d < numDetail; d++) {
+      const id = detailConceptIds[d];
+      const clusterSentenceIndices = detailAssignments.map((a, i) => a === d ? i : -1).filter(i => i >= 0);
+      const clusterSentences = clusterSentenceIndices.map(i => docs[i]);
+      
+      const label = contrastiveLabelCluster(detailCentroids[d], bm25Model, clusterSentences, docs, 4);
+      const topTerms = getClusterTopTerms(detailCentroids[d], bm25Model, clusterSentences, docs, 12);
+      
+      const rankedEvidence = rankEvidenceForConcept(
+        docs,
+        clusterSentenceIndices,
+        detailCentroids[d],
+        semanticVectors,
+        bm25Model,
+        topTerms,
+        evidenceRankingParams,
+        3
+      );
+
+      detailConcepts.push({
+        id,
+        label,
+        size: 0,
+        topTerms,
+        representativeSentences: rankedEvidence.map(r => r.sentence)
+      });
+
+      const primaryId = `concept:${parentMap[d]}`;
+      conceptHierarchy[primaryId] = conceptHierarchy[primaryId] || [];
+      conceptHierarchy[primaryId].push(id);
+    }
+  }
+
+  // Assign concepts to sentences
+  let detailMemberships: Array<Array<{ conceptId: string; weight: number }>> | undefined;
+  
   if (softMembership) {
-    const memberships = computeSoftMembership(semanticVectors, centroids, softTopN);
+    const primaryMemberships = computeSoftMembership(semanticVectors, centroids, softTopN, softMembershipParams);
+    
+    if (useTwoLayer && detailCentroids) {
+      // For detail layer, we use same softTopN and params
+      const rawDetailMemberships = computeSoftMembership(semanticVectors, detailCentroids, softTopN, softMembershipParams);
+      // Map IDs correctly
+      detailMemberships = rawDetailMemberships.map(mList => mList.map(m => ({
+        ...m,
+        conceptId: m.conceptId.replace("concept:", "concept:detail:")
+      })));
+    }
+
     for (let i = 0; i < effectiveSentences.length; i++) {
-      effectiveSentences[i].conceptMembership = memberships[i];
+      effectiveSentences[i].conceptMembership = primaryMemberships[i];
       // Set primary for backward compatibility
-      effectiveSentences[i].conceptId = memberships[i][0].conceptId;
+      effectiveSentences[i].conceptId = primaryMemberships[i][0].conceptId;
     }
   } else {
     for (let i = 0; i < effectiveSentences.length; i++) {
-      effectiveSentences[i].conceptId = conceptIds[assignments[i]];
+      effectiveSentences[i].conceptId = `concept:${assignments[i]}`;
     }
   }
 
   // Juror → concept weights
   const jurorVectors: Record<string, Record<string, number>> = {};
-  const conceptCounts: Record<string, number> = {};
+  const jurorVectorsDetail: Record<string, Record<string, number>> = {};
+  const primaryConceptCounts: Record<string, number> = {};
+  const detailConceptCounts: Record<string, number> = {};
   const stanceCounts: Record<Stance, number> = { praise: 0, critique: 0, suggestion: 0, neutral: 0 };
 
-  for (const s of effectiveSentences) {
+  for (let i = 0; i < effectiveSentences.length; i++) {
+    const s = effectiveSentences[i];
     stanceCounts[s.stance]++;
     const j = s.juror;
     
+    // Primary layer weights
     if (softMembership && s.conceptMembership) {
       jurorVectors[j] = jurorVectors[j] || {};
       for (const m of s.conceptMembership) {
         jurorVectors[j][m.conceptId] = (jurorVectors[j][m.conceptId] ?? 0) + m.weight;
-        conceptCounts[m.conceptId] = (conceptCounts[m.conceptId] ?? 0) + m.weight;
+        primaryConceptCounts[m.conceptId] = (primaryConceptCounts[m.conceptId] ?? 0) + m.weight;
       }
     } else {
       const c = s.conceptId!;
       jurorVectors[j] = jurorVectors[j] || {};
       jurorVectors[j][c] = (jurorVectors[j][c] ?? 0) + 1;
-      conceptCounts[c] = (conceptCounts[c] ?? 0) + 1;
+      primaryConceptCounts[c] = (primaryConceptCounts[c] ?? 0) + 1;
+    }
+
+    // Detail layer weights
+    if (useTwoLayer) {
+      jurorVectorsDetail[j] = jurorVectorsDetail[j] || {};
+      if (softMembership && detailMemberships) {
+        for (const m of detailMemberships[i]) {
+          jurorVectorsDetail[j][m.conceptId] = (jurorVectorsDetail[j][m.conceptId] ?? 0) + m.weight;
+          detailConceptCounts[m.conceptId] = (detailConceptCounts[m.conceptId] ?? 0) + m.weight;
+        }
+      } else if (detailAssignments) {
+        const dId = `concept:detail:${detailAssignments[i]}`;
+        jurorVectorsDetail[j][dId] = (jurorVectorsDetail[j][dId] ?? 0) + 1;
+        detailConceptCounts[dId] = (detailConceptCounts[dId] ?? 0) + 1;
+      }
     }
   }
 
@@ -251,32 +405,32 @@ export async function buildAnalysis(
     const total = Object.values(jurorVectors[j]).reduce((a, b) => a + b, 0) || 1;
     for (const c of Object.keys(jurorVectors[j])) jurorVectors[j][c] /= total;
   }
+  if (useTwoLayer) {
+    for (const j of Object.keys(jurorVectorsDetail)) {
+      const total = Object.values(jurorVectorsDetail[j]).reduce((a, b) => a + b, 0) || 1;
+      for (const c of Object.keys(jurorVectorsDetail[j])) jurorVectorsDetail[j][c] /= total;
+    }
+  }
 
   // Compute high-dimensional juror vectors and extract top terms
   const jurorList = [...new Set(effectiveSentences.map((s) => s.juror))].filter(Boolean);
+  // Extract contrastive top terms per juror
   const jurorTopTerms: Record<string, string[]> = {};
-  
-  if (centroids.length > 0 && jurorList.length > 0) {
+  if (jurorList.length > 0) {
     for (const juror of jurorList) {
       const jurorSentences = effectiveSentences
         .filter(s => s.juror === juror)
         .map(s => s.sentence);
       
-      // Use BM25 scores directly on juror's sentences
-      const jurorNgrams = new Set<string>();
-      for (const sent of jurorSentences) {
-        const ngrams = extractNgrams(sent);
-        for (const ng of ngrams) jurorNgrams.add(ng);
-      }
+      const scores = computeContrastiveTermScores(
+        jurorSentences,
+        docs,
+        bm25Model,
+        2, // minDF
+        0.8 // maxDFPercent
+      );
       
-      // Score n-grams by BM25 frequency in juror's sentences
-      const ngramScores = Array.from(jurorNgrams).map(ngram => {
-        const score = bm25Model.scores.get(ngram) || 0;
-        return { ngram, score };
-      });
-      
-      ngramScores.sort((a, b) => b.score - a.score);
-      jurorTopTerms[juror] = ngramScores.slice(0, 12).map(x => x.ngram);
+      jurorTopTerms[juror] = scores.slice(0, 12).map(x => x.term);
     }
   }
 
@@ -306,7 +460,7 @@ export async function buildAnalysis(
     jurorVectors,
     centroids,
     jurorList,
-    conceptIds,
+    primaryConceptIds,
     finalNumDimensions,
     10, // scale
     seed
@@ -329,30 +483,15 @@ export async function buildAnalysis(
     });
   }
 
-  const concepts = conceptIds.map((id) => {
-    const weight = conceptCounts[id] ?? 0;
-    // Logarithmic scale with a cap at 48 (3x previous 16)
-    // multiplier 8.4 (3x 2.8)
-    const rawSize = 6 + Math.log2(weight + 1) * 8.4;
-    return {
-      id,
-      label: conceptLabel.get(id) || id,
-      size: Math.min(rawSize, 48.0),
-      weight,
-      topTerms: conceptTopTerms.get(id) || [],
-      representativeSentences: representativeSentencesMap.get(id),
-    };
-  });
-
-  for (const c of concepts) {
+  // Build Primary Concept Nodes
+  for (const c of primaryConcepts) {
     const pos = positions3D.get(c.id) ?? { x: 0, y: 0, z: 0 };
-    
-    // Get full juror distribution for this concept (even weak ones)
+    const weight = primaryConceptCounts[c.id] ?? 0;
+    c.size = Math.min(6 + Math.log2(weight + 1) * 8.4, 48.0);
+    c.weight = weight;
+
     const jurorDistribution = jurorList
-      .map(j => ({
-        juror: j,
-        weight: jurorVectors[j]?.[c.id] ?? 0
-      }))
+      .map(j => ({ juror: j, weight: jurorVectors[j]?.[c.id] ?? 0 }))
       .filter(d => d.weight > 0);
 
     nodes.push({ 
@@ -369,30 +508,76 @@ export async function buildAnalysis(
       y: pos.y,
       z: pos.z,
       pcValues: conceptPcValues.get(c.id),
+      layer: "primary",
+      childConceptIds: conceptHierarchy[c.id]
     });
+  }
+
+  // Build Detail Concept Nodes
+  if (useTwoLayer) {
+    for (const c of detailConcepts) {
+      const weight = detailConceptCounts[c.id] ?? 0;
+      c.size = Math.min(4 + Math.log2(weight + 1) * 6.0, 32.0);
+      c.weight = weight;
+
+      const jurorDistribution = jurorList
+        .map(j => ({ juror: j, weight: jurorVectorsDetail[j]?.[c.id] ?? 0 }))
+        .filter(d => d.weight > 0);
+
+      // Find parent primary concept
+      const parentId = Object.keys(conceptHierarchy).find(pId => conceptHierarchy[pId].includes(c.id));
+      const parentNode = nodes.find(n => n.id === parentId);
+      
+      // Initially position near parent with slight random offset
+      const offset = 2.0;
+      nodes.push({
+        id: c.id,
+        type: "concept",
+        label: c.label,
+        size: c.size,
+        meta: {
+          topTerms: c.topTerms,
+          weight: c.weight,
+          jurorDistribution
+        },
+        x: (parentNode?.x || 0) + (Math.random() - 0.5) * offset,
+        y: (parentNode?.y || 0) + (Math.random() - 0.5) * offset,
+        z: (parentNode?.z || 0) + (Math.random() - 0.5) * offset,
+        layer: "detail",
+        parentConceptId: parentId
+      });
+    }
   }
 
   // Links
   const links: GraphLink[] = [];
+  
+  // 1. Juror → Primary Concept Links
   for (const j of jurorList) {
     const vec = jurorVectors[j] || {};
-    for (const cId of conceptIds) {
-      const w = vec[cId] ?? 0;
+    for (const c of primaryConcepts) {
+      const w = vec[c.id] ?? 0;
       if (w <= 0.05) continue; // Threshold for cleaner graph
       
+      let finalWeight = w;
+      if (applyPopularityDampening) {
+        const conceptCount = primaryConceptCounts[c.id] || 1;
+        finalWeight = w / Math.sqrt(conceptCount);
+      }
+
       // Determine dominant stance for this link
       const linkSentences = effectiveSentences.filter(s => s.juror === j && 
-        (softMembership ? s.conceptMembership?.some(m => m.conceptId === cId) : s.conceptId === cId));
+        (softMembership ? s.conceptMembership?.some(m => m.conceptId === c.id) : s.conceptId === c.id));
       
       const localStances: Record<Stance, number> = { praise: 0, critique: 0, suggestion: 0, neutral: 0 };
       linkSentences.forEach(s => localStances[s.stance]++);
       const dominantStance = (Object.entries(localStances) as [Stance, number][]).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "neutral";
 
       links.push({
-        id: `link:juror:${j}__${cId}`,
+        id: `link:juror:${j}__${c.id}`,
         source: `juror:${j}`,
-        target: cId,
-        weight: w,
+        target: c.id,
+        weight: finalWeight,
         stance: dominantStance,
         evidenceIds: linkSentences.map(s => s.id),
         kind: "jurorConcept",
@@ -400,12 +585,65 @@ export async function buildAnalysis(
     }
   }
 
-  // Derived projections
-  const jurorSimilarityLinks = buildJurorSimilarityLinks(jurorList, jurorVectors, conceptIds, similarityThreshold);
+  // 2. Juror → Detail Concept Links (UI will filter these based on expansion)
+  if (useTwoLayer) {
+    for (const j of jurorList) {
+      const vec = jurorVectorsDetail[j] || {};
+      for (const c of detailConcepts) {
+        const w = vec[c.id] ?? 0;
+        if (w <= 0.05) continue;
+
+        let finalWeight = w;
+        if (applyPopularityDampening) {
+          const conceptCount = detailConceptCounts[c.id] || 1;
+          finalWeight = w / Math.sqrt(conceptCount);
+        }
+
+        // Determine dominant stance for this detail link
+        const linkSentences = effectiveSentences.filter((s, idx) => {
+          if (s.juror !== j) return false;
+          if (softMembership && detailMemberships) {
+            return detailMemberships[idx].some(m => m.conceptId === c.id);
+          } else if (detailAssignments) {
+            return `concept:detail:${detailAssignments[idx]}` === c.id;
+          }
+          return false;
+        });
+
+        const localStances: Record<Stance, number> = { praise: 0, critique: 0, suggestion: 0, neutral: 0 };
+        linkSentences.forEach(s => localStances[s.stance]++);
+        const dominantStance = (Object.entries(localStances) as [Stance, number][]).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "neutral";
+
+        links.push({
+          id: `link:juror:${j}__${c.id}`,
+          source: `juror:${j}`,
+          target: c.id,
+          weight: finalWeight,
+          stance: dominantStance,
+          evidenceIds: linkSentences.map(s => s.id),
+          kind: "jurorConcept",
+        });
+      }
+    }
+  }
+
+  // Derived projections (using primary layer)
+  const jurorSimilarityLinks = buildJurorSimilarityLinks(jurorList, jurorVectors, primaryConceptIds, similarityThreshold);
   links.push(...jurorSimilarityLinks);
 
-  const conceptSimilarityLinks = buildConceptSimilarityLinks(conceptIds, centroids, similarityThreshold);
+  const conceptSimilarityLinks = buildConceptSimilarityLinks(primaryConceptIds, centroids, similarityThreshold);
   links.push(...conceptSimilarityLinks);
+
+  // Anchored axis projections (optional, measurement only)
+  let resolvedAnchorAxes = anchorAxes;
+  let anchorAxisScores: AnalysisResult["anchorAxisScores"] | undefined;
+  if (anchorAxes && anchorAxes.length > 0) {
+    resolvedAnchorAxes = await embedAnchorAxes(anchorAxes);
+    anchorAxisScores = {
+      concepts: projectConceptCentroids(centroids, resolvedAnchorAxes),
+      jurors: projectJurorVectors(jurorVectors, centroids, resolvedAnchorAxes),
+    };
+  }
 
   // Compute axis labels from 3D node positions
   const axisLabels = labelAxes(nodes, finalNumDimensions, conceptPcValues);
@@ -420,15 +658,19 @@ export async function buildAnalysis(
 
   return {
     jurors: jurorList,
-    concepts,
+    concepts: primaryConcepts,
+    primaryConcepts,
+    detailConcepts,
+    conceptHierarchy,
     sentences: effectiveSentences,
     jurorVectors,
+    jurorVectorsDetail,
     nodes,
     links,
     stats: {
       totalJurors: jurorList.length,
       totalSentences: effectiveSentences.length,
-      totalConcepts: concepts.length,
+      totalConcepts: primaryConcepts.length,
       stanceCounts,
     },
     recommendedK,
@@ -437,6 +679,8 @@ export async function buildAnalysis(
     checkpoints,
     jurorTopTerms,
     axisLabels,
+    anchorAxes: resolvedAnchorAxes,
+    anchorAxisScores,
     varianceStats,
     requestedNumDimensions,
     appliedNumDimensions: varianceStats?.explainedVariances.length ?? finalNumDimensions,

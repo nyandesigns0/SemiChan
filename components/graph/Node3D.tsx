@@ -4,6 +4,7 @@ import { useRef, useState, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Text, Billboard, Line, Html } from "@react-three/drei";
 import * as THREE from "three";
+import { ChevronUp, ChevronDown } from "lucide-react";
 import { getPCColor, lightenColor, mixColors, offsetColorByIdentity } from "@/lib/utils/graph-color-utils";
 import { stanceColor } from "@/lib/utils/stance-utils";
 import type { GraphLink, GraphNode, NodeType } from "@/types/graph";
@@ -30,6 +31,8 @@ interface Node3DProps {
   opacity: number; // 0 = grayed out, 0.7 = connected, 1.0 = selected/visible
   onClick: (node: GraphNode, event?: MouseEvent) => void;
   onDoubleClick: (node: GraphNode) => void;
+  isExpanded?: boolean;
+  onExpand?: (id: string) => void;
   insight?: ConceptInsight;
   connectedLinks?: GraphLink[];
   allNodesMap?: Map<string, GraphNode>;
@@ -50,16 +53,34 @@ const defaultNodeColors: NodeColorScheme = {
 
 const nodeColors: Record<NodeType, NodeColorScheme> = {
   juror: {
-    base: "#3b82f6", // blue-500
-    hover: "#60a5fa", // blue-400
-    selected: "#1d4ed8", // blue-700
+    base: "#3b82f6",
+    hover: "#60a5fa",
+    selected: "#1d4ed8",
   },
   concept: {
-    base: "#8b5cf6", // violet-500
-    hover: "#a78bfa", // violet-400
-    selected: "#6d28d9", // violet-700
+    base: "#8b5cf6",
+    hover: "#a78bfa",
+    selected: "#6d28d9",
+  },
+  designer: {
+    base: "#10b981",
+    hover: "#34d399",
+    selected: "#047857",
+  },
+  designerConcept: {
+    base: "#f59e0b",
+    hover: "#fbbf24",
+    selected: "#d97706",
   },
 };
+
+function scoreToColor(score: number): string {
+  const clamped = Math.max(-1, Math.min(1, score));
+  const pos = (clamped + 1) / 2; // 0 to 1
+  const r = Math.round(255 * (1 - pos));
+  const b = Math.round(255 * pos);
+  return `rgb(${r}, ${Math.round(120 + 60 * pos)}, ${b})`;
+}
 
 // Custom Shader for the soft "Photoshop" outer glow halo
 const selectionHaloShader = {
@@ -141,6 +162,8 @@ export function Node3D({
   opacity, 
   onClick, 
   onDoubleClick, 
+  isExpanded = false,
+  onExpand,
   insight,
   connectedLinks = [],
   allNodesMap
@@ -167,13 +190,18 @@ export function Node3D({
     return [0, 0, 0] as [number, number, number];
   }, [node.id, node.type]);
 
+  const anchorScore = typeof (node.meta as any)?.anchorScore === "number" ? (node.meta as any).anchorScore as number : null;
+
   // Unified color logic for both jurors and concepts
   const nodeColor = useMemo(() => {
+    if (anchorScore !== null) {
+      return scoreToColor(anchorScore);
+    }
     if (node.pcValues) {
       return getPCColor(node.pcValues, colors.base);
     }
     return isSelected ? colors.selected : hovered ? colors.hover : colors.base;
-  }, [node.pcValues, colors, isSelected, hovered]);
+  }, [node.pcValues, colors, isSelected, hovered, anchorScore]);
 
   let color: string;
   if (opacity === 0) {
@@ -474,6 +502,25 @@ export function Node3D({
         </mesh>
       )}
       
+      {/* Expansion Indicator for Primary Concepts */}
+      {node.layer === "primary" && node.childConceptIds && node.childConceptIds.length > 0 && (hovered || isSelected) && (
+        <Html
+          position={[radius + 0.2, 0, 0]}
+          center
+          distanceFactor={12}
+        >
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onExpand?.(node.id);
+            }}
+            className="flex items-center justify-center w-5 h-5 rounded-full bg-white shadow-md border border-slate-200 text-indigo-600 hover:bg-indigo-50 transition-colors pointer-events-auto"
+          >
+            {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
+        </Html>
+      )}
+
       {/* Node label - elevated card when selected, minimalist text otherwise */}
       {shouldShowLabel ? (
         isSelected ? (

@@ -43,6 +43,7 @@ const kindColors = {
   jurorConcept: "#64748b", // slate-500
   jurorJuror: "#3b82f6", // blue-500
   conceptConcept: "#8b5cf6", // violet-500
+  jurorDesignerConcept: "#0ea5e9", // cyan for alignment
 };
 
 export function Link3D({ link, nodes, isSelected, opacity, onClick }: Link3DProps) {
@@ -140,5 +141,4 @@ export function Link3D({ link, nodes, isSelected, opacity, onClick }: Link3DProp
     </group>
   );
 }
-
 

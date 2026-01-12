@@ -1,5 +1,6 @@
 import type { Stance } from "./nlp";
 import type { GraphNode, GraphLink } from "./graph";
+import type { AnchorAxis } from "./anchor-axes";
 
 export interface SentenceRecord {
   id: string;
@@ -17,19 +18,26 @@ export interface AnalysisCheckpoint {
   links: GraphLink[];
 }
 
+export interface Concept {
+  id: string; 
+  label: string; 
+  shortLabel?: string;
+  summary?: string;
+  size: number; 
+  topTerms: string[];
+  representativeSentences?: string[];
+  weight?: number; // Optional total weight
+}
+
 export interface AnalysisResult {
   jurors: string[];
-  concepts: { 
-    id: string; 
-    label: string; 
-    shortLabel?: string;
-    summary?: string;
-    size: number; 
-    topTerms: string[];
-    representativeSentences?: string[];
-  }[];
+  concepts: Concept[]; // Backward compat - defaults to primary layer
+  primaryConcepts?: Concept[];
+  detailConcepts?: Concept[];
+  conceptHierarchy?: Record<string, string[]>; // primaryId -> detailIds[]
   sentences: SentenceRecord[];
-  jurorVectors: Record<string, Record<string, number>>; // juror -> conceptId -> weight
+  jurorVectors: Record<string, Record<string, number>>; // juror -> conceptId -> weight (Primary)
+  jurorVectorsDetail?: Record<string, Record<string, number>>; // juror -> conceptId -> weight (Detail)
   nodes: GraphNode[];
   links: GraphLink[];
   stats: {
@@ -61,5 +69,10 @@ export interface AnalysisResult {
     totalVariance: number;
     explainedVariances: number[];
     cumulativeVariances: number[];
+  };
+  anchorAxes?: AnchorAxis[];
+  anchorAxisScores?: {
+    concepts: Record<string, Record<string, number>>;
+    jurors: Record<string, Record<string, number>>;
   };
 }

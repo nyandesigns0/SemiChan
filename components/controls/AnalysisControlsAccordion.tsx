@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { AnalysisControls } from "./AnalysisControls";
+import { AnchorAxesPanel } from "./AnchorAxesPanel";
+import type { AnchorAxis } from "@/types/anchor-axes";
 
 interface AnalysisControlsAccordionProps {
   kConcepts: number;
@@ -36,6 +38,8 @@ interface AnalysisControlsAccordionProps {
   varianceThreshold: number;
   onVarianceThresholdChange: (value: number) => void;
   appliedNumDimensions?: number;
+  anchorAxes: AnchorAxis[];
+  onAnchorAxesChange: (axes: AnchorAxis[]) => void;
 }
 
 export function AnalysisControlsAccordion({
@@ -66,6 +70,8 @@ export function AnalysisControlsAccordion({
   varianceThreshold,
   onVarianceThresholdChange,
   appliedNumDimensions,
+  anchorAxes,
+  onAnchorAxesChange,
 }: AnalysisControlsAccordionProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -119,6 +125,9 @@ export function AnalysisControlsAccordion({
             onVarianceThresholdChange={onVarianceThresholdChange}
             appliedNumDimensions={appliedNumDimensions}
           />
+          <div className="mt-4">
+            <AnchorAxesPanel axes={anchorAxes} onChange={onAnchorAxesChange} />
+          </div>
         </div>
       )}
     </div>

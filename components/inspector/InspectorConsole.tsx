@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils/cn";
 export interface LogEntry {
   id: string;
   timestamp: Date;
-  type: "node" | "link" | "keyword" | "analysis" | "info" | "api_request" | "api_response" | "api_error";
+  type: "node" | "link" | "keyword" | "analysis" | "info" | "api_request" | "api_response" | "api_error" | "quality" | "hierarchy";
   message: string;
   data?: unknown;
 }
@@ -61,6 +61,10 @@ export function InspectorConsole({
         return "↓";
       case "api_error":
         return "⚠";
+      case "quality":
+        return "✓";
+      case "hierarchy":
+        return "⊞";
       default:
         return "ℹ";
     }
@@ -82,6 +86,10 @@ export function InspectorConsole({
         return "text-indigo-400";
       case "api_error":
         return "text-red-400";
+      case "quality":
+        return "text-green-400";
+      case "hierarchy":
+        return "text-fuchsia-400";
       default:
         return "text-slate-500";
     }

@@ -30,6 +30,8 @@ interface GraphCanvas3DProps {
   onLinkClick: (link: GraphLink, event?: MouseEvent) => void;
   onNodeDoubleClick: (node: GraphNode) => void;
   onDeselect: () => void;
+  expandedPrimaryConcepts?: Set<string>;
+  onPrimaryConceptExpand?: (id: string) => void;
   empty: boolean;
   checkpoints?: AnalysisCheckpoint[];
   insights?: Record<string, ConceptInsight>;
@@ -50,6 +52,10 @@ interface GraphCanvas3DProps {
   numDimensions?: number;
   apiCallCount?: number;
   apiCostTotal?: number;
+  anchorAxes?: import("@/types/anchor-axes").AnchorAxis[];
+  anchorAxisScores?: AnalysisResult["anchorAxisScores"];
+  selectedAnchorAxisId?: string | null;
+  alignmentLinks?: GraphLink[];
 }
 
 // Camera controller component to handle reset
@@ -279,6 +285,8 @@ function SceneContent({
   onLinkClick,
   onNodeDoubleClick,
   onDeselect,
+  expandedPrimaryConcepts = new Set(),
+  onPrimaryConceptExpand = () => {},
   showGrid,
   showAxes,
   insights = {},
@@ -297,6 +305,8 @@ function SceneContent({
   onLinkClick: (link: GraphLink, event?: MouseEvent) => void;
   onNodeDoubleClick: (node: GraphNode) => void;
   onDeselect: () => void;
+  expandedPrimaryConcepts?: Set<string>;
+  onPrimaryConceptExpand?: (id: string) => void;
   showGrid: boolean;
   showAxes: boolean;
   insights?: Record<string, ConceptInsight>;
@@ -314,9 +324,34 @@ function SceneContent({
     return map;
   }, [nodes]);
 
+  // Filter nodes based on expansion
+  const visibleNodes = useMemo(() => {
+    return nodes.filter(node => {
+      if (node.layer === "detail") {
+        return expandedPrimaryConcepts.has(node.parentConceptId || "");
+      }
+      return true;
+    });
+  }, [nodes, expandedPrimaryConcepts]);
+
+  // Filter links based on expansion
+  const visibleLinks = useMemo(() => {
+    return links.filter(link => {
+      const sourceId = typeof link.source === "string" ? link.source : link.source.id;
+      const targetId = typeof link.target === "string" ? link.target : link.target.id;
+      const source = nodeMap.get(sourceId);
+      const target = nodeMap.get(targetId);
+      
+      if (source?.layer === "detail" && !expandedPrimaryConcepts.has(source.parentConceptId || "")) return false;
+      if (target?.layer === "detail" && !expandedPrimaryConcepts.has(target.parentConceptId || "")) return false;
+      
+      return true;
+    });
+  }, [links, nodeMap, expandedPrimaryConcepts]);
+
   const linksByNode = useMemo(() => {
     const map = new Map<string, GraphLink[]>();
-    links.forEach((link) => {
+    visibleLinks.forEach((link) => {
       const sourceId = typeof link.source === "string" ? link.source : link.source.id;
       const targetId = typeof link.target === "string" ? link.target : link.target.id;
       if (!map.has(sourceId)) {
@@ -329,7 +364,7 @@ function SceneContent({
       map.get(targetId)!.push(link);
     });
     return map;
-  }, [links]);
+  }, [visibleLinks]);
 
   // Generate axis directions
   const axisDirections = useMemo(() => 
@@ -433,7 +468,7 @@ function SceneContent({
       />
       
       {/* Links */}
-      {showGraph && links.map((link) => (
+      {showGraph && visibleLinks.map((link) => (
         <Link3D
           key={link.id}
           link={link}
@@ -445,11 +480,13 @@ function SceneContent({
       ))}
       
       {/* Nodes */}
-      {showGraph && nodes.map((node) => (
+      {showGraph && visibleNodes.map((node) => (
         <Node3D
           key={node.id}
           node={node}
         isSelected={selectedNodeId === node.id}
+        isExpanded={expandedPrimaryConcepts.has(node.id)}
+        onExpand={onPrimaryConceptExpand}
         opacity={nodeVisibility.get(node.id) ?? 0}
         onClick={onNodeClick}
         onDoubleClick={onNodeDoubleClick}
@@ -473,6 +510,8 @@ export function GraphCanvas3D({
   onLinkClick,
   onNodeDoubleClick,
   onDeselect,
+  expandedPrimaryConcepts,
+  onPrimaryConceptExpand = () => {},
   empty,
   checkpoints = [],
   insights = {},
@@ -493,6 +532,10 @@ export function GraphCanvas3D({
   numDimensions = 3,
   apiCallCount = 0,
   apiCostTotal = 0,
+  anchorAxes,
+  anchorAxisScores,
+  selectedAnchorAxisId = null,
+  alignmentLinks,
 }: GraphCanvas3DProps) {
   const controlsRef = useRef<OrbitControlsType>(null);
   const [showGrid, setShowGrid] = useState(false);
@@ -502,6 +545,25 @@ export function GraphCanvas3D({
     const signature = stats ? `${stats.explainedVariances.join(",")}::${lastCumulative}` : "none";
     return `${numDimensions}-${signature}`;
   }, [analysis, numDimensions]);
+  const overlayedNodes = useMemo(() => {
+    if (!selectedAnchorAxisId) return nodes;
+    return nodes.map((n) => {
+      let score: number | undefined;
+      if (anchorAxisScores?.concepts?.[n.id]?.[selectedAnchorAxisId] !== undefined) {
+        score = anchorAxisScores?.concepts?.[n.id]?.[selectedAnchorAxisId];
+      } else if (anchorAxisScores?.jurors) {
+        const name = n.id.replace(/^(juror:|designer:)/, "");
+        if (anchorAxisScores.jurors[name]?.[selectedAnchorAxisId] !== undefined) {
+          score = anchorAxisScores.jurors[name][selectedAnchorAxisId];
+        }
+      }
+      if (typeof score === "number") {
+        return { ...n, meta: { ...(n.meta || {}), anchorScore: score, anchorAxisId: selectedAnchorAxisId } };
+      }
+      return n;
+    });
+  }, [nodes, anchorAxisScores, selectedAnchorAxisId]);
+  const mergedLinks = useMemo(() => [...links, ...(alignmentLinks || [])], [links, alignmentLinks]);
   
   // Use props if provided, otherwise fall back to internal state (for backwards compatibility)
   const checkpointIndex = checkpointIndexProp;
@@ -512,15 +574,21 @@ export function GraphCanvas3D({
     if (checkpointIndex >= 0 && checkpoints[checkpointIndex]) {
       return checkpoints[checkpointIndex].nodes;
     }
-    return nodes;
-  }, [nodes, checkpoints, checkpointIndex]);
+    return overlayedNodes;
+  }, [overlayedNodes, checkpoints, checkpointIndex]);
 
   const activeLinks = useMemo(() => {
     if (checkpointIndex >= 0 && checkpoints[checkpointIndex]) {
       return checkpoints[checkpointIndex].links;
     }
-    return links;
-  }, [links, checkpoints, checkpointIndex]);
+    return mergedLinks;
+  }, [mergedLinks, checkpoints, checkpointIndex]);
+
+  // Ensure we always have a Set to avoid runtime reference errors
+  const expandedConcepts = useMemo(
+    () => expandedPrimaryConcepts ?? new Set<string>(),
+    [expandedPrimaryConcepts]
+  );
   
   const handleResetCamera = useCallback(() => {
     if (controlsRef.current) {
@@ -549,22 +617,24 @@ export function GraphCanvas3D({
             >
               <Suspense fallback={null}>
                 <CameraController controlsRef={controlsRef} />
-                <SceneContent
-                  key={projectionKey}
-                  nodes={activeNodes}
-                  links={activeLinks}
-                  nodeVisibility={nodeVisibility}
-                  linkVisibility={linkVisibility}
-                  selectedNodeId={selectedNodeId}
-                  selectedLinkId={selectedLinkId}
-                  onNodeClick={onNodeClick}
-                  onLinkClick={onLinkClick}
-                  onNodeDoubleClick={onNodeDoubleClick}
-                  onDeselect={onDeselect}
-                  showGrid={showGrid}
-                  showAxes={showAxes}
-                  insights={insights}
-                  axisLabels={axisLabels}
+        <SceneContent
+          key={projectionKey}
+          nodes={activeNodes}
+          links={activeLinks}
+          nodeVisibility={nodeVisibility}
+          linkVisibility={linkVisibility}
+          selectedNodeId={selectedNodeId}
+          selectedLinkId={selectedLinkId}
+          onNodeClick={onNodeClick}
+          onLinkClick={onLinkClick}
+          onNodeDoubleClick={onNodeDoubleClick}
+          onDeselect={onDeselect}
+          expandedPrimaryConcepts={expandedConcepts}
+          onPrimaryConceptExpand={onPrimaryConceptExpand}
+          showGrid={showGrid}
+          showAxes={showAxes}
+          insights={insights}
+          axisLabels={axisLabels}
                   enableAxisLabelAI={enableAxisLabelAI}
                   numDimensions={numDimensions}
                   showGraph={showGraph}

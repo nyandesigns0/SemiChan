@@ -1,5 +1,6 @@
-import type { JurorBlock } from "./nlp";
+import type { JurorBlock, DesignerBlock, DesignerAnalysisResult } from "./nlp";
 import type { AnalysisResult } from "./analysis";
+import type { AnchorAxis } from "./anchor-axes";
 
 export interface SegmentRequest {
   text: string;
@@ -32,12 +33,26 @@ export interface AnalyzeRequest {
   cutType?: "count" | "granularity";
   granularityPercent?: number;
   clusterSeed?: number;
+  softMembershipParams?: {
+    temperature?: number;
+    minWeight?: number;
+    entropyCap?: number;
+  };
+  cutQualityParams?: {
+    minEffectiveMassPerConcept?: number;
+    minJurorSupportPerConcept?: number;
+    maxJurorDominance?: number;
+    imbalancePenaltyWeight?: number;
+    redundancyPenaltyWeight?: number;
+  };
   /** LLM model to use for analysis (e.g., GPT-4o) */
   model?: string;
+  anchorAxes?: AnchorAxis[];
 }
 
 export interface AnalyzeResponse {
   analysis: AnalysisResult;
+  logs?: Array<{ type: string; message: string; data?: any }>;
 }
 
 export interface TokenUsage {
@@ -91,4 +106,32 @@ export interface SynthesisResponse {
   concept_one_liner: string;
   is_fallback: boolean;
   usage?: TokenUsage;
+}
+
+export interface DesignerAnalyzeRequest {
+  blocks: DesignerBlock[];
+  kConcepts?: number;
+  similarityThreshold?: number;
+  clusterSeed?: number;
+  imageThreshold?: number;
+}
+
+export interface DesignerAnalyzeResponse {
+  analysis: DesignerAnalysisResult;
+}
+
+export interface AlignRequest {
+  jurorAnalysis: AnalysisResult;
+  designerAnalysis: DesignerAnalysisResult;
+  threshold?: number;
+}
+
+export interface AlignResponse {
+  links: import("./graph").GraphLink[];
+  alignmentStats: {
+    totalJurorConcepts: number;
+    totalDesignerConcepts: number;
+    threshold: number;
+    linkCount: number;
+  };
 }

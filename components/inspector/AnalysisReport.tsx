@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils/cn";
 import { BarChart2, Layers, Users, Sparkles, CircleDot, RefreshCw, ListFilter, Filter, Plus, Minus, ChevronDown, ChevronUp } from "lucide-react";
 import type { AnalysisResult } from "@/types/analysis";
 import type { JurorBlock } from "@/types/nlp";
@@ -247,6 +248,25 @@ function formatPercent(value: number | undefined, digits = 1): string {
 
 export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLabelAI, isRefreshingAxisLabels = false, insights, rawExportContext }: AnalysisReportProps) {
   const [isAxisSectionExpanded, setIsAxisSectionExpanded] = useState(true);
+  const [expandedPrimaryConcepts, setExpandedPrimaryConcepts] = useState<Set<string>>(new Set());
+  const [expandedJurorVectors, setExpandedJurorVectors] = useState<Record<string, boolean>>({});
+
+  const togglePrimaryConceptExpand = (id: string) => {
+    setExpandedPrimaryConcepts(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleJurorVectorExpand = (juror: string, conceptId: string) => {
+    const key = `${juror}:${conceptId}`;
+    setExpandedJurorVectors(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
 
   const sentencesByJuror = useMemo(() => {
     if (!analysis) return new Map<string, number>();
@@ -331,7 +351,8 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
 
   const sortedConcepts = useMemo(() => {
     if (!analysis) return [];
-    const base = [...analysis.concepts];
+    // Use primaryConcepts if available, otherwise concepts (backward compat)
+    const base = [...(analysis.primaryConcepts || analysis.concepts)];
     const byWeight = (id: string) => conceptWeights.get(id) ?? 0;
     const jurorCounts = (id: string) => (conceptJurorDistribution.get(id) || []).length;
     const hasAi = (id: string) => Boolean(insights?.[id]?.shortLabel);
@@ -864,34 +885,68 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                     {visibleConceptWeights.map(([id, weight]) => {
                       const labelInfo = conceptLabelMap.get(id);
                       const colors = conceptColors.get(id);
+                      const isExpanded = expandedJurorVectors[`${juror}:${id}`];
+                      const detailIds = analysis.conceptHierarchy?.[id] || [];
+                      const hasDetails = detailIds.length > 0;
+
                       return (
-                        <Badge
-                          key={id}
-                          variant="secondary"
-                          className="text-slate-900"
-                          style={{
-                            backgroundColor: colors?.soft ?? "#eef2ff",
-                            color: "#0f172a",
-                            borderColor: colors?.base ?? "transparent",
-                            borderWidth: "1px",
-                          }}
-                        >
-                          <span
-                            className="mr-1 inline-block h-2 w-2 rounded-full"
-                            style={{ backgroundColor: colors?.base ?? "#312e81" }}
-                          />
-                          {labelInfo?.label || id} • {formatPercent(weight)}
-                          {labelInfo?.ai && (
-                            <Badge variant="outline" className="ml-2 border-white/60 bg-white/50 text-[9px] font-semibold" style={{ color: colors?.base ?? "#312e81" }}>
-                              AI
-                            </Badge>
+                        <div key={id} className="flex flex-col gap-1.5">
+                          <Badge
+                            variant="secondary"
+                            className={cn(
+                              "text-slate-900",
+                              hasDetails && "cursor-pointer transition-all hover:opacity-80",
+                              isExpanded && "ring-1 ring-indigo-400 ring-offset-1"
+                            )}
+                            style={{
+                              backgroundColor: colors?.soft ?? "#eef2ff",
+                              color: "#0f172a",
+                              borderColor: colors?.base ?? "transparent",
+                              borderWidth: "1px",
+                            }}
+                            onClick={() => hasDetails && toggleJurorVectorExpand(juror, id)}
+                          >
+                            <span
+                              className="mr-1 inline-block h-2 w-2 rounded-full"
+                              style={{ backgroundColor: colors?.base ?? "#312e81" }}
+                            />
+                            {labelInfo?.label || id} • {formatPercent(weight)}
+                            {labelInfo?.ai && (
+                              <Badge variant="outline" className="ml-2 border-white/60 bg-white/50 text-[9px] font-semibold" style={{ color: colors?.base ?? "#312e81" }}>
+                                AI
+                              </Badge>
+                            )}
+                            {labelInfo?.loading && !labelInfo.ai && (
+                              <Badge variant="outline" className="ml-2 border-white/60 bg-white/50 text-[9px] font-semibold text-slate-600">
+                                Labeling…
+                              </Badge>
+                            )}
+                            {hasDetails && (
+                              <span className="ml-1.5 opacity-40 text-[8px] font-bold">
+                                {isExpanded ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </Badge>
+
+                          {isExpanded && detailIds.length > 0 && (
+                            <div className="ml-2 flex flex-wrap gap-1 border-l-2 border-indigo-100 pl-2">
+                              {detailIds.map(dId => {
+                                const dw = analysis.jurorVectorsDetail?.[juror]?.[dId] || 0;
+                                if (dw <= 0) return null;
+                                const detail = analysis.detailConcepts?.find(dc => dc.id === dId);
+                                return (
+                                  <Badge 
+                                    key={dId} 
+                                    variant="outline" 
+                                    className="text-[9px] h-4 px-1.5 bg-white border-indigo-50 text-indigo-600 font-medium"
+                                  >
+                                    {detail?.label || dId} | {formatPercent(dw, 0)}
+                                  </Badge>
+                                );
+                              })}
+                            </div>
                           )}
-                          {labelInfo?.loading && !labelInfo.ai && (
-                            <Badge variant="outline" className="ml-2 border-white/60 bg-white/50 text-[9px] font-semibold text-slate-600">
-                              Labeling…
-                            </Badge>
-                          )}
-                        </Badge>
+                        </div>
                       );
                     })}
                     {conceptWeights.length === 0 && (
@@ -1137,6 +1192,63 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
           )}
         </div>
 
+        {analysis.anchorAxes && analysis.anchorAxes.length > 0 && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="bg-indigo-50 text-indigo-700">Anchored Axes</Badge>
+                <span className="text-xs font-semibold text-slate-500">User-defined semantic measurements</span>
+              </div>
+              <Badge variant="outline" className="border-slate-200 bg-white text-[11px] font-semibold text-slate-600">
+                {analysis.anchorAxes.length} axes
+              </Badge>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {analysis.anchorAxes.map((axis, idx) => {
+                const conceptScores = analysis.anchorAxisScores?.concepts || {};
+                const jurorScores = analysis.anchorAxisScores?.jurors || {};
+                const topConcept = Object.entries(conceptScores)
+                  .sort((a, b) => (b[1]?.[axis.id] ?? 0) - (a[1]?.[axis.id] ?? 0))[0];
+                const topJuror = Object.entries(jurorScores)
+                  .sort((a, b) => (b[1]?.[axis.id] ?? 0) - (a[1]?.[axis.id] ?? 0))[0];
+
+                return (
+                  <div key={axis.id} className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+                    <div className="mb-1 flex items-center justify-between">
+                      <Badge
+                        variant="outline"
+                        className="text-sm font-bold"
+                        style={{
+                          borderColor: axisColorList[idx % axisColorList.length],
+                          color: "#0f172a",
+                          backgroundColor: lightenColor(axisColorList[idx % axisColorList.length], 0.9),
+                        }}
+                      >
+                        {axis.name}
+                      </Badge>
+                      <span className="text-[10px] text-slate-500">
+                        {axis.negativePole.label} ↔ {axis.positivePole.label}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-[11px] text-slate-600">
+                      <div>
+                        <div className="font-semibold text-slate-700">Top Concept</div>
+                        <div className="text-slate-500">{topConcept?.[0] ?? "N/A"}</div>
+                        <div className="font-bold text-indigo-600">{(topConcept?.[1]?.[axis.id] ?? 0).toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <div className="font-semibold text-slate-700">Top Juror</div>
+                        <div className="text-slate-500">{topJuror?.[0] ?? "N/A"}</div>
+                        <div className="font-bold text-indigo-600">{(topJuror?.[1]?.[axis.id] ?? 0).toFixed(2)}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Concept Analysis */}
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-3 flex items-center justify-between gap-2">
@@ -1233,126 +1345,187 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
               const aiLabel = conceptInsight?.shortLabel;
               const isLoadingLabel = conceptInsight?.isLoadingLabel;
               const topTerms = Array.isArray(concept.topTerms) ? concept.topTerms : [];
+              
+              const isExpanded = expandedPrimaryConcepts.has(concept.id);
+              const detailIds = analysis.conceptHierarchy?.[concept.id] || [];
+              const hasDetails = detailIds.length > 0;
 
               return (
-                <div key={concept.id} className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
-                  <div className="mb-1 flex items-center gap-2">
-                    <div className="flex items-center gap-2">
-                      <Badge
-                        variant="outline"
-                        className="text-sm font-bold"
-                        style={{
-                          borderColor: conceptColors.get(concept.id)?.base ?? "#cbd5e1",
-                          color: "#0f172a",
-                          backgroundColor: conceptColors.get(concept.id)?.soft ?? "#f8fafc",
-                        }}
-                      >
-                        <span
-                          className="mr-1 inline-block h-2 w-2 rounded-full border border-black flex-shrink-0"
-                          style={{ backgroundColor: conceptColors.get(concept.id)?.base ?? "#334155" }}
-                        />
-                        {aiLabel || concept.label}
-                      </Badge>
-                      {aiLabel && (
-                        <Badge variant="outline" className="border-indigo-100 bg-white text-[10px] font-semibold text-indigo-700">
-                          AI label
-                        </Badge>
-                      )}
-                      {isLoadingLabel && !aiLabel && (
-                        <Badge variant="outline" className="border-slate-200 bg-white text-[10px] font-semibold text-slate-500">
-                          Labeling...
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Juror attribution
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="border-slate-200 bg-white text-[11px] font-semibold text-slate-600">
-                        {distribution.length} jurors
-                      </Badge>
-                      {distribution.length > 3 && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setShowAllJurorContribs((prev) => ({
-                              ...prev,
-                              [concept.id]: !showAll,
-                            }))
-                          }
-                          className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
+                <div key={concept.id} className="space-y-2">
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          className="text-sm font-bold"
+                          style={{
+                            borderColor: conceptColors.get(concept.id)?.base ?? "#cbd5e1",
+                            color: "#0f172a",
+                            backgroundColor: conceptColors.get(concept.id)?.soft ?? "#f8fafc",
+                          }}
                         >
-                          {showAll ? <Minus className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
-                        </button>
+                          <span
+                            className="mr-1 inline-block h-2 w-2 rounded-full border border-black flex-shrink-0"
+                            style={{ backgroundColor: conceptColors.get(concept.id)?.base ?? "#334155" }}
+                          />
+                          {aiLabel || concept.label}
+                        </Badge>
+                        {aiLabel && (
+                          <Badge variant="outline" className="border-indigo-100 bg-white text-[10px] font-semibold text-indigo-700">
+                            AI label
+                          </Badge>
+                        )}
+                        {isLoadingLabel && !aiLabel && (
+                          <Badge variant="outline" className="border-slate-200 bg-white text-[10px] font-semibold text-slate-500">
+                            Labeling...
+                          </Badge>
+                        )}
+                        {hasDetails && (
+                          <button 
+                            onClick={() => togglePrimaryConceptExpand(concept.id)}
+                            className="flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors ml-1"
+                          >
+                            {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                            {detailIds.length} subthemes
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Juror attribution
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="border-slate-200 bg-white text-[11px] font-semibold text-slate-600">
+                          {distribution.length} jurors
+                        </Badge>
+                        {distribution.length > 3 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setShowAllJurorContribs((prev) => ({
+                                ...prev,
+                                [concept.id]: !showAll,
+                              }))
+                            }
+                            className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
+                          >
+                            {showAll ? <Minus className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {visibleDistribution.length > 0 ? (
+                        visibleDistribution.map((entry) => {
+                          const colors = conceptColors.get(concept.id);
+                          const jurorColor = jurorColors.get(entry.juror);
+                          return (
+                            <Badge
+                              key={entry.juror}
+                              variant="secondary"
+                              className="bg-white text-slate-700"
+                              style={{
+                                backgroundColor: jurorColor?.soft ?? colors?.soft ?? "#f8fafc",
+                                color: jurorColor?.base ?? colors?.base ?? "#334155",
+                                borderColor: jurorColor?.base ?? colors?.base ?? "transparent",
+                                borderWidth: "1px",
+                              }}
+                            >
+                              <span
+                                className="mr-1 inline-block h-2 w-2 rounded-full"
+                              style={{ backgroundColor: jurorColor?.base ?? colors?.base ?? "#334155" }}
+                            />
+                            {entry.juror} | {formatPercent(entry.weight)}
+                          </Badge>
+                        );
+                      })
+                      ) : (
+                        <span className="text-[11px] text-slate-400">No juror distribution available</span>
                       )}
                     </div>
-                  </div>
 
-                  <div className="mt-1 flex flex-wrap gap-1.5">
-                    {visibleDistribution.length > 0 ? (
-                      visibleDistribution.map((entry) => {
-                        const colors = conceptColors.get(concept.id);
-                        const jurorColor = jurorColors.get(entry.juror);
-                        return (
-                          <Badge
-                            key={entry.juror}
-                            variant="secondary"
-                            className="bg-white text-slate-700"
-                            style={{
-                              backgroundColor: jurorColor?.soft ?? colors?.soft ?? "#f8fafc",
-                              color: jurorColor?.base ?? colors?.base ?? "#334155",
-                              borderColor: jurorColor?.base ?? colors?.base ?? "transparent",
-                              borderWidth: "1px",
-                            }}
-                          >
-                            <span
-                              className="mr-1 inline-block h-2 w-2 rounded-full"
-                            style={{ backgroundColor: jurorColor?.base ?? colors?.base ?? "#334155" }}
-                          />
-                          {entry.juror} | {formatPercent(entry.weight)}
-                        </Badge>
-                      );
-                    })
-                    ) : (
-                      <span className="text-[11px] text-slate-400">No juror distribution available</span>
+                    {topSentence && (
+                      <div className="mt-2 rounded-lg border border-slate-100 bg-white/80 p-2 text-xs text-slate-600">
+                        <div className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                          <CircleDot className="h-3 w-3" />
+                          Evidence
+                        </div>
+                        "{topSentence}"
+                      </div>
+                    )}
+
+                    {topTerms.length > 0 && (
+                      <div className="mt-3 rounded-lg border border-slate-100 bg-white/80 p-2">
+                        <div className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                          <Sparkles className="h-3 w-3" />
+                          BM25 Frequency Terms
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {topTerms.map((term) => (
+                            <Badge
+                              key={`${concept.id}-${term}`}
+                              variant="secondary"
+                              className="text-[10px] px-2 py-0.5 font-medium"
+                              style={{
+                                backgroundColor: conceptColors.get(concept.id)?.soft ?? "#f8fafc",
+                                color: conceptColors.get(concept.id)?.base ?? "#334155",
+                                borderColor: conceptColors.get(concept.id)?.base ?? "#e2e8f0",
+                              }}
+                            >
+                              {term}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
 
-                  {topSentence && (
-                    <div className="mt-2 rounded-lg border border-slate-100 bg-white/80 p-2 text-xs text-slate-600">
-                      <div className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                        <CircleDot className="h-3 w-3" />
-                        Evidence
-                      </div>
-                      "{topSentence}"
-                    </div>
-                  )}
+                  {/* Detail Subthemes Expansion */}
+                  {isExpanded && detailIds.length > 0 && (
+                    <div className="ml-6 space-y-2 border-l-2 border-indigo-100 pl-4 py-1">
+                      {detailIds.map(dId => {
+                        const detail = analysis.detailConcepts?.find(dc => dc.id === dId);
+                        if (!detail) return null;
+                        
+                        const detailDistribution = (analysis.jurorVectorsDetail ? Object.keys(analysis.jurorVectorsDetail).map(j => ({
+                          juror: j,
+                          weight: analysis.jurorVectorsDetail![j][dId] ?? 0
+                        })).filter(d => d.weight > 0).sort((a, b) => b.weight - a.weight) : []).slice(0, 3);
 
-                  {topTerms.length > 0 && (
-                    <div className="mt-3 rounded-lg border border-slate-100 bg-white/80 p-2">
-                      <div className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                        <Sparkles className="h-3 w-3" />
-                        BM25 Frequency Terms
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {topTerms.map((term) => (
-                          <Badge
-                            key={`${concept.id}-${term}`}
-                            variant="secondary"
-                            className="text-[10px] px-2 py-0.5 font-medium"
-                            style={{
-                              backgroundColor: conceptColors.get(concept.id)?.soft ?? "#f8fafc",
-                              color: conceptColors.get(concept.id)?.base ?? "#334155",
-                              borderColor: conceptColors.get(concept.id)?.base ?? "#e2e8f0",
-                            }}
-                          >
-                            {term}
-                          </Badge>
-                        ))}
-                      </div>
+                        return (
+                          <div key={dId} className="rounded-lg border border-slate-100 bg-white p-2.5 shadow-sm">
+                            <div className="mb-1.5 flex items-center gap-2">
+                              <Badge variant="outline" className="text-[11px] font-bold py-0 h-5 border-indigo-200 text-indigo-700 bg-indigo-50/30">
+                                {detail.label}
+                              </Badge>
+                              <Badge variant="secondary" className="text-[9px] h-4 px-1.5 bg-slate-100 text-slate-500 border-none">
+                                Subtheme
+                              </Badge>
+                            </div>
+                            
+                            <div className="flex flex-wrap gap-1 mb-2">
+                              {detailDistribution.map(entry => (
+                                <span key={entry.juror} className="text-[9px] font-medium text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
+                                  {entry.juror} | {formatPercent(entry.weight, 0)}
+                                </span>
+                              ))}
+                            </div>
+
+                            {detail.topTerms && detail.topTerms.length > 0 && (
+                              <div className="flex flex-wrap gap-1">
+                                {detail.topTerms.slice(0, 5).map(term => (
+                                  <span key={term} className="text-[9px] text-indigo-600/70 italic">
+                                    #{term}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

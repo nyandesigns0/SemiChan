@@ -1,4 +1,7 @@
 import { cosine } from "./tfidf";
+import { SentenceRecord } from "../../types/analysis";
+import { evaluateCutQuality, CutQualityParams } from "./cut-constraints";
+import { computeCentroids } from "./concept-centroids";
 
 /**
  * Dendrogram structure: tree of merges from agglomerative clustering
@@ -144,16 +147,22 @@ export function cutDendrogramByCount(vectors: Float64Array[], targetK: number): 
 }
 
 /**
- * Cut dendrogram by distance threshold based on granularity percentage
+ * Cut dendrogram by distance threshold based on granularity percentage,
+ * with support for quality constraints.
+ * 
  * @param dendrogram The pre-built dendrogram tree
  * @param vectors Original vectors (for computing centroids if needed)
+ * @param sentences Corresponding sentence records
  * @param granularityPercent 0-100, where 0% = finest (most clusters), 100% = coarsest (fewest clusters)
+ * @param qualityParams Optional constraints for cut evaluation
  * @returns Cluster assignments array
  */
 export function cutDendrogramByThreshold(
   dendrogram: Dendrogram,
   vectors: Float64Array[],
-  granularityPercent: number
+  sentences: SentenceRecord[],
+  granularityPercent: number,
+  qualityParams: CutQualityParams = {}
 ): number[] {
   const n = vectors.length;
   if (n === 0) return [];
@@ -176,63 +185,190 @@ export function cutDendrogramByThreshold(
     return new Array(n).fill(0);
   }
 
-  // Convert granularity percent to distance threshold
-  // 0% = minDistance (finest, most clusters)
-  // 100% = maxDistance (coarsest, fewest clusters)
-  const threshold = minDistance + (maxDistance - minDistance) * (granularityPercent / 100);
+  // Iteratively adjust threshold to find a valid cut if necessary
+  let currentGranularity = granularityPercent;
+  let assignments: number[] = [];
+  let attempts = 0;
+  const maxAttempts = 5;
 
-  // Union-Find data structure to track cluster membership
-  const parent = new Array(n + dendrogram.merges.length).fill(-1);
-  const clusterMap = new Map<number, number[]>(); // cluster id -> vector indices
+  while (attempts < maxAttempts) {
+    // Convert granularity percent to distance threshold
+    // 0% = minDistance (finest, most clusters)
+    // 100% = maxDistance (coarsest, fewest clusters)
+    const threshold = minDistance + (maxDistance - minDistance) * (currentGranularity / 100);
 
-  // Initialize: each vector is its own cluster
-  for (let i = 0; i < n; i++) {
-    parent[i] = i;
-    clusterMap.set(i, [i]);
-  }
+    // Union-Find data structure to track cluster membership
+    const parent = new Array(n + dendrogram.merges.length).fill(-1);
+    const clusterMap = new Map<number, number[]>(); // cluster id -> vector indices
 
-  // Process merges up to the threshold
-  let nextClusterId = n;
-  for (const merge of dendrogram.merges) {
-    if (merge.distance > threshold) {
-      // Stop merging at this threshold
+    // Initialize: each vector is its own cluster
+    for (let i = 0; i < n; i++) {
+      parent[i] = i;
+      clusterMap.set(i, [i]);
+    }
+
+    // Process merges up to the threshold
+    let nextClusterId = n;
+    for (const merge of dendrogram.merges) {
+      if (merge.distance > threshold) {
+        // Stop merging at this threshold
+        break;
+      }
+
+      // Find root clusters for left and right
+      const leftRoot = findRoot(merge.left, parent);
+      const leftIndices = clusterMap.get(leftRoot) || [];
+      const rightRoot = findRoot(merge.right, parent);
+      const rightIndices = clusterMap.get(rightRoot) || [];
+
+      // Merge clusters
+      parent[leftRoot] = nextClusterId;
+      parent[rightRoot] = nextClusterId;
+      parent[nextClusterId] = nextClusterId;
+
+      clusterMap.set(nextClusterId, [...leftIndices, ...rightIndices]);
+      clusterMap.delete(leftRoot);
+      if (leftRoot !== rightRoot) {
+        clusterMap.delete(rightRoot);
+      }
+
+      nextClusterId++;
+    }
+
+    // Compress paths and assign final cluster IDs
+    const finalAssignments = new Array(n).fill(-1);
+    const clusterIdMap = new Map<number, number>();
+    let nextFinalId = 0;
+
+    for (let i = 0; i < n; i++) {
+      const root = findRoot(i, parent);
+      if (!clusterIdMap.has(root)) {
+        clusterIdMap.set(root, nextFinalId++);
+      }
+      finalAssignments[i] = clusterIdMap.get(root)!;
+    }
+    assignments = finalAssignments;
+
+    // Quality check
+    const centroids = computeCentroids(vectors, assignments, nextFinalId);
+    const quality = evaluateCutQuality(assignments, sentences, centroids, qualityParams);
+
+    if (quality.isValid) {
       break;
     }
 
-    // Find root clusters for left and right
-    const leftRoot = findRoot(merge.left, parent);
-    const leftIndices = clusterMap.get(leftRoot) || [];
-    const rightRoot = findRoot(merge.right, parent);
-    const rightIndices = clusterMap.get(rightRoot) || [];
-
-    // Merge clusters
-    parent[leftRoot] = nextClusterId;
-    parent[rightRoot] = nextClusterId;
-    parent[nextClusterId] = nextClusterId;
-
-    clusterMap.set(nextClusterId, [...leftIndices, ...rightIndices]);
-    clusterMap.delete(leftRoot);
-    if (leftRoot !== rightRoot) {
-      clusterMap.delete(rightRoot);
-    }
-
-    nextClusterId++;
+    // Adjust granularity: if invalid, we likely need fewer, larger clusters
+    // So we increase granularityPercent (move towards maxDistance)
+    currentGranularity += 10;
+    if (currentGranularity > 100) break;
+    attempts++;
   }
 
-  // Compress paths and assign final cluster IDs
-  const finalAssignments = new Array(n).fill(-1);
-  const clusterIdMap = new Map<number, number>();
-  let nextFinalId = 0;
+  return assignments;
+}
 
-  for (let i = 0; i < n; i++) {
-    const root = findRoot(i, parent);
-    if (!clusterIdMap.has(root)) {
-      clusterIdMap.set(root, nextFinalId++);
-    }
-    finalAssignments[i] = clusterIdMap.get(root)!;
+export interface TwoLayerCut {
+  primaryAssignments: number[];
+  detailAssignments: number[];
+  parentMap: Record<number, number>; // detail cluster index -> primary cluster index
+}
+
+/**
+ * Perform a two-layer hierarchical cut on the dendrogram.
+ * 1. Primary cut identifies high-level themes with strong support.
+ * 2. For each primary theme, a secondary cut identifies granular sub-themes.
+ * 
+ * @param dendrogram The pre-built dendrogram tree for the full corpus
+ * @param vectors Original vectors
+ * @param sentences Corresponding sentence records
+ * @param primaryParams Constraints for the primary layer
+ * @param detailParams Constraints for the detail layer
+ * @param primaryGranularity Coarseness for primary layer (default 70%)
+ * @param detailGranularity Fineness for detail layer (default 30%)
+ * @returns Primary and detail assignments with mapping
+ */
+export function cutDendrogramTwoLayer(
+  dendrogram: Dendrogram,
+  vectors: Float64Array[],
+  sentences: SentenceRecord[],
+  primaryParams: CutQualityParams,
+  detailParams: CutQualityParams,
+  primaryGranularity: number = 70,
+  detailGranularity: number = 30
+): TwoLayerCut {
+  const n = vectors.length;
+  if (n === 0) {
+    return { primaryAssignments: [], detailAssignments: [], parentMap: {} };
   }
 
-  return finalAssignments;
+  // 1. Get primary assignments using coarse threshold and quality constraints
+  const primaryAssignments = cutDendrogramByThreshold(
+    dendrogram, 
+    vectors, 
+    sentences, 
+    primaryGranularity, 
+    primaryParams
+  );
+  
+  const primaryClusterIds = Array.from(new Set(primaryAssignments)).sort((a, b) => a - b);
+  const numPrimary = primaryClusterIds.length;
+
+  // 2. For each primary cluster, perform a detail cut
+  const detailAssignments = new Array(n).fill(-1);
+  const parentMap: Record<number, number> = {};
+  let nextDetailId = 0;
+
+  for (let pIdx = 0; pIdx < numPrimary; pIdx++) {
+    const pId = primaryClusterIds[pIdx];
+    // Indices of sentences in this primary cluster
+    const clusterIndices = [];
+    for (let i = 0; i < n; i++) {
+      if (primaryAssignments[i] === pId) {
+        clusterIndices.push(i);
+      }
+    }
+    
+    if (clusterIndices.length === 0) continue;
+
+    // If only one sentence, it's its own detail cluster
+    if (clusterIndices.length === 1) {
+      const globalDetailId = nextDetailId++;
+      detailAssignments[clusterIndices[0]] = globalDetailId;
+      parentMap[globalDetailId] = pId;
+      continue;
+    }
+
+    const clusterVectors = clusterIndices.map(i => vectors[i]);
+    const clusterSentences = clusterIndices.map(i => sentences[i]);
+
+    // Build sub-dendrogram for this cluster
+    const subDendrogram = buildDendrogram(clusterVectors);
+    
+    // Cut sub-dendrogram with finer granularity
+    const subAssignments = cutDendrogramByThreshold(
+      subDendrogram,
+      clusterVectors,
+      clusterSentences,
+      detailGranularity,
+      detailParams
+    );
+
+    const subClusterIds = Array.from(new Set(subAssignments)).sort((a, b) => a - b);
+    
+    // Map sub-assignments to global detailAssignments
+    const subIdToGlobalMap = new Map<number, number>();
+    for (const subId of subClusterIds) {
+      const globalDetailId = nextDetailId++;
+      subIdToGlobalMap.set(subId, globalDetailId);
+      parentMap[globalDetailId] = pId;
+    }
+
+    for (let i = 0; i < clusterIndices.length; i++) {
+      detailAssignments[clusterIndices[i]] = subIdToGlobalMap.get(subAssignments[i])!;
+    }
+  }
+
+  return { primaryAssignments, detailAssignments, parentMap };
 }
 
 /**

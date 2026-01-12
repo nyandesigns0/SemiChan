@@ -34,7 +34,10 @@ export async function POST(request: NextRequest) {
       numDimensions,
       dimensionMode,
       varianceThreshold,
-      model
+      softMembershipParams,
+      cutQualityParams,
+      model,
+      anchorAxes,
     } = body;
 
     if (!blocks || !Array.isArray(blocks)) {
@@ -90,6 +93,7 @@ export async function POST(request: NextRequest) {
     }
 
     // buildAnalysis is now async
+    const logs: Array<{ type: any; message: string; data?: any }> = [];
     const analysis = await buildAnalysis(
       blocks, 
       kConcepts, 
@@ -108,11 +112,18 @@ export async function POST(request: NextRequest) {
         numDimensions: numDimensions || 3,
         dimensionMode,
         varianceThreshold,
+        softMembershipParams,
+        cutQualityParams,
+        onLog: (type, message, data) => {
+          logs.push({ type, message, data });
+        },
+        anchorAxes,
       }
     );
 
     const response: AnalyzeResponse = {
       analysis,
+      logs,
     };
 
     return NextResponse.json(response);

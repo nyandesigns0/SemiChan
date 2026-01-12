@@ -1,8 +1,22 @@
+import type { Concept, SentenceRecord } from "./analysis";
+import type { GraphNode, GraphLink } from "./graph";
+
 export type Stance = "praise" | "critique" | "suggestion" | "neutral";
 
 export interface JurorBlock {
   juror: string;
   text: string;
+}
+
+export interface DesignerBlock {
+  designer: string;
+  text?: string;
+  images: Array<{
+    id: string;
+    type: "file" | "url";
+    data: string;
+    embedding?: Float64Array;
+  }>;
 }
 
 export interface TFIDFModel {
@@ -39,4 +53,18 @@ export interface SentenceEmbeddingResult {
   vectors: Float64Array[];
   /** Embedding dimension */
   dimension: number;
+}
+
+export interface DesignerAnalysisResult {
+  designers: string[];
+  concepts: Concept[];
+  primaryConcepts?: Concept[];
+  detailConcepts?: Concept[];
+  conceptHierarchy?: Record<string, string[]>;
+  sentences: SentenceRecord[];
+  designerVectors: Record<string, Record<string, number>>;
+  designerVectorsDetail?: Record<string, Record<string, number>>;
+  imageConcepts: Record<string, string[]>;
+  nodes?: GraphNode[];
+  links?: GraphLink[];
 }

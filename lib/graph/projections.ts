@@ -18,11 +18,13 @@ export function buildJurorSimilarityLinks(
       const idx = conceptIndex.get(cId);
       if (typeof idx === "number") v[idx] = wt;
     }
-    // normalize
-    let norm = 0;
-    for (let i = 0; i < v.length; i++) norm += v[i] * v[i];
-    norm = Math.sqrt(norm) || 1;
-    for (let i = 0; i < v.length; i++) v[i] /= norm;
+    // Jensen-Shannon expects probability distributions (sum to 1)
+    // Our jurorVectors are already L1 normalized, but let's ensure it.
+    let sum = 0;
+    for (let i = 0; i < v.length; i++) sum += v[i];
+    if (sum > 0) {
+      for (let i = 0; i < v.length; i++) v[i] /= sum;
+    }
     jurorDense[j] = v;
   }
 
@@ -30,7 +32,7 @@ export function buildJurorSimilarityLinks(
     for (let j = i + 1; j < jurorList.length; j++) {
       const a = jurorList[i];
       const b = jurorList[j];
-      const sim = cosine(jurorDense[a], jurorDense[b]);
+      const sim = jensenShannonSimilarity(jurorDense[a], jurorDense[b]);
       if (sim >= similarityThreshold) {
         links.push({
           id: `sim:juror:${a}__juror:${b}`,
@@ -44,6 +46,27 @@ export function buildJurorSimilarityLinks(
   }
 
   return links;
+}
+
+/**
+ * Compute Jensen-Shannon Similarity between two probability distributions.
+ * JS Divergence is a symmetric version of KL Divergence.
+ * similarity = 1 - JS_Divergence
+ */
+export function jensenShannonSimilarity(p: Float64Array, q: Float64Array): number {
+  const n = p.length;
+  const m = new Float64Array(n);
+  for (let i = 0; i < n; i++) m[i] = 0.5 * (p[i] + q[i]);
+
+  let klPM = 0;
+  let klQM = 0;
+  for (let i = 0; i < n; i++) {
+    if (p[i] > 0 && m[i] > 0) klPM += p[i] * Math.log2(p[i] / m[i]);
+    if (q[i] > 0 && m[i] > 0) klQM += q[i] * Math.log2(q[i] / m[i]);
+  }
+
+  const jsDivergence = 0.5 * klPM + 0.5 * klQM;
+  return Math.max(0, 1 - jsDivergence);
 }
 
 export function buildConceptSimilarityLinks(

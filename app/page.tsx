@@ -7,8 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { IngestPanel } from "@/components/ingest/IngestPanel";
+import { DesignerInputPanel } from "@/components/ingest/DesignerInputPanel";
 import { IngestModal } from "@/components/ingest/IngestModal";
 import { AnalysisControlsAccordion } from "@/components/controls/AnalysisControlsAccordion";
+import { DesignerAnalysisControls } from "@/components/controls/DesignerAnalysisControls";
+import { AlignmentControls } from "@/components/controls/AlignmentControls";
 import { AIControlsAccordion } from "@/components/controls/AIControlsAccordion";
 import { SearchBarAccordion } from "@/components/controls/SearchBarAccordion";
 import { GraphFiltersAccordion } from "@/components/controls/GraphFiltersAccordion";
@@ -24,12 +27,13 @@ import { downloadJson, downloadPdfServer } from "@/lib/utils/download";
 import { cn } from "@/lib/utils/cn";
 import { DEFAULT_SAMPLE, DEFAULT_MODEL } from "@/constants/nlp-constants";
 import { calculateCost, formatCost } from "@/lib/utils/api-utils";
-import type { JurorBlock } from "@/types/nlp";
+import type { JurorBlock, DesignerBlock, DesignerAnalysisResult } from "@/types/nlp";
 import type { AnalysisResult, SentenceRecord } from "@/types/analysis";
 import type { GraphNode, GraphLink } from "@/types/graph";
 import type { Stance } from "@/types/nlp";
 import type { LogEntry } from "@/components/inspector/InspectorConsole";
 import type { TokenUsage } from "@/types/api";
+import type { AnchorAxis } from "@/types/anchor-axes";
 
 export default function HomePage() {
   // Sidebar state defaults to closed on load
@@ -57,6 +61,7 @@ export default function HomePage() {
   // Graph filter toggles
   const [showJurorNodes, setShowJurorNodes] = useState(true);
   const [showConceptNodes, setShowConceptNodes] = useState(true);
+  const [showDesignerNodes, setShowDesignerNodes] = useState(false);
   const [showJurorConceptLinks, setShowJurorConceptLinks] = useState(true);
   const [showJurorJurorLinks, setShowJurorJurorLinks] = useState(true);
   const [showConceptConceptLinks, setShowConceptConceptLinks] = useState(true);
@@ -79,10 +84,30 @@ export default function HomePage() {
   // Selection
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
+  const [expandedPrimaryConcepts, setExpandedPrimaryConcepts] = useState<Set<string>>(new Set());
+
+  const handlePrimaryConceptExpand = useCallback((id: string) => {
+    setExpandedPrimaryConcepts(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   // Analysis state
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+  const [anchorAxes, setAnchorAxes] = useState<AnchorAxis[]>([]);
+  const [selectedAnchorAxisId, setSelectedAnchorAxisId] = useState<string | null>(null);
+
+  // Designer analysis state
+  const [designerBlocks, setDesignerBlocks] = useState<DesignerBlock[]>([]);
+  const [designerAnalysis, setDesignerAnalysis] = useState<DesignerAnalysisResult | null>(null);
+  const [designerLoading, setDesignerLoading] = useState(false);
+  const [designerKConcepts, setDesignerKConcepts] = useState(6);
+  const [alignmentLinks, setAlignmentLinks] = useState<GraphLink[]>([]);
+  const [aligning, setAligning] = useState(false);
 
   // Use the actual number of dimensions from the analysis if available, otherwise the manual setting
   const appliedNumDimensions = useMemo(() => {
@@ -158,6 +183,12 @@ export default function HomePage() {
     }
   }, [selectedLinkId, analysis, addLog]);
 
+  useEffect(() => {
+    if (!selectedAnchorAxisId && anchorAxes.length > 0) {
+      setSelectedAnchorAxisId(anchorAxes[0].id);
+    }
+  }, [anchorAxes, selectedAnchorAxisId]);
+
   // Log keywords when analysis completes
   useEffect(() => {
     if (analysis && analysis.stats.totalConcepts > 0) {
@@ -180,6 +211,12 @@ export default function HomePage() {
       }
     }
   }, [analysis, addLog]);
+  
+  useEffect(() => {
+    if (analysis?.anchorAxes && analysis.anchorAxes.length > 0 && anchorAxes.length === 0) {
+      setAnchorAxes(analysis.anchorAxes);
+    }
+  }, [analysis?.anchorAxes, anchorAxes.length]);
   
   // Log how automatic dimension selection behaved (even if it kept the manual value)
   useEffect(() => {
@@ -359,12 +396,21 @@ export default function HomePage() {
             dimensionMode,
             varianceThreshold,
             model: selectedModel,
+            anchorAxes,
           }),
         });
         if (response.ok) {
           const data = await response.json();
           console.log(`[Analysis] Analysis successful`, data);
           addLog("api_response", `Analysis complete`, data);
+          
+          // Add any server-side logs to the console
+          if (data.logs && Array.isArray(data.logs)) {
+            data.logs.forEach((l: any) => {
+              addLog(l.type, l.message, l.data);
+            });
+          }
+          
           setAnalysis(data.analysis);
         } else {
           const errorData = await response.json();
@@ -381,7 +427,7 @@ export default function HomePage() {
     };
 
     analyze();
-  }, [jurorBlocks, kConcepts, similarityThreshold, evidenceRankingParams, clusteringMode, autoK, clusterSeed, softMembership, cutType, granularityPercent, numDimensions, selectedModel, dimensionMode, varianceThreshold, addLog]);
+  }, [jurorBlocks, kConcepts, similarityThreshold, evidenceRankingParams, clusteringMode, autoK, clusterSeed, softMembership, cutType, granularityPercent, numDimensions, selectedModel, dimensionMode, varianceThreshold, anchorAxes, addLog]);
 
   // Helper function to get node network (node + connected links + connected nodes)
   const getNodeNetwork = useCallback((nodeId: string, nodes: GraphNode[], links: GraphLink[]) => {
@@ -586,6 +632,37 @@ export default function HomePage() {
     getLinkNetwork,
   ]);
 
+  const combinedNodes = useMemo(
+    () => [
+      ...filteredNodes,
+      ...(showDesignerNodes && designerAnalysis?.nodes ? designerAnalysis.nodes : []),
+    ],
+    [filteredNodes, showDesignerNodes, designerAnalysis]
+  );
+  const combinedLinks = useMemo(
+    () => [
+      ...filteredLinks,
+      ...(showDesignerNodes && designerAnalysis?.links ? designerAnalysis.links : []),
+      ...(showDesignerNodes ? alignmentLinks || [] : []),
+    ],
+    [filteredLinks, showDesignerNodes, designerAnalysis, alignmentLinks]
+  );
+  const combinedNodeVisibility = useMemo(() => {
+    const map = new Map(nodeVisibility);
+    if (showDesignerNodes && designerAnalysis?.nodes) {
+      designerAnalysis.nodes.forEach((n) => map.set(n.id, 1));
+    }
+    return map;
+  }, [nodeVisibility, showDesignerNodes, designerAnalysis]);
+  const combinedLinkVisibility = useMemo(() => {
+    const map = new Map(linkVisibility);
+    if (showDesignerNodes && designerAnalysis?.links) {
+      designerAnalysis.links.forEach((l) => map.set(l.id, 1));
+    }
+    if (showDesignerNodes && alignmentLinks) alignmentLinks.forEach((l) => map.set(l.id, 1));
+    return map;
+  }, [linkVisibility, showDesignerNodes, designerAnalysis, alignmentLinks]);
+
   // Selection helpers
   const selectedNode = useMemo(() => {
     if (!analysis || !selectedNodeId) return null;
@@ -705,7 +782,8 @@ export default function HomePage() {
     }
   }
 
-  const emptyState = !analysis || analysis.stats.totalSentences === 0;
+  const emptyState = (!analysis || analysis.stats.totalSentences === 0) &&
+    (!designerAnalysis || (designerAnalysis.sentences?.length ?? 0) === 0);
 
   const handleExportPdf = useCallback(async () => {
     if (!analysis || emptyState) return;
@@ -729,6 +807,54 @@ export default function HomePage() {
     }
   }, [analysis, emptyState]);
 
+  const handleDesignerAnalysis = useCallback(async () => {
+    if (designerBlocks.length === 0) return;
+    setDesignerLoading(true);
+    try {
+      const response = await fetch("/api/analyze-designer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blocks: designerBlocks, kConcepts: designerKConcepts }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setDesignerAnalysis(data.analysis);
+        addLog("analysis", "Designer analysis complete");
+      } else {
+        addLog("api_error", "Designer analysis failed");
+      }
+    } catch (error) {
+      console.error("[DesignerAnalysis] Network error:", error);
+      addLog("api_error", "Network error during designer analysis");
+    } finally {
+      setDesignerLoading(false);
+    }
+  }, [designerBlocks, designerKConcepts, addLog]);
+
+  const handleAlignment = useCallback(async () => {
+    if (!analysis || !designerAnalysis) return;
+    setAligning(true);
+    try {
+      const response = await fetch("/api/align", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jurorAnalysis: analysis, designerAnalysis, threshold: similarityThreshold }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setAlignmentLinks(data.links || []);
+        addLog("analysis", `Alignment complete: ${data.links?.length ?? 0} links`);
+      } else {
+        addLog("api_error", "Alignment failed");
+      }
+    } catch (error) {
+      console.error("[Alignment] error", error);
+      addLog("api_error", "Network error during alignment");
+    } finally {
+      setAligning(false);
+    }
+  }, [analysis, designerAnalysis, similarityThreshold, addLog]);
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-slate-50 text-slate-900">
       {/* Left Sidebar */}
@@ -745,6 +871,13 @@ export default function HomePage() {
             jurorBlocks={jurorBlocks}
             onOpenModal={() => setIngestModalOpen(true)}
             ingestError={ingestError}
+          />
+          <DesignerInputPanel blocks={designerBlocks} onChange={setDesignerBlocks} />
+          <DesignerAnalysisControls
+            kConcepts={designerKConcepts}
+            onKConceptsChange={setDesignerKConcepts}
+            loading={designerLoading}
+            onAnalyze={handleDesignerAnalysis}
           />
 
           <AIControlsAccordion
@@ -784,6 +917,8 @@ export default function HomePage() {
             varianceThreshold={varianceThreshold}
             onVarianceThresholdChange={setVarianceThreshold}
             appliedNumDimensions={appliedNumDimensions}
+            anchorAxes={anchorAxes}
+            onAnchorAxesChange={setAnchorAxes}
           />
 
         </div>
@@ -836,6 +971,23 @@ export default function HomePage() {
             </div>
             
             <div className="flex items-center gap-3">
+              {analysis?.anchorAxes && analysis.anchorAxes.length > 0 && (
+                <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 shadow-sm">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Anchor Axis</span>
+                  <select
+                    className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
+                    value={selectedAnchorAxisId ?? ""}
+                    onChange={(e) => setSelectedAnchorAxisId(e.target.value || null)}
+                  >
+                    <option value="">None</option>
+                    {analysis.anchorAxes.map((axis) => (
+                      <option key={axis.id} value={axis.id}>
+                        {axis.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <Button
                 variant="outline"
                 className="h-9 rounded-xl border-slate-200 px-4 font-semibold shadow-sm transition-all hover:bg-slate-50 hover:shadow-md active:scale-95 text-xs"
@@ -875,10 +1027,10 @@ export default function HomePage() {
             <div className="flex flex-1 flex-col overflow-hidden relative bg-white">
               <div className="flex flex-1 flex-col overflow-hidden p-0">
                 <GraphCanvas3D
-                  nodes={filteredNodes}
-                  links={filteredLinks}
-                  nodeVisibility={nodeVisibility}
-                  linkVisibility={linkVisibility}
+                  nodes={combinedNodes}
+                  links={combinedLinks}
+                  nodeVisibility={combinedNodeVisibility}
+                  linkVisibility={combinedLinkVisibility}
                   selectedNodeId={selectedNodeId}
                   selectedLinkId={selectedLinkId}
                   onNodeClick={onNodeClick}
@@ -894,8 +1046,8 @@ export default function HomePage() {
                   onRefreshAxisLabels={enableAxisLabelAI ? refreshAxisLabels : undefined}
                   isRefreshingAxisLabels={isRefreshingAxisLabels}
                   analysis={analysis}
-                  filteredNodesCount={filteredNodes.length}
-                  filteredLinksCount={filteredLinks.length}
+                  filteredNodesCount={combinedNodes.length}
+                  filteredLinksCount={combinedLinks.length}
                   checkpointIndex={checkpointIndex}
                   onCheckpointIndexChange={setCheckpointIndex}
                   showAxes={showAxes}
@@ -905,6 +1057,10 @@ export default function HomePage() {
                   numDimensions={appliedNumDimensions}
                   apiCallCount={apiCallCount}
                   apiCostTotal={apiCostTotal}
+                  anchorAxes={analysis?.anchorAxes}
+                  anchorAxisScores={analysis?.anchorAxisScores}
+                  selectedAnchorAxisId={selectedAnchorAxisId}
+                  alignmentLinks={alignmentLinks}
                 />
               </div>
 
@@ -960,6 +1116,7 @@ export default function HomePage() {
             }}
             showJurorNodes={showJurorNodes}
             showConceptNodes={showConceptNodes}
+            showDesignerNodes={showDesignerNodes}
             showJurorConceptLinks={showJurorConceptLinks}
             showJurorJurorLinks={showJurorJurorLinks}
             showConceptConceptLinks={showConceptConceptLinks}
@@ -969,6 +1126,7 @@ export default function HomePage() {
             showNeutral={showNeutral}
             onShowJurorNodesChange={setShowJurorNodes}
             onShowConceptNodesChange={setShowConceptNodes}
+            onShowDesignerNodesChange={setShowDesignerNodes}
             onShowJurorConceptLinksChange={setShowJurorConceptLinks}
             onShowJurorJurorLinksChange={setShowJurorJurorLinks}
             onShowConceptConceptLinksChange={setShowConceptConceptLinks}
@@ -978,6 +1136,12 @@ export default function HomePage() {
             onShowNeutralChange={setShowNeutral}
           />
           <SearchBarAccordion value={search} onChange={setSearch} />
+          <AlignmentControls
+            disabled={!analysis || !designerAnalysis}
+            onAlign={handleAlignment}
+            alignmentCount={alignmentLinks.length}
+            loading={aligning}
+          />
         </div>
       </CollapsibleSidebar>
 

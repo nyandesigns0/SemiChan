@@ -12,6 +12,7 @@ interface GraphFiltersAccordionProps {
   onAdaptiveModeChange: (value: boolean) => void;
   showJurorNodes: boolean;
   showConceptNodes: boolean;
+  showDesignerNodes: boolean;
   showJurorConceptLinks: boolean;
   showJurorJurorLinks: boolean;
   showConceptConceptLinks: boolean;
@@ -21,6 +22,7 @@ interface GraphFiltersAccordionProps {
   showNeutral: boolean;
   onShowJurorNodesChange: (value: boolean) => void;
   onShowConceptNodesChange: (value: boolean) => void;
+  onShowDesignerNodesChange: (value: boolean) => void;
   onShowJurorConceptLinksChange: (value: boolean) => void;
   onShowJurorJurorLinksChange: (value: boolean) => void;
   onShowConceptConceptLinksChange: (value: boolean) => void;
@@ -35,6 +37,7 @@ export function GraphFiltersAccordion({
   onAdaptiveModeChange,
   showJurorNodes,
   showConceptNodes,
+  showDesignerNodes,
   showJurorConceptLinks,
   showJurorJurorLinks,
   showConceptConceptLinks,
@@ -44,6 +47,7 @@ export function GraphFiltersAccordion({
   showNeutral,
   onShowJurorNodesChange,
   onShowConceptNodesChange,
+  onShowDesignerNodesChange,
   onShowJurorConceptLinksChange,
   onShowJurorJurorLinksChange,
   onShowConceptConceptLinksChange,
@@ -57,6 +61,7 @@ export function GraphFiltersAccordion({
   const nodeFilters = [
     { label: "Juror Nodes", checked: showJurorNodes, onChange: onShowJurorNodesChange },
     { label: "Concept Nodes", checked: showConceptNodes, onChange: onShowConceptNodesChange },
+    { label: "Designer Nodes", checked: showDesignerNodes, onChange: onShowDesignerNodesChange },
   ];
 
   const linkFilters = [
@@ -190,4 +195,3 @@ export function GraphFiltersAccordion({
     </div>
   );
 }
-

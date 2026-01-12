@@ -1,11 +1,13 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Brain, Fingerprint, Users, MessageSquare } from "lucide-react";
+import { Sparkles, Brain, Fingerprint, Users, MessageSquare, Layers, ChevronDown, ChevronRight } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils/cn";
 import { extractKeyphrases } from "@/lib/nlp/keyphrase-extractor";
 import { stanceColor } from "@/lib/utils/stance-utils";
 import { getPCColor, lightenColor } from "@/lib/utils/graph-color-utils";
@@ -79,6 +81,17 @@ function SentenceList({ sentences, conceptId }: { sentences: SentenceRecord[], c
 }
 
 export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSummary }: NodeInspectorProps) {
+  const [expandedJurorConcepts, setExpandedJurorConcepts] = useState<Set<string>>(new Set());
+  
+  const toggleJurorConceptExpand = (id: string) => {
+    setExpandedJurorConcepts(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const baseColor = node.type === "juror" ? "#3b82f6" : "#8b5cf6";
   const nodeColor = node.pcValues ? getPCColor(node.pcValues, baseColor) : baseColor;
   const lightNodeColor = lightenColor(nodeColor, 0.9);
@@ -153,7 +166,7 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
 
     return (
       <Tabs defaultValue="concepts" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 mb-4">
+        <TabsList className="grid w-full grid-cols-4 mb-4">
           <TabsTrigger 
             value="concepts" 
             className="text-[10px] uppercase font-bold group data-[state=active]:text-white data-[state=active]:bg-[var(--active-color)] data-[state=active]:shadow-lg"
@@ -169,6 +182,9 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
           <TabsTrigger value="sentences" className="text-[10px] uppercase font-bold group data-[state=active]:text-white data-[state=active]:bg-[var(--active-color)] data-[state=active]:shadow-lg" style={{ "--active-color": nodeColor } as any}>
             <MessageSquare className="h-3 w-3 mr-1.5" />
             Sentences
+          </TabsTrigger>
+          <TabsTrigger value="anchors" className="text-[10px] uppercase font-bold group data-[state=active]:text-white data-[state=active]:bg-[var(--active-color)] data-[state=active]:shadow-lg" style={{ "--active-color": nodeColor } as any}>
+            Anchors
           </TabsTrigger>
         </TabsList>
 
@@ -209,6 +225,59 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
             <p className="mt-2 text-[9px] text-slate-500 italic">
               Relative emphasis based on global semantic themes.
             </p>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Detailed Breakdown</h3>
+            <div className="space-y-2">
+              {jurorTopConcepts.map(item => {
+                const isExpanded = expandedJurorConcepts.has(item.conceptId);
+                const detailIds = analysis.conceptHierarchy?.[item.conceptId] || [];
+                const hasDetails = detailIds.length > 0;
+                const color = getEntityColor(item.conceptId, "concept");
+
+                return (
+                  <div key={item.conceptId} className="space-y-1.5">
+                    <div 
+                      className={cn(
+                        "flex items-center justify-between p-2 rounded-xl border border-slate-100 bg-slate-50/50 transition-all",
+                        hasDetails && "cursor-pointer hover:bg-slate-100/80"
+                      )}
+                      onClick={() => hasDetails && toggleJurorConceptExpand(item.conceptId)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+                        <span className="text-[11px] font-bold text-slate-700">{item.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black text-slate-500">{(item.value * 100).toFixed(0)}%</span>
+                        {hasDetails && (
+                          <div className="text-slate-400">
+                            {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {isExpanded && detailIds.length > 0 && (
+                      <div className="ml-4 space-y-1 border-l-2 border-slate-100 pl-3">
+                        {detailIds.map(dId => {
+                          const weight = analysis.jurorVectorsDetail?.[node.label]?.[dId] || 0;
+                          if (weight <= 0) return null;
+                          const detail = analysis.detailConcepts?.find(dc => dc.id === dId);
+                          return (
+                            <div key={dId} className="flex items-center justify-between py-1 px-2 rounded-lg bg-white border border-slate-50">
+                              <span className="text-[10px] font-medium text-slate-600">{detail?.label || dId}</span>
+                              <span className="text-[9px] font-bold text-indigo-500">{(weight * 100).toFixed(0)}%</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </TabsContent>
 
@@ -253,6 +322,40 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
           </div>
           <SentenceList sentences={jurorSentences} />
         </TabsContent>
+
+        <TabsContent value="anchors" className="space-y-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-tight">Anchored Axes</h3>
+              <Badge variant="outline" className="text-[10px] text-slate-500 border-slate-200">
+                {analysis.anchorAxes?.length ?? 0} axes
+              </Badge>
+            </div>
+            {(!analysis.anchorAxes || analysis.anchorAxes.length === 0) && (
+              <p className="text-[11px] text-slate-500">No anchor axes configured.</p>
+            )}
+            {analysis.anchorAxes && analysis.anchorAxes.length > 0 && (
+              <div className="space-y-2">
+                {analysis.anchorAxes.map((axis) => {
+                  const score = analysis.anchorAxisScores?.jurors?.[jurorName]?.[axis.id] ?? 0;
+                  return (
+                    <div key={axis.id} className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                      <div>
+                        <div className="text-[11px] font-semibold text-slate-800">{axis.name}</div>
+                        <div className="text-[10px] text-slate-500">
+                          {axis.negativePole.label} ↔ {axis.positivePole.label}
+                        </div>
+                      </div>
+                      <Badge variant="secondary" className="text-[10px] bg-white text-slate-700 border-slate-200">
+                        {score.toFixed(2)}
+                      </Badge>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </TabsContent>
       </Tabs>
     );
   } else {
@@ -285,9 +388,14 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
     const sentenceCount = conceptSentences.length;
     const jurorCount = new Set(conceptSentences.map(s => s.juror)).size;
 
+    const isPrimary = node.layer === "primary";
+    const detailIds = analysis.conceptHierarchy?.[cid] || [];
+    const detailConcepts = (analysis.detailConcepts || []).filter(dc => detailIds.includes(dc.id));
+    const hasSubthemes = isPrimary && detailIds.length > 0;
+
     return (
       <Tabs defaultValue="insight" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-4">
+        <TabsList className={cn("grid w-full mb-4", hasSubthemes ? "grid-cols-6" : "grid-cols-5")}>
           <TabsTrigger 
             value="insight" 
             className="text-[10px] uppercase font-bold px-1 group data-[state=active]:text-white data-[state=active]:bg-[var(--active-color)] data-[state=active]:shadow-lg"
@@ -304,6 +412,16 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
             <Fingerprint className="h-3 w-3 mr-1" />
             Terms
           </TabsTrigger>
+          {hasSubthemes && (
+            <TabsTrigger 
+              value="subthemes" 
+              className="text-[10px] uppercase font-bold px-1 group data-[state=active]:text-white data-[state=active]:bg-[var(--active-color)] data-[state=active]:shadow-lg"
+              style={{ "--active-color": nodeColor } as any}
+            >
+              <Layers className="h-3 w-3 mr-1" />
+              Subthemes
+            </TabsTrigger>
+          )}
           <TabsTrigger 
             value="contributors" 
             className="text-[10px] uppercase font-bold px-1 group data-[state=active]:text-white data-[state=active]:bg-[var(--active-color)] data-[state=active]:shadow-lg"
@@ -316,6 +434,13 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
             >
               {jurorCount}
             </span>
+          </TabsTrigger>
+          <TabsTrigger 
+            value="anchors" 
+            className="text-[10px] uppercase font-bold px-1 group data-[state=active]:text-white data-[state=active]:bg-[var(--active-color)] data-[state=active]:shadow-lg"
+            style={{ "--active-color": nodeColor } as any}
+          >
+            Anchors
           </TabsTrigger>
           <TabsTrigger 
             value="sentences" 
@@ -338,7 +463,7 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
                   <Badge variant="outline" className="border-none p-0 text-white text-[9px]">AI</Badge>
                 </div>
                 <div>
-                  <h3 className="text-[10px] font-bold uppercase tracking-wider" style={{ color: nodeColor }}>Concept Insight</h3>
+                  <h3 className="text-[10px] font-bold uppercase tracking-wider" style={{ color: nodeColor }}>{isPrimary ? "Primary Concept" : "Concept Insight"}</h3>
                   <p className="text-[8px] text-indigo-500 font-medium opacity-70">Synthesized from feedback</p>
                 </div>
               </div>
@@ -425,6 +550,49 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
           </div>
         </TabsContent>
 
+        {hasSubthemes && (
+          <TabsContent value="subthemes" className="space-y-4">
+            <div className="mb-2">
+              <h3 className="text-xs font-black text-slate-900 uppercase tracking-tight">Detail Subthemes</h3>
+              <p className="text-[9px] text-slate-500 font-medium">Granular concepts under this primary theme</p>
+            </div>
+            <ScrollArea className="h-[350px] w-full pr-4">
+              <div className="space-y-3">
+                {detailConcepts.map(detail => (
+                  <div key={detail.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                    <div className="mb-2 flex items-center justify-between">
+                      <Badge variant="outline" className="text-[11px] font-bold border-indigo-200 text-indigo-700 bg-indigo-50/30">
+                        {detail.label}
+                      </Badge>
+                      <div className="flex gap-1.5">
+                        <Badge variant="secondary" className="text-[9px] bg-slate-100 text-slate-500 border-none">
+                          W={detail.weight?.toFixed(1)}
+                        </Badge>
+                      </div>
+                    </div>
+                    
+                    {detail.topTerms && (
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        {detail.topTerms.slice(0, 8).map(term => (
+                          <span key={term} className="text-[9px] font-medium text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
+                            {term}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {detail.representativeSentences?.[0] && (
+                      <p className="text-[10px] text-slate-600 italic border-l-2 border-indigo-100 pl-2">
+                        "{detail.representativeSentences[0]}"
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </TabsContent>
+        )}
+
         <TabsContent value="fingerprint" className="space-y-4">
           <div 
             className="rounded-2xl border p-4 shadow-sm"
@@ -488,6 +656,40 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
               </ResponsiveContainer>
             </div>
             <p className="mt-2 text-[9px] text-slate-500 italic">Jurors most strongly connected to this concept.</p>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="anchors" className="space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-tight">Anchored Axes</h3>
+              <Badge variant="outline" className="text-[10px] text-slate-500 border-slate-200">
+                {analysis.anchorAxes?.length ?? 0} axes
+              </Badge>
+            </div>
+            {(!analysis.anchorAxes || analysis.anchorAxes.length === 0) && (
+              <p className="text-[11px] text-slate-500">No anchor axes configured.</p>
+            )}
+            {analysis.anchorAxes && analysis.anchorAxes.length > 0 && (
+              <div className="space-y-2">
+                {analysis.anchorAxes.map((axis) => {
+                  const score = analysis.anchorAxisScores?.concepts?.[cid]?.[axis.id] ?? 0;
+                  return (
+                    <div key={axis.id} className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                      <div>
+                        <div className="text-[11px] font-semibold text-slate-800">{axis.name}</div>
+                        <div className="text-[10px] text-slate-500">
+                          {axis.negativePole.label} ↔ {axis.positivePole.label}
+                        </div>
+                      </div>
+                      <Badge variant="secondary" className="text-[10px] bg-white text-slate-700 border-slate-200">
+                        {score.toFixed(2)}
+                      </Badge>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </TabsContent>
 
