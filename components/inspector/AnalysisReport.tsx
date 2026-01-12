@@ -461,7 +461,7 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
       return `ANALYSIS PARAMETERS
 ${separator}
 kConcepts: ${p.kConcepts} | minEdgeWeight: ${p.minEdgeWeight} | similarityThreshold: ${p.similarityThreshold}
-clusteringMode: ${p.clusteringMode} | autoK: ${p.autoK} | softMembership: ${p.softMembership}
+clusteringMode: ${p.clusteringMode} | autoK: ${p.autoK} | clusterSeed: ${p.clusterSeed} | softMembership: ${p.softMembership}
 semanticWeight: ${p.semanticWeight} | frequencyWeight: ${p.frequencyWeight} | dimensionMode: ${p.dimensionMode}
 appliedDimensions: ${p.appliedNumDimensions} | varianceThreshold: ${p.varianceThreshold}
 Model: ${rawExportContext.selectedModel} | Export: ${rawExportContext.exportTimestamp || new Date().toISOString()}`;
