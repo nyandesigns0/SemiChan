@@ -60,6 +60,7 @@ export function evaluateKRange(
   const actualKMax = Math.max(kMin, Math.min(kMax, vectors.length - 1));
 
   const seeds = enableStability ? [seed, seed + 1, seed + 2] : [seed];
+  const comb2 = (n: number) => (n * (n - 1)) / 2;
 
   // Weight for balancing silhouette vs quality score
   const qualityWeight = 0.4;
@@ -68,15 +69,14 @@ export function evaluateKRange(
     let aggregateSilhouette = 0;
     let aggregateQuality = 0;
     let stabilityScore = 0;
-    let validRuns = 0;
+    const validAssignments: number[][] = [];
     let maxClusterShare = 0;
-    let valid = true;
 
-    const runAssignments: number[][] = [];
+    let validRuns = 0;
 
     for (const runSeed of seeds) {
       const result = kmeansCosine(vectors, k, 25, runSeed);
-      runAssignments.push(result.assignments);
+      let runValid = true;
 
       // 1. Calculate silhouette-lite score
       let totalSilhouette = 0;
@@ -114,26 +114,29 @@ export function evaluateKRange(
       // Minimum cluster size rules
       const tooSmall = sizes.filter((s) => s < 3).length;
       if (sizes.some((s) => s < 2) || tooSmall / (sizes.length || 1) > 0.25) {
-        valid = false;
-        continue;
+        runValid = false;
       }
 
       // 2. Calculate quality score using constraints
-      const quality = evaluateCutQuality(
-        result.assignments,
-        sentences,
-        result.centroids,
-        qualityParams
-      );
+      const quality = runValid
+        ? evaluateCutQuality(
+            result.assignments,
+            sentences,
+            result.centroids,
+            qualityParams
+          )
+        : undefined;
 
-      if (!quality.isValid) {
-        valid = false;
-        continue;
+      if (!quality?.isValid) {
+        runValid = false;
       }
 
-      validRuns++;
-      aggregateSilhouette += silhouetteScore;
-      aggregateQuality += quality.score;
+      if (runValid) {
+        validRuns++;
+        aggregateSilhouette += silhouetteScore;
+        aggregateQuality += quality!.score;
+        validAssignments.push(result.assignments);
+      }
     }
 
     if (validRuns === 0) {
@@ -155,17 +158,17 @@ export function evaluateKRange(
     // Combined score: silhouette balances separation, quality balances support/redundancy
     const combinedScore = avgSilhouette * (1 - qualityWeight) + avgQuality * qualityWeight;
 
-    // Stability score via average pairwise overlap between runs
-    if (enableStability && runAssignments.length > 1) {
-      let totalOverlap = 0;
+    // Stability score via adjusted Rand index across valid runs
+    if (enableStability && validAssignments.length > 1) {
+      let totalAgreement = 0;
       let comparisons = 0;
-      for (let i = 0; i < runAssignments.length; i++) {
-        for (let j = i + 1; j < runAssignments.length; j++) {
-          totalOverlap += assignmentOverlap(runAssignments[i], runAssignments[j]);
+      for (let i = 0; i < validAssignments.length; i++) {
+        for (let j = i + 1; j < validAssignments.length; j++) {
+          totalAgreement += adjustedRandIndex(validAssignments[i], validAssignments[j], comb2);
           comparisons++;
         }
       }
-      stabilityScore = comparisons > 0 ? totalOverlap / comparisons : 0;
+      stabilityScore = comparisons > 0 ? totalAgreement / comparisons : 0;
     }
 
     // Dominance penalty
@@ -188,7 +191,7 @@ export function evaluateKRange(
       maxClusterShare,
       stabilityScore: enableStability ? stabilityScore : undefined,
       quality: { score: avgQuality },
-      valid,
+      valid: validRuns > 0,
     });
   }
 
@@ -253,14 +256,52 @@ export function evaluateKRange(
 }
 
 /**
- * Compute average overlap between two assignment arrays as Jaccard on pairs.
+ * Adjusted Rand Index between two assignment arrays.
+ * Handles label permutation invariance and normalizes for chance.
  */
-function assignmentOverlap(a: number[], b: number[]): number {
+function adjustedRandIndex(
+  a: number[],
+  b: number[],
+  comb2: (n: number) => number = (n) => (n * (n - 1)) / 2
+): number {
   if (a.length !== b.length || a.length === 0) return 0;
-  let same = 0;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] === b[i]) same++;
-  }
-  return same / a.length;
-}
 
+  const n = a.length;
+  const contingency = new Map<string, number>();
+  const countA = new Map<number, number>();
+  const countB = new Map<number, number>();
+
+  for (let i = 0; i < n; i++) {
+    const ca = a[i];
+    const cb = b[i];
+    countA.set(ca, (countA.get(ca) ?? 0) + 1);
+    countB.set(cb, (countB.get(cb) ?? 0) + 1);
+    const key = `${ca}::${cb}`;
+    contingency.set(key, (contingency.get(key) ?? 0) + 1);
+  }
+
+  let sumComb = 0;
+  contingency.forEach((cnt) => {
+    sumComb += comb2(cnt);
+  });
+
+  let sumAComb = 0;
+  countA.forEach((cnt) => {
+    sumAComb += comb2(cnt);
+  });
+
+  let sumBComb = 0;
+  countB.forEach((cnt) => {
+    sumBComb += comb2(cnt);
+  });
+
+  const totalComb = comb2(n);
+  if (totalComb === 0) return 0;
+
+  const expectedIndex = (sumAComb * sumBComb) / totalComb;
+  const maxIndex = 0.5 * (sumAComb + sumBComb);
+  const denom = maxIndex - expectedIndex;
+  if (denom === 0) return 0;
+
+  return (sumComb - expectedIndex) / denom;
+}

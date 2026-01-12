@@ -18,7 +18,8 @@ export function computeSoftMembership(
     temperature?: number;
     minWeight?: number;
     entropyCap?: number;
-  } = {}
+  } = {},
+  conceptIds?: string[]
 ): Array<Array<{ conceptId: string; weight: number }>> {
   const {
     temperature = 1.0,
@@ -32,7 +33,7 @@ export function computeSoftMembership(
       // Apply temperature sharpening: lower temperature = sharper distribution
       // similarity = Math.max(0, sim) / temperature
       return {
-        conceptId: `concept:${idx}`,
+        conceptId: conceptIds?.[idx] ?? `concept:${idx}`,
         similarity: Math.max(0, sim) / temperature
       };
     });
@@ -92,7 +93,6 @@ function computeWeightEntropy(weights: number[]): number {
   const maxEnt = Math.log2(weights.length);
   return maxEnt > 0 ? ent / maxEnt : 0;
 }
-
 
 
 

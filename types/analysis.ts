@@ -9,6 +9,7 @@ export interface SentenceRecord {
   stance: Stance;
   conceptId?: string;
   conceptMembership?: Array<{ conceptId: string; weight: number }>;
+  chunkIds?: string[];
 }
 
 export interface AnalysisCheckpoint {
@@ -18,15 +19,33 @@ export interface AnalysisCheckpoint {
   links: GraphLink[];
 }
 
+export interface ContextualUnit {
+  id: string;
+  sentences: string[];
+  sentenceIndices: number[];
+  text: string;
+}
+
 export interface Concept {
   id: string; 
+  stableId?: string;
   label: string; 
   shortLabel?: string;
   summary?: string;
   size: number; 
   topTerms: string[];
+  keyphrases?: string[];
   representativeSentences?: string[];
   weight?: number; // Optional total weight
+}
+
+export interface ConceptSet {
+  cut: "primary" | "detail" | number;
+  assignments: number[];
+  centroids: Float64Array[];
+  stableIds: string[];
+  parentMap?: Record<number, number>;
+  unitType?: "sentence" | "chunk";
 }
 
 export interface AnalysisResult {
@@ -35,6 +54,7 @@ export interface AnalysisResult {
   primaryConcepts?: Concept[];
   detailConcepts?: Concept[];
   conceptHierarchy?: Record<string, string[]>; // primaryId -> detailIds[]
+  conceptSets?: ConceptSet[];
   sentences: SentenceRecord[];
   jurorVectors: Record<string, Record<string, number>>; // juror -> conceptId -> weight (Primary)
   jurorVectorsDetail?: Record<string, Record<string, number>>; // juror -> conceptId -> weight (Detail)
@@ -84,4 +104,6 @@ export interface AnalysisResult {
     concepts: Record<string, Record<string, number>>;
     jurors: Record<string, Record<string, number>>;
   };
+  chunks?: ContextualUnit[];
+  chunkAssignments?: string[];
 }

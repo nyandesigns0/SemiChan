@@ -77,10 +77,14 @@ export function projectToAnchorAxes(vector: Float64Array, axes: AnchorAxis[]): R
   return scores;
 }
 
-export function projectConceptCentroids(centroids: Float64Array[], axes: AnchorAxis[]): Record<string, Record<string, number>> {
+export function projectConceptCentroids(
+  centroids: Float64Array[],
+  axes: AnchorAxis[],
+  conceptIds?: string[]
+): Record<string, Record<string, number>> {
   const result: Record<string, Record<string, number>> = {};
   centroids.forEach((centroid, idx) => {
-    const conceptId = `concept:${idx}`;
+    const conceptId = conceptIds?.[idx] ?? `concept:${idx}`;
     result[conceptId] = projectToAnchorAxes(centroid, axes);
   });
   return result;
@@ -89,9 +93,10 @@ export function projectConceptCentroids(centroids: Float64Array[], axes: AnchorA
 export function projectJurorVectors(
   jurorVectors: Record<string, Record<string, number>>,
   conceptCentroids: Float64Array[],
-  axes: AnchorAxis[]
+  axes: AnchorAxis[],
+  conceptIds?: string[]
 ): Record<string, Record<string, number>> {
-  const conceptScores = projectConceptCentroids(conceptCentroids, axes);
+  const conceptScores = projectConceptCentroids(conceptCentroids, axes, conceptIds);
   const result: Record<string, Record<string, number>> = {};
 
   for (const [juror, vec] of Object.entries(jurorVectors)) {

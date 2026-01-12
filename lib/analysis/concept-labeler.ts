@@ -1,4 +1,5 @@
 import type { BM25Model } from "@/types/nlp";
+import { extractClusterKeyphrases } from "@/lib/nlp/keyphrase-extractor";
 
 const STEM_SUFFIXES = ["ation", "ition", "tion", "sion", "ingly", "edly", "ing", "ed", "est", "er", "ly", "es", "s"];
 
@@ -15,15 +16,8 @@ function stemTerm(term: string): string {
 }
 
 /**
- * Generate concept labels using contrastive BM25 scoring.
- * Finds terms that are frequent in this cluster but infrequent in others.
- * 
- * @param semanticCentroid - Centroid in semantic space (for future topic filtering if needed)
- * @param bm25Model - BM25 model with frequency vectors and vocab
- * @param sentencesInCluster - Sentences assigned to this cluster
- * @param allSentences - All sentences in the corpus
- * @param topNCount - Number of terms to include in the label
- * @returns Combined label string
+ * Generate concept labels prioritizing cluster-specific keyphrases and contrastive terms.
+ * Finds phrases that are prevalent within the cluster and distinctive relative to the corpus.
  */
 export function contrastiveLabelCluster(
   semanticCentroid: Float64Array,
@@ -31,7 +25,13 @@ export function contrastiveLabelCluster(
   sentencesInCluster: string[],
   allSentences: string[],
   topNCount: number = 4
-): string {
+): { label: string; keyphrases: string[]; terms: string[] } {
+  const keyphrases = extractClusterKeyphrases(
+    sentencesInCluster,
+    allSentences,
+    Math.max(topNCount * 2, 8)
+  );
+
   const terms = getClusterTopTerms(
     semanticCentroid,
     bm25Model,
@@ -40,27 +40,38 @@ export function contrastiveLabelCluster(
     Math.max(topNCount * 2, 8)
   );
 
-  if (terms.length === 0) return "Concept";
-
   const seenStems = new Set<string>();
   const deduped: string[] = [];
 
-  for (const term of terms) {
-    const stem = stemTerm(term);
-    if (!stem) continue;
-    if (seenStems.has(stem)) continue;
-    const normalized = term.toLowerCase();
+  const addCandidate = (phrase: string) => {
+    const stem = stemTerm(phrase);
+    if (!stem) return;
+    if (seenStems.has(stem)) return;
+    const normalized = phrase.toLowerCase();
     const isSubstringDuplicate = deduped.some((t) => {
       const tNorm = t.toLowerCase();
       return tNorm.includes(normalized) || normalized.includes(tNorm);
     });
-    if (isSubstringDuplicate) continue;
+    if (isSubstringDuplicate) return;
     seenStems.add(stem);
-    deduped.push(term);
+    deduped.push(phrase);
+  };
+
+  for (const phrase of keyphrases) {
+    addCandidate(phrase);
     if (deduped.length >= topNCount) break;
   }
 
-  return deduped.join(" Aú ");
+  if (deduped.length < topNCount) {
+    for (const term of terms) {
+      addCandidate(term);
+      if (deduped.length >= topNCount) break;
+    }
+  }
+
+  const label = deduped.length > 0 ? deduped.slice(0, topNCount).join(" · ") : "Concept";
+
+  return { label, keyphrases, terms };
 }
 
 /**
@@ -88,20 +99,15 @@ export function getClusterTopTerms(
 /**
  * Compute contrastive term scores for a group of sentences relative to the rest of the corpus.
  * Finds terms that are frequent and prevalent in the group but rare elsewhere.
- * 
- * @param sentencesInGroup - Texts in the focus group (e.g., a cluster or a juror's sentences)
- * @param allSentences - All texts in the corpus
- * @param bm25Model - Pre-built BM25 model
- * @param minDF - Minimum cluster document frequency (default 2)
- * @param maxDFPercent - Maximum cluster document frequency percent (default 0.8)
  */
 export function computeContrastiveTermScores(
   sentencesInGroup: string[],
   allSentences: string[],
   bm25Model: BM25Model,
   minDF: number = 2,
-  maxDFPercent: number = 0.8
-): Array<{ term: string; score: number; df: number }> {
+  maxDFPercent: number = 0.8,
+  ratioThreshold: number = 1.5
+): Array<{ term: string; score: number; df: number; ratio: number; prevalence: number }> {
   if (sentencesInGroup.length === 0 || bm25Model.ngramVocab.length === 0) return [];
 
   const vocabSize = bm25Model.ngramVocab.length;
@@ -157,18 +163,19 @@ export function computeContrastiveTermScores(
   const maxDFCount = Math.ceil(sentencesInGroup.length * maxDFPercent);
   
   return bm25Model.ngramVocab.map((term, i) => {
-    // Prevalence weight: how many sentences in this group contain the term
     const prevalence = localDF[i] / sentencesInGroup.length;
-    
-    // Contrastive score: TF advantage weighted by group prevalence
-    const score = (localTF[i] - otherTF[i]) * prevalence;
+    const tfAdvantage = localTF[i] - otherTF[i];
+    const ratio = otherTF[i] > 0 ? localTF[i] / otherTF[i] : localTF[i];
+    const score = tfAdvantage * prevalence * Math.log2(Math.max(ratio, 1) + 1);
     
     return {
       term,
       score,
-      df: localDF[i]
+      df: localDF[i],
+      ratio,
+      prevalence,
     };
   })
-  .filter(t => t.df >= minDF && t.df <= maxDFCount && t.score > 0)
+  .filter(t => t.df >= minDF && t.df <= maxDFCount && t.score > 0 && t.ratio >= ratioThreshold)
   .sort((a, b) => b.score - a.score);
 }

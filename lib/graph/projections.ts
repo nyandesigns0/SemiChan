@@ -85,7 +85,7 @@ export function buildConceptSimilarityLinks(
       const sim = cosine(centroids[i], centroids[j]);
       if (sim >= threshold) {
         links.push({
-          id: `sim:concept:${i}__concept:${j}`,
+          id: `sim:${ca}__${cb}`,
           source: ca,
           target: cb,
           weight: sim,

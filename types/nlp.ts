@@ -45,6 +45,11 @@ export interface BM25Model {
   vectors: Float64Array[];
 }
 
+export interface BM25Channels {
+  consensus: BM25Model;
+  discriminative: BM25Model;
+}
+
 /**
  * Sentence embedding model result
  */
