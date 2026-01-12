@@ -26,7 +26,7 @@ export type EvaluateKRangeOptions = {
  * Evaluate a range of K values using both silhouette-like separation scores
  * and hierarchical cut quality constraints.
  * 
- * @param vectors - Array of hybrid vectors
+ * @param vectors - Array of vectors (embeddings for the units being clustered)
  * @param sentences - Corresponding sentence records (for juror support)
  * @param kMin - Minimum K to check
  * @param kMax - Maximum K to check

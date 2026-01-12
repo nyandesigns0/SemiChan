@@ -65,7 +65,7 @@ export function AnchorAxesPanel({ axes, onChange }: AnchorAxesPanelProps) {
           <p className="text-xs font-bold text-slate-800">Anchored Axes</p>
           <p className="text-[10px] text-slate-500">Define interpretable semantic directions</p>
         </div>
-        <Button variant="outline" size="sm" onClick={addAxis} className="h-8 px-2 text-xs">
+        <Button variant="outline" onClick={addAxis} className="h-8 px-2 text-xs">
           <Plus className="mr-1 h-3 w-3" />
           Add Axis
         </Button>
@@ -86,8 +86,8 @@ export function AnchorAxesPanel({ axes, onChange }: AnchorAxesPanelProps) {
               placeholder="Axis name (e.g., Pragmatic vs Aesthetic)"
               className="h-8 text-sm"
             />
-            <Button variant="ghost" size="icon" onClick={() => removeAxis(idx)}>
-              <Trash2 className="h-4 w-4 text-slate-400" />
+            <Button variant="ghost" onClick={() => removeAxis(idx)} className="h-8 w-8 p-0">
+              <Trash2 className="h-4 w-4 text-slate-400 mx-auto" />
             </Button>
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

@@ -18,7 +18,7 @@ interface AnalysisControlsAccordionProps {
   
   // New props
   clusteringMode: "kmeans" | "hierarchical";
-  onClusteringModeChange: (mode: "kmeans" | "hierarchical" | "hybrid") => void;
+  onClusteringModeChange: (mode: "kmeans" | "hierarchical") => void;
   autoK: boolean;
   onAutoKChange: (value: boolean) => void;
   clusterSeed: number;

@@ -82,7 +82,7 @@ export function DesignerInputPanel({ blocks, onChange }: DesignerInputPanelProps
               placeholder="Add image by URL"
               className="h-8 text-sm"
             />
-            <Button size="sm" variant="outline" onClick={addImageFromUrl} className="h-8">
+            <Button variant="outline" onClick={addImageFromUrl} className="h-8 px-3 text-sm">
               Add URL
             </Button>
           </div>
@@ -98,7 +98,7 @@ export function DesignerInputPanel({ blocks, onChange }: DesignerInputPanelProps
                 onChange={(e) => handleFiles(e.target.files)}
               />
             </label>
-            <Button size="sm" onClick={addBlock} className="h-9">
+            <Button onClick={addBlock} className="h-9 px-3 text-sm">
               Add Designer
             </Button>
           </div>
@@ -112,8 +112,8 @@ export function DesignerInputPanel({ blocks, onChange }: DesignerInputPanelProps
               <Badge variant="secondary" className="bg-emerald-50 text-emerald-700">
                 {block.designer}
               </Badge>
-              <Button variant="ghost" size="icon" onClick={() => removeBlock(idx)}>
-                <Trash2 className="h-4 w-4 text-slate-400" />
+              <Button variant="ghost" onClick={() => removeBlock(idx)} className="h-8 w-8 p-0">
+                <Trash2 className="h-4 w-4 text-slate-400 mx-auto" />
               </Button>
             </div>
             {block.text && <p className="text-xs text-slate-700">{block.text}</p>}

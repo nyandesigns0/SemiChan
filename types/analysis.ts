@@ -77,7 +77,7 @@ export interface AnalysisResult {
     valid: boolean;
   }>;
   autoKReasoning?: string;
-  clusteringMode?: "kmeans" | "hierarchical" | "hybrid";
+  clusteringMode?: "kmeans" | "hierarchical";
   checkpoints?: AnalysisCheckpoint[];
   requestedNumDimensions?: number;
   appliedNumDimensions?: number;

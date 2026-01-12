@@ -35,7 +35,7 @@ jury-concept-graph/
 
 - **Text Ingestion**: Paste text or upload PDF/TXT files
 - **Juror Segmentation**: Automatic detection and segmentation of juror comments
-- **Hybrid Analysis**: Combines semantic embeddings (Transformer-based) with BM25 frequency vectors for rich concept discovery
+- **Semantic Analysis**: Uses sentence embeddings with BM25 frequency signals for rich concept discovery
 - **Advanced Clustering**: Hierarchical clustering (default) or K-Means with automatic K recommendation and soft membership support
 - **Interactive 3D Graph**: WebGL-powered 3D visualization with PCA-based dimensionality reduction
 - **Explainability**: Every edge links to supporting evidence excerpts with stance classification (praise, critique, suggestion, neutral)
@@ -66,7 +66,7 @@ The application follows a clean separation of concerns:
 ### API Routes
 
 - `POST /api/segment` - Segments raw text into juror blocks
-- `POST /api/analyze` - Performs hybrid semantic-frequency analysis and clustering
+- `POST /api/analyze` - Performs semantic-frequency analysis and clustering
 - `POST /api/analyze/axis-labels` - Generates AI-enhanced axis labels for 3D visualization
 - `POST /api/synthesize` - Synthesizes concept summaries using AI
 - `POST /api/export-pdf` - Exports analysis results as PDF
@@ -85,7 +85,7 @@ The application follows a clean separation of concerns:
 - **Tailwind CSS** - Styling
 - **React Three Fiber** - 3D graph visualization
 - **@xenova/transformers** - Semantic embeddings (all-MiniLM-L6-v2)
-- **wink-bm25-text-search** - BM25 frequency analysis
+- **wink-bm25-text-search** - BM25 frequency analysis for labeling/evidence
 - **Recharts** - Data visualization
 - **pdfjs-dist** - PDF parsing
 
@@ -101,4 +101,3 @@ The codebase is organized for maintainability:
 ## License
 
 MIT
-

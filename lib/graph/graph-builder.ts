@@ -205,7 +205,7 @@ export async function buildAnalysis(
     });
   });
 
-  // Build hybrid vectors: semantic embeddings + BM25 frequency
+  // Build embeddings and BM25 frequency channels
   const [sentenceEmbeddingResult, chunkEmbeddingResult, bm25Models] = await Promise.all([
     embedSentences(docs),
     embedSentences(chunkTexts),
