@@ -19,15 +19,19 @@ graph TD
     
     NgramPath --> BM25[7.1 BM25 Frequency Vectors<br/>Cross-Juror Word Frequencies]
     EmbedPath --> SemanticVecs[6.1 384-dim Semantic Vectors<br/>Meaning Representation]
-    BM25 --> Hybrid[7. Hybrid Vector Construction<br/>Combined Representation]
-    SemanticVecs --> Hybrid
     
-    Hybrid --> Clustering[8. Clustering<br/>Hierarchical (default) or K-Means]
+    SemanticVecs --> Clustering[8. Clustering<br/>Hierarchical (default) or K-Means]
     Clustering --> Centroids[8.1 Cluster Centroids<br/>Theme Centers]
     Clustering --> Assignments[8.2 Sentence Assignments<br/>Which Concept Each Sentence Belongs To]
     
-    Centroids --> Labeling[9. Concept Labeling<br/>Extract Top N-grams from Centroids]
+    Centroids --> Labeling[9. Concept Labeling<br/>Contrastive BM25 Scoring]
+    BM25 --> Labeling
     Labeling --> ConceptNodes[9.1 Concept Nodes<br/>Large Nodes with Labels]
+    
+    Centroids --> EvidenceRanking[10. Evidence Ranking<br/>Semantic Coherence + BM25 Salience]
+    BM25 --> EvidenceRanking
+    Assignments --> EvidenceRanking
+    EvidenceRanking --> ConceptNodes
     
     Centroids --> ConceptSim[12.4 Concept Similarity Calculation<br/>Cosine Similarity]
     ConceptSim --> ConceptConceptLinks[12.5 Concept-Concept Links<br/>Purple Color<br/>Related Themes]
@@ -277,80 +281,56 @@ Unlike standard TF-IDF, this implementation prioritizes n-grams that appear acro
 
 ---
 
-## Step 8: Hybrid Vector Construction
-**Plain Language:** The semantic meaning and the word frequencies are combined into one master "fingerprint."
+## Step 8: Clustering (Semantic-Only)
+**Plain Language:** Similar sentences from all jurors are grouped together into "Concepts" based on their meaning.
 
-**Technical Detail:** The system performs a weighted concatenation of the 384-dimensional semantic embedding and the variable-length BM25 frequency vector. Each component is multiplied by its respective user-defined weight (`semanticWeight` and `frequencyWeight`) to control the influence of "meaning" versus "exact wording." The resulting high-dimensional vector is then re-normalized to unit length using L2 normalization, creating a final "hybrid" representation that the clustering algorithm can use to find groups that are both semantically and lexically similar.
+**Technical Detail:** The system supports multiple clustering algorithms using **unit-length semantic vectors**, governed by a **strict deterministic pipeline** to ensure reproducible results. By using purely semantic vectors for clustering, the system ensures that cluster boundaries are defined by meaning rather than specific word frequencies, preventing "label bleed" and "mega-concepts" driven by common technical terms.
 
-**Location:** `lib/analysis/hybrid-vectors.ts` (`buildHybridVectors`)
-
-### Explanation
-This step blends "what it means" (Semantic) with "what words it uses" (Frequency). The user can adjust the balance via `semanticWeight` and `frequencyWeight` parameters.
-*   **Formula:** $V_{hybrid} = Normalize([w_{sem} \cdot V_{sem}, w_{freq} \cdot V_{freq}])$
-
-### Example Tracking
-*   **Sentence A:** "I appreciated the careful attention to daylight and the sun path."
-*   **A* (Explanation):** Semantic and frequency vectors are concatenated using a 0.7/0.3 weighting scheme to prioritize underlying meaning over specific words.
-*   **Sentence B1:** "The geometry creates unique light conditions"
-*   **B1* (Explanation):** Combined into a single unit-length vector that captures both the architectural concept and the specific terminology.
-*   **Sentence B2:** "indirect lighting and shadows form a serene atmosphere."
-*   **B2* (Explanation):** Combined into a single unit-length vector that captures both the architectural concept and the specific terminology.
-*   **State:** A final `Float64Array[]` containing one normalized hybrid vector for every sentence in the corpus. (Length: $384 + |Vocab|$).
-
----
-
-## Step 9: Clustering
-**Plain Language:** Similar sentences from all jurors are grouped together into "Concepts."
-
-**Technical Detail:** The system supports multiple clustering algorithms, all governed by a **strict deterministic pipeline** to ensure reproducible results.
-
-**Hierarchical Clustering (Default):** The system uses agglomerative hierarchical clustering as the default method, which builds a complete dendrogram tree of all possible cluster merges. This method is inherently deterministic as it relies on calculating distances between all pairs of vectors using cosine similarity.
+**Hierarchical Clustering (Default):** The system uses agglomerative hierarchical clustering as the default method, which builds a complete dendrogram tree of all possible cluster merges. This method is inherently deterministic as it relies on calculating distances between all pairs of semantic vectors using cosine similarity.
 - **Cut by Count:** The dendrogram is cut to produce exactly $K$ clusters (default mode).
 - **Cut by Granularity:** The dendrogram is cut at a distance threshold determined by a granularity percentage (0-100%), allowing the number of concepts to emerge naturally.
 
-**K-Means Clustering (Optional):** The system also supports K-Means clustering tailored for high-dimensional cosine similarity. It initializes $K$ centroids using a **seeded pseudo-random number generator (PRNG)** derived from the user's "Solution Seed". This ensures that for a given seed, the initial "picks" are always identical. The algorithm then iteratively performs two sub-steps: Assignment, where each sentence vector is assigned to the cluster with the highest cosine similarity to its centroid; and Update, where each centroid is re-calculated as the normalized average of all vectors assigned to it. This process continues for up to 25 iterations or until assignments stop changing.
+**K-Means Clustering (Optional):** The system also supports K-Means clustering tailored for high-dimensional semantic cosine similarity. It initializes $K$ centroids using a **seeded pseudo-random number generator (PRNG)** derived from the user's "Solution Seed".
 
-**Auto-K Recommendation (Default: Enabled):** When enabled, the system automatically evaluates a range of cluster counts ($K_{min}$ to $K_{max}$) and recommends an optimal value based on separation metrics. This helps users identify the most appropriate number of concepts for their data.
-
-**Soft Membership (Default: Enabled):** By default, sentences can belong to multiple concepts with fractional weights (top-$N$ concepts, default $N=2$). This allows for more nuanced representation where sentences can be partially associated with multiple themes, reflecting the natural overlap in architectural discourse.
+**Auto-K Recommendation (Default: Enabled):** When enabled, the system automatically evaluates a range of cluster counts ($K_{min}$ to $K_{max}$) and recommends an optimal value based on semantic separation metrics.
 
 **Location:** `lib/analysis/kmeans.ts` (`kmeansCosine`), `lib/analysis/hierarchical-clustering.ts` (`buildDendrogram`, `cutDendrogramByCount`, `cutDendrogramByThreshold`), `lib/analysis/cluster-eval.ts` (`evaluateKRange`), `lib/analysis/soft-membership.ts` (`computeSoftMembership`)
 
 ### Explanation
-**Hierarchical:** The algorithm builds a complete tree of all possible merges, then cuts it at a chosen level. This allows exploration of the data at different granularities—you can "zoom in" to see fine distinctions or "zoom out" to see broader themes. The granularity-based approach is particularly intuitive for exploring how concepts naturally emerge at different scales.
-
-**K-Means:** The algorithm iteratively assigns sentences to the nearest cluster center (centroid) and recomputes the centers until they stabilize. This effectively discovers emergent themes like "Lighting" or "Circulation" without being told what they are.
-
-**Soft Membership:** When enabled, sentences are assigned to their top-$N$ most similar concepts with normalized weights. This creates a more nuanced graph where jurors can have partial associations with multiple concepts, better reflecting the complexity of architectural feedback.
+**Semantic Clustering:** Unlike hybrid approaches, this clustering focuses entirely on "what it means." This creates more stable concept families that aren't distorted by how frequently certain words appear in the corpus.
 
 ### Example Tracking
 *   **Sentence A:** "I appreciated the careful attention to daylight and the sun path."
-*   **A* (Explanation):** Clustered into **Concept 2** because its hybrid vector is closest to the centroid representing "Daylight" and "Sun path".
+*   **A* (Explanation):** Clustered into **Concept 2** because its semantic meaning is closest to other sentences discussing solar orientation and lighting.
 *   **Sentence B1:** "The geometry creates unique light conditions"
-*   **B1* (Explanation):** Clustered into **Concept 2** because it shares the "Light conditions" theme with other sentences.
+*   **B1* (Explanation):** Clustered into **Concept 2** because it shares the "Light conditions" theme semantically.
 *   **Sentence B2:** "indirect lighting and shadows form a serene atmosphere."
-*   **B2* (Explanation):** Clustered into **Concept 2** because it shares the "Atmosphere" and "Light" theme.
+*   **B2* (Explanation):** Clustered into **Concept 2** because it shares the "Atmosphere" and "Light" theme semantically.
 *   **State (Assignments):** `assignments: [2, 2, 2, 0, 5, 2, 1]` (array of cluster indices for all sentences in the corpus).
-
-**Note:** When using hierarchical clustering with granularity-based cutting, the number of clusters ($K$) is determined dynamically based on the selected threshold, allowing the number of concepts to emerge naturally rather than being predetermined. When soft membership is enabled, sentence assignments include fractional weights across multiple concepts, which are then aggregated when computing juror-concept relationships.
 
 ---
 
-## Step 10: Concept Labeling
-**Plain Language:** The system gives each concept a name based on its most representative words.
+## Step 9: Contrastive Concept Labeling
+**Plain Language:** The system gives each concept a name by finding words that are unique to that group compared to the rest of the text.
 
-**Technical Detail:** Once clusters are formed, the system analyzes the "Frequency" portion of each hybrid centroid to identify the n-grams with the highest collective weights. It extracts the top 2 to 4 n-grams and semantic terms, performs a deduplication check to ensure labels like "light" and "light conditions" don't both appear, and joins the remaining high-value terms using a bullet separator (" · "). This results in a human-readable label that summarizes the dominant architectural theme of that specific cluster.
+**Technical Detail:** Once semantic clusters are formed, the system uses a **contrastive BM25 scoring** method to generate labels. For each cluster, it calculates the BM25 scores for all n-grams in the cluster's sentences and subtracts their average BM25 scores across all *other* clusters. This highlights "distinctive" terms that characterize the cluster's unique contribution to the corpus rather than just common words. The top 2 to 4 distinctive n-grams are joined using a bullet separator (" · ").
 
-**Location:** `lib/analysis/hybrid-concept-labeler.ts` (`hybridLabelCluster`), called from `lib/graph/graph-builder.ts` (around lines 179-184)
+**Location:** `lib/analysis/concept-labeler.ts` (`contrastiveLabelCluster`, `getClusterTopTerms`)
 
 ### Explanation
-The labeler looks at the "Frequency" portion of the hybrid centroid to pick out the most important BM25 n-grams. It joins the top 2-4 terms with " · " to create a readable label.
+The labeler compares "what is said here" vs "what is said everywhere else." This ensures that if every juror mentions "the building," it doesn't become a label for every concept. Instead, labels reflect the specific architectural sub-themes discovered in each cluster.
 
-### Example Tracking
-*   **Concept 2 (Analysis):** The centroid is analyzed to find the terms with the highest collective weights: "daylight" (semantic) and "light conditions" (n-gram).
-*   **Label Generation:** The system joins the top terms with a " · " separator to describe the discovered theme.
-*   **Final Label:** "daylight · light conditions · sun path"
-*   **State:** `conceptLabel: Map("concept:2" -> "daylight · light conditions · sun path")`
+---
+
+## Step 10: Evidence Ranking
+**Plain Language:** For each concept, the system picks the most representative sentences by checking both how well they fit the theme and how many important keywords they use.
+
+**Technical Detail:** Within each concept, sentences are ranked using a combined score of **Semantic Coherence** (cosine similarity to the semantic centroid) and **Frequency Salience** (how well the sentence represents the concept's distinctive BM25 terms). The user can adjust the weights for these two components via the "Evidence Ranking" settings. This ensures that the surfaced "evidence" is both on-topic and contains the terminology that gave the concept its label.
+
+**Location:** `lib/analysis/evidence-ranker.ts` (`rankEvidenceForConcept`)
+
+### Explanation
+This step selects the "best" sentences to show in the UI. A sentence that perfectly captures the "meaning" of a concept but uses very generic words might be ranked lower than one that captures the meaning *and* uses the specific technical terms identified in Step 9.
 
 ---
 
@@ -380,19 +360,19 @@ If Sarah Broadstock has 10 sentences and 3 are in the "Lighting" concept, her we
 ## Step 11.5: High-Dimensional Juror Vectors and Top Terms Extraction
 **Plain Language:** For each juror, we compute a high-dimensional vector representing their thematic focus and extract the most important terms that describe what they care about.
 
-**Technical Detail:** This combined step performs two related operations in a single loop for efficiency. First, for each juror, the system calculates a weighted average of all concept centroids using the normalized juror-concept weights from Step 11, then L2-normalizes the result to create a high-dimensional vector: $V_{juror} = Normalize(\Sigma_{c \in concepts} weight_{juror}[c] \times centroid[c])$. This vector represents the juror's position in the same semantic space as the concept centroids. Second, using the same `getClusterTopTerms()` function applied to concept centroids (Step 10), the system extracts the top 12 terms from each juror's high-dimensional vector by analyzing both the semantic portion (384 dimensions) and the frequency portion (n-gram vocabulary). These terms provide a human-readable summary of each juror's thematic interests, displayed in the inspector panel when a juror node is selected.
+**Technical Detail:** This combined step performs two related operations in a single loop for efficiency. First, for each juror, the system calculates a weighted average of all concept centroids using the normalized juror-concept weights from Step 11, then L2-normalizes the result to create a high-dimensional vector: $V_{juror} = Normalize(\Sigma_{c \in concepts} weight_{juror}[c] \times centroid[c])$. This vector represents the juror's position in the same semantic space as the concept centroids. Second, the system extracts top terms for each juror by analyzing their specific sentences using the **BM25 scores** from the corpus model. These terms provide a human-readable summary of each juror's thematic interests, displayed in the inspector panel when a juror node is selected.
 
-**Location:** `lib/graph/graph-builder.ts` (around lines 239-274), `lib/analysis/hybrid-concept-labeler.ts` (`getClusterTopTerms`)
+**Location:** `lib/graph/graph-builder.ts` (around lines 239-274)
 
 ### Explanation
-This step makes explicit the high-dimensional representation of each juror by combining their concept interests into a single vector, then extracts meaningful terms from that vector. The weighted average combines semantic and frequency information from all concepts a juror discussed, creating a comprehensive representation of their interests. The term extraction uses the same methodology as concept labeling (Step 10), ensuring consistency in how themes are identified.
+This step makes explicit the high-dimensional representation of each juror by combining their concept interests into a single vector, then extracts meaningful terms from that vector. The weighted average combines semantic information from all concepts a juror discussed, creating a comprehensive representation of their interests. The term extraction uses direct BM25 scoring on the juror's sentences to identify their most prominent vocabulary.
 
 **Formula:** $V_{juror} = Normalize(\Sigma_{c \in concepts} weight_{juror}[c] \times centroid[c])$
 
 ### Example Tracking
-*   **Sarah Broadstock:** Her high-dimensional vector is computed as $0.333 \times centroid[concept:2] + 0.667 \times centroid[concept:0]$ (assuming she also discussed another concept), then top terms like `["daylight", "sun path", "careful attention", "site response", "circulation"]` are extracted from this vector.
-*   **Sandra Baggerman:** Her high-dimensional vector is computed as $0.666 \times centroid[concept:2] + 0.334 \times centroid[concept:5]$ (assuming another concept), then top terms like `["light conditions", "serene atmosphere", "indirect lighting", "geometry", "shadows"]` are extracted.
-*   **State (Juror High-Dimensional Vectors and Top Terms):** Each juror now has an associated high-dimensional hybrid vector (same dimensionality as concept centroids, typically 384 + n-gram vocabulary size) and a `Record<string, string[]>` mapping juror names to arrays of top terms, stored in `AnalysisResult.jurorTopTerms`.
+*   **Sarah Broadstock:** Her high-dimensional vector is computed as $0.333 \times centroid[concept:2] + 0.667 \times centroid[concept:0]$ (assuming she also discussed another concept), then top terms like `["daylight", "sun path", "careful attention", "site response", "circulation"]` are extracted using BM25.
+*   **Sandra Baggerman:** Her high-dimensional vector is computed as $0.666 \times centroid[concept:2] + 0.334 \times centroid[concept:5]$ (assuming another concept), then top terms like `["light conditions", "serene atmosphere", "indirect lighting", "geometry", "shadows"]` are extracted using BM25.
+*   **State (Juror High-Dimensional Vectors and Top Terms):** Each juror now has an associated high-dimensional semantic vector (same dimensionality as concept centroids, 384 dimensions) and a `Record<string, string[]>` mapping juror names to arrays of top terms, stored in `AnalysisResult.jurorTopTerms`.
 
 ---
 

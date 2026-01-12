@@ -1,5 +1,5 @@
 import { kmeansCosine } from "./kmeans";
-import { hybridCosine } from "./hybrid-vectors";
+import { cosine } from "./tfidf";
 
 /**
  * Evaluate a range of K values using a silhouette-like separation score
@@ -38,13 +38,13 @@ export function evaluateKRange(
       const centroid = result.centroids[clusterIdx];
       
       // Cohesion: similarity to own centroid
-      const cohesion = hybridCosine(vectors[i], centroid);
+      const cohesion = cosine(vectors[i], centroid);
       
       // Separation: similarity to nearest OTHER centroid
       let maxOtherSim = -1;
       for (let c = 0; c < result.k; c++) {
         if (c === clusterIdx) continue;
-        const sim = hybridCosine(vectors[i], result.centroids[c]);
+        const sim = cosine(vectors[i], result.centroids[c]);
         if (sim > maxOtherSim) maxOtherSim = sim;
       }
       

@@ -11,13 +11,11 @@ interface AnalysisControlsAccordionProps {
   onMinEdgeWeightChange: (value: number) => void;
   similarityThreshold: number;
   onSimilarityThresholdChange: (value: number) => void;
-  semanticWeight: number;
-  onSemanticWeightChange: (value: number) => void;
-  frequencyWeight: number;
-  onFrequencyWeightChange: (value: number) => void;
+  evidenceRankingParams: { semanticWeight: number; frequencyWeight: number };
+  onEvidenceRankingParamsChange: (value: { semanticWeight: number; frequencyWeight: number }) => void;
   
   // New props
-  clusteringMode: "kmeans" | "hierarchical" | "hybrid";
+  clusteringMode: "kmeans" | "hierarchical";
   onClusteringModeChange: (mode: "kmeans" | "hierarchical" | "hybrid") => void;
   autoK: boolean;
   onAutoKChange: (value: boolean) => void;
@@ -47,10 +45,8 @@ export function AnalysisControlsAccordion({
   onMinEdgeWeightChange,
   similarityThreshold,
   onSimilarityThresholdChange,
-  semanticWeight,
-  onSemanticWeightChange,
-  frequencyWeight,
-  onFrequencyWeightChange,
+  evidenceRankingParams,
+  onEvidenceRankingParamsChange,
   clusteringMode,
   onClusteringModeChange,
   autoK,
@@ -101,10 +97,8 @@ export function AnalysisControlsAccordion({
             onMinEdgeWeightChange={onMinEdgeWeightChange}
             similarityThreshold={similarityThreshold}
             onSimilarityThresholdChange={onSimilarityThresholdChange}
-            semanticWeight={semanticWeight}
-            onSemanticWeightChange={onSemanticWeightChange}
-            frequencyWeight={frequencyWeight}
-            onFrequencyWeightChange={onFrequencyWeightChange}
+            evidenceRankingParams={evidenceRankingParams}
+            onEvidenceRankingParamsChange={onEvidenceRankingParamsChange}
             clusteringMode={clusteringMode}
             onClusteringModeChange={onClusteringModeChange}
             autoK={autoK}

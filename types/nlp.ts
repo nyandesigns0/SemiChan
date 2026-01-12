@@ -32,16 +32,6 @@ export interface BM25Model {
 }
 
 /**
- * Parameters for hybrid analysis (semantic + frequency)
- */
-export interface HybridAnalysisParams {
-  /** Weight for semantic embeddings (0.0 - 1.0) */
-  semanticWeight: number;
-  /** Weight for frequency/BM25 vectors (0.0 - 1.0) */
-  frequencyWeight: number;
-}
-
-/**
  * Sentence embedding model result
  */
 export interface SentenceEmbeddingResult {

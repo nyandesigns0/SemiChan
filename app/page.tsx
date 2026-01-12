@@ -65,15 +65,12 @@ export default function HomePage() {
   const [showSuggestion, setShowSuggestion] = useState(true);
   const [showNeutral, setShowNeutral] = useState(true);
 
-  // Hybrid analysis weights
-  const [semanticWeight, setSemanticWeight] = useState(0.5);
-  const [frequencyWeight, setFrequencyWeight] = useState(0.5);
-
   // New algorithm state
-  const [clusteringMode, setClusteringMode] = useState<"kmeans" | "hierarchical" | "hybrid">("hierarchical");
+  const [clusteringMode, setClusteringMode] = useState<"kmeans" | "hierarchical">("hierarchical");
   const [autoK, setAutoK] = useState(true);
   const [clusterSeed, setClusterSeed] = useState(42);
   const [softMembership, setSoftMembership] = useState(true);
+  const [evidenceRankingParams, setEvidenceRankingParams] = useState({ semanticWeight: 0.7, frequencyWeight: 0.3 });
   const [cutType, setCutType] = useState<"count" | "granularity">("count");
   const [granularityPercent, setGranularityPercent] = useState(50);
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
@@ -248,8 +245,7 @@ export default function HomePage() {
         kConcepts,
         minEdgeWeight,
         similarityThreshold,
-        semanticWeight,
-        frequencyWeight,
+        evidenceRankingParams,
         clusteringMode,
         autoK,
         clusterSeed,
@@ -283,8 +279,7 @@ export default function HomePage() {
     kConcepts,
     minEdgeWeight,
     similarityThreshold,
-    semanticWeight,
-    frequencyWeight,
+    evidenceRankingParams,
     clusteringMode,
     autoK,
     clusterSeed,
@@ -344,7 +339,7 @@ export default function HomePage() {
 
       setLoadingAnalysis(true);
       console.log(`[Analysis] Starting analysis with model: ${selectedModel}`, { kConcepts, clusteringMode });
-      addLog("api_request", `Starting analysis (k=${kConcepts}, mode=${clusteringMode})`);
+      addLog("api_request", `Starting semantic analysis (k=${kConcepts}, mode=${clusteringMode})`);
       try {
         const response = await fetch("/api/analyze", {
           method: "POST",
@@ -353,8 +348,7 @@ export default function HomePage() {
             blocks: jurorBlocks,
             kConcepts,
             similarityThreshold,
-            semanticWeight,
-            frequencyWeight,
+            evidenceRankingParams,
             clusteringMode,
             autoK,
             clusterSeed,
@@ -387,7 +381,7 @@ export default function HomePage() {
     };
 
     analyze();
-  }, [jurorBlocks, kConcepts, similarityThreshold, semanticWeight, frequencyWeight, clusteringMode, autoK, clusterSeed, softMembership, cutType, granularityPercent, numDimensions, selectedModel, dimensionMode, varianceThreshold]);
+  }, [jurorBlocks, kConcepts, similarityThreshold, evidenceRankingParams, clusteringMode, autoK, clusterSeed, softMembership, cutType, granularityPercent, numDimensions, selectedModel, dimensionMode, varianceThreshold, addLog]);
 
   // Helper function to get node network (node + connected links + connected nodes)
   const getNodeNetwork = useCallback((nodeId: string, nodes: GraphNode[], links: GraphLink[]) => {
@@ -769,10 +763,8 @@ export default function HomePage() {
             onMinEdgeWeightChange={setMinEdgeWeight}
             similarityThreshold={similarityThreshold}
             onSimilarityThresholdChange={setSimilarityThreshold}
-            semanticWeight={semanticWeight}
-            onSemanticWeightChange={setSemanticWeight}
-            frequencyWeight={frequencyWeight}
-            onFrequencyWeightChange={setFrequencyWeight}
+            evidenceRankingParams={evidenceRankingParams}
+            onEvidenceRankingParamsChange={setEvidenceRankingParams}
             clusteringMode={clusteringMode}
             onClusteringModeChange={setClusteringMode}
             autoK={autoK}

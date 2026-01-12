@@ -458,11 +458,12 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
 
     // Format parameters section
     const formatParameters = () => {
+      const e = p.evidenceRankingParams || { semanticWeight: 0.7, frequencyWeight: 0.3 };
       return `ANALYSIS PARAMETERS
 ${separator}
 kConcepts: ${p.kConcepts} | minEdgeWeight: ${p.minEdgeWeight} | similarityThreshold: ${p.similarityThreshold}
 clusteringMode: ${p.clusteringMode} | autoK: ${p.autoK} | clusterSeed: ${p.clusterSeed} | softMembership: ${p.softMembership}
-semanticWeight: ${p.semanticWeight} | frequencyWeight: ${p.frequencyWeight} | dimensionMode: ${p.dimensionMode}
+evidenceRanking: sem=${e.semanticWeight}, freq=${e.frequencyWeight} | dimensionMode: ${p.dimensionMode}
 appliedDimensions: ${p.appliedNumDimensions} | varianceThreshold: ${p.varianceThreshold}
 Model: ${rawExportContext.selectedModel} | Export: ${rawExportContext.exportTimestamp || new Date().toISOString()}`;
     };
@@ -937,7 +938,7 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                       <div className="mb-3 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                            Semantic fingerprint
+                            BM25 Frequency Terms
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1334,7 +1335,7 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                     <div className="mt-3 rounded-lg border border-slate-100 bg-white/80 p-2">
                       <div className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
                         <Sparkles className="h-3 w-3" />
-                        Concept terms
+                        BM25 Frequency Terms
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {topTerms.map((term) => (

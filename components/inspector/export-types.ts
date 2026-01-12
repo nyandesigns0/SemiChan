@@ -4,9 +4,8 @@ export interface ExportAnalysisParams {
   kConcepts: number;
   minEdgeWeight: number;
   similarityThreshold: number;
-  semanticWeight: number;
-  frequencyWeight: number;
-  clusteringMode: "kmeans" | "hierarchical" | "hybrid";
+  evidenceRankingParams?: { semanticWeight: number; frequencyWeight: number };
+  clusteringMode: "kmeans" | "hierarchical";
   autoK: boolean;
   clusterSeed: number;
   softMembership: boolean;

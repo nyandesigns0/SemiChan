@@ -13,10 +13,8 @@ export interface AnalyzeRequest {
   blocks: JurorBlock[];
   kConcepts: number;
   similarityThreshold: number;
-  /** Weight for semantic embeddings (0.0-1.0, default 0.7) */
-  semanticWeight?: number;
-  /** Weight for frequency/BM25 vectors (0.0-1.0, default 0.3) */
-  frequencyWeight?: number;
+  /** Evidence ranking parameters (semantic vs frequency salience) */
+  evidenceRankingParams?: { semanticWeight: number; frequencyWeight: number };
   /** Number of dimensions for visualization (2-10, default 3) */
   numDimensions?: number;
   /** Method for selecting dimensions: manual, elbow, or threshold */
@@ -25,7 +23,7 @@ export interface AnalyzeRequest {
   varianceThreshold?: number;
   
   // New clustering options
-  clusteringMode?: "kmeans" | "hierarchical" | "hybrid";
+  clusteringMode?: "kmeans" | "hierarchical";
   autoK?: boolean;
   kMin?: number;
   kMax?: number;

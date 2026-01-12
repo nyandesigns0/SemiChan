@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildAnalysis } from "@/lib/graph/graph-builder";
 import type { AnalyzeRequest, AnalyzeResponse } from "@/types/api";
-import type { HybridAnalysisParams } from "@/types/nlp";
-import { DEFAULT_HYBRID_PARAMS } from "@/lib/analysis/hybrid-vectors";
+import { DEFAULT_EVIDENCE_RANKING_PARAMS } from "@/lib/analysis/evidence-ranker";
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,8 +21,7 @@ export async function POST(request: NextRequest) {
       blocks, 
       kConcepts, 
       similarityThreshold, 
-      semanticWeight, 
-      frequencyWeight,
+      evidenceRankingParams,
       clusteringMode,
       autoK,
       kMin,
@@ -54,30 +52,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate hybrid weights if provided
-    const hybridParams: HybridAnalysisParams = {
-      semanticWeight: DEFAULT_HYBRID_PARAMS.semanticWeight,
-      frequencyWeight: DEFAULT_HYBRID_PARAMS.frequencyWeight,
-    };
-
-    if (semanticWeight !== undefined) {
-      if (typeof semanticWeight !== "number" || semanticWeight < 0 || semanticWeight > 1) {
+    // Validate evidence ranking weights if provided
+    if (evidenceRankingParams) {
+      if (typeof evidenceRankingParams.semanticWeight !== "number" || 
+          evidenceRankingParams.semanticWeight < 0 || 
+          evidenceRankingParams.semanticWeight > 1) {
         return NextResponse.json(
-          { error: "Invalid request: semanticWeight must be between 0 and 1" },
+          { error: "Invalid request: evidenceRankingParams.semanticWeight must be between 0 and 1" },
           { status: 400 }
         );
       }
-      hybridParams.semanticWeight = semanticWeight;
-    }
-
-    if (frequencyWeight !== undefined) {
-      if (typeof frequencyWeight !== "number" || frequencyWeight < 0 || frequencyWeight > 1) {
+      if (typeof evidenceRankingParams.frequencyWeight !== "number" || 
+          evidenceRankingParams.frequencyWeight < 0 || 
+          evidenceRankingParams.frequencyWeight > 1) {
         return NextResponse.json(
-          { error: "Invalid request: frequencyWeight must be between 0 and 1" },
+          { error: "Invalid request: evidenceRankingParams.frequencyWeight must be between 0 and 1" },
           { status: 400 }
         );
       }
-      hybridParams.frequencyWeight = frequencyWeight;
     }
 
     // Validate cutType and granularityPercent if provided
@@ -102,8 +94,8 @@ export async function POST(request: NextRequest) {
       blocks, 
       kConcepts, 
       similarityThreshold, 
-      hybridParams,
       {
+        evidenceRankingParams,
         clusteringMode,
         autoK,
         kMin,

@@ -1,4 +1,4 @@
-import { hybridCosine } from "./hybrid-vectors";
+import { cosine } from "./tfidf";
 
 /**
  * Dendrogram structure: tree of merges from agglomerative clustering
@@ -33,7 +33,7 @@ export function buildDendrogram(vectors: Float64Array[]): Dendrogram {
 
     for (let i = 0; i < clusters.length; i++) {
       for (let j = i + 1; j < clusters.length; j++) {
-        const sim = hybridCosine(clusters[i].centroid, clusters[j].centroid);
+        const sim = cosine(clusters[i].centroid, clusters[j].centroid);
         if (sim > bestSim) {
           bestSim = sim;
           bestPair = [i, j];
@@ -102,7 +102,7 @@ export function cutDendrogramByCount(vectors: Float64Array[], targetK: number): 
 
     for (let i = 0; i < clusters.length; i++) {
       for (let j = i + 1; j < clusters.length; j++) {
-        const sim = hybridCosine(clusters[i].centroid, clusters[j].centroid);
+        const sim = cosine(clusters[i].centroid, clusters[j].centroid);
         if (sim > bestSim) {
           bestSim = sim;
           bestPair = [i, j];

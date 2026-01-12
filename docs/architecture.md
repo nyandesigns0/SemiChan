@@ -17,7 +17,7 @@ This document provides a comprehensive overview of the SemiChan system architect
 
 ## System Overview
 
-SemiChan is a full-stack Next.js application that analyzes architectural jury feedback through a hybrid semantic-frequency approach, generating interactive 3D visualizations of conceptual relationships.
+SemiChan is a full-stack Next.js application that analyzes architectural jury feedback through semantic clustering with frequency-based labeling, generating interactive 3D visualizations of conceptual relationships.
 
 ### Core Principles
 
@@ -248,13 +248,13 @@ lib/
 ├── analysis/              # Core analysis algorithms
 │   ├── bm25.ts                    # BM25 frequency vectors
 │   ├── sentence-embeddings.ts     # Semantic embeddings
-│   ├── hybrid-vectors.ts          # Vector combination
 │   ├── kmeans.ts                  # K-Means clustering
 │   ├── hierarchical-clustering.ts # Hierarchical clustering
 │   ├── cluster-eval.ts            # K evaluation metrics
 │   ├── soft-membership.ts         # Soft assignment logic
 │   ├── concept-centroids.ts       # Centroid computation
-│   └── hybrid-concept-labeler.ts  # Concept labeling
+│   ├── concept-labeler.ts         # Contrastive concept labeling
+│   └── evidence-ranker.ts         # Evidence ranking logic
 ├── graph/                # Graph construction
 │   ├── graph-builder.ts           # Main graph assembly
 │   ├── projections.ts             # Similarity link building
@@ -287,10 +287,10 @@ The analysis pipeline follows a staged approach:
 
 1. **Input Processing** → Text normalization and segmentation
 2. **Feature Extraction** → Semantic embeddings + BM25 vectors
-3. **Vector Combination** → Hybrid vector construction
-4. **Clustering** → Concept discovery (hierarchical or K-Means)
-5. **Graph Construction** → Node and link generation
-6. **Dimensionality Reduction** → 3D position calculation (PCA)
+3. **Clustering** → Semantic concept discovery (hierarchical or K-Means)
+4. **Graph Construction** → Node and link generation
+5. **Dimensionality Reduction** → 3D position calculation (PCA)
+6. **Labeling & Ranking** → Contrastive labeling and evidence ranking
 7. **Assembly** → Final graph structure assembly
 
 Each stage is modular and can be configured independently.
@@ -320,12 +320,11 @@ User Input (Text/PDF)
     ├── N-gram Extraction
     ├── Semantic Embeddings (@xenova/transformers)
     ├── BM25 Frequency Vectors
-    ├── Hybrid Vector Construction
-    ├── Clustering (Hierarchical/K-Means)
-    ├── Concept Labeling
+    ├── Clustering (Hierarchical/K-Means on Semantic Vectors)
+    ├── Contrastive Concept Labeling
+    ├── Evidence Ranking (Semantic + BM25)
     ├── Juror-Concept Mapping
-    ├── High-Dimensional Vector Computation
-    ├── 3D Position Calculation (PCA)
+    ├── 3D Position Calculation (PCA on Semantic Centroids)
     └── Graph Assembly
     ↓
 [Frontend] AnalysisResult
@@ -499,15 +498,15 @@ Required environment variables:
 - Better performance for complex algorithms
 - Server resources for CPU-intensive tasks
 
-### 3. Hybrid Vector Approach
+### 3. Semantic-First Geometry
 
-**Decision**: Combine semantic embeddings with BM25 frequency vectors
+**Decision**: Separate semantic embeddings (for geometry/clustering) from frequency-based labeling.
 
-**Rationale**:
-- Semantic embeddings capture meaning
-- BM25 captures technical terminology
-- Weighted combination provides flexibility
-- Better results than either alone
+**Rationale**: 
+- Semantic embeddings provide a stable universal coordinate system.
+- BM25 is excellent for labeling but can distort geometry with "mega-concepts".
+- Interpretability improves when geometry remains stable while overlays change.
+- Preparation for future multimodal (image) support.
 
 ### 4. Hierarchical Clustering as Default
 

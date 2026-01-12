@@ -18,7 +18,8 @@ import {
   Type,
   Scale,
   Sparkles,
-  Settings2
+  Settings2,
+  Library
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -34,14 +35,12 @@ interface AnalysisControlsProps {
   onMinEdgeWeightChange: (value: number) => void;
   similarityThreshold: number;
   onSimilarityThresholdChange: (value: number) => void;
-  semanticWeight: number;
-  onSemanticWeightChange: (value: number) => void;
-  frequencyWeight: number;
-  onFrequencyWeightChange: (value: number) => void;
+  evidenceRankingParams: { semanticWeight: number; frequencyWeight: number };
+  onEvidenceRankingParamsChange: (value: { semanticWeight: number; frequencyWeight: number }) => void;
   
   // New props
-  clusteringMode: "kmeans" | "hierarchical" | "hybrid";
-  onClusteringModeChange: (mode: "kmeans" | "hierarchical" | "hybrid") => void;
+  clusteringMode: "kmeans" | "hierarchical";
+  onClusteringModeChange: (mode: "kmeans" | "hierarchical") => void;
   autoK: boolean;
   onAutoKChange: (value: boolean) => void;
   clusterSeed: number;
@@ -70,10 +69,8 @@ export function AnalysisControls({
   onMinEdgeWeightChange,
   similarityThreshold,
   onSimilarityThresholdChange,
-  semanticWeight,
-  onSemanticWeightChange,
-  frequencyWeight,
-  onFrequencyWeightChange,
+  evidenceRankingParams,
+  onEvidenceRankingParamsChange,
   clusteringMode,
   onClusteringModeChange,
   autoK,
@@ -95,7 +92,7 @@ export function AnalysisControls({
   appliedNumDimensions,
 }: AnalysisControlsProps) {
   const [showClusteringSettings, setShowClusteringSettings] = useState(false);
-  const [showLensSettings, setShowLensSettings] = useState(false);
+  const [showEvidenceSettings, setShowEvidenceSettings] = useState(false);
   const [showNetworkSettings, setShowNetworkSettings] = useState(false);
   const [showDimensionSettings, setShowDimensionSettings] = useState(false);
   const effectiveAxes = appliedNumDimensions ?? numDimensions;
@@ -104,15 +101,15 @@ export function AnalysisControls({
     ? `${effectiveAxes} Axis${effectiveAxes === 1 ? "" : "es"} (auto)`
     : `${numDimensions} Axis${numDimensions === 1 ? "" : "es"}`;
 
-  // Helper to determine the current preset
-  const currentPreset = (() => {
-    const s = Math.round(semanticWeight * 10) / 10;
-    const f = Math.round(frequencyWeight * 10) / 10;
+  // Helper to determine the current evidence preset
+  const currentEvidencePreset = (() => {
+    const s = Math.round(evidenceRankingParams.semanticWeight * 10) / 10;
+    const f = Math.round(evidenceRankingParams.frequencyWeight * 10) / 10;
     
-    if (s === 0.9 && f === 0.1) return "meaning";
-    if (s === 0.1 && f === 0.9) return "wording";
-    if (s === 0.5 && f === 0.5) return "balanced";
-    if (s === 0.9 && f === 0.9) return "precision";
+    if (s === 0.9 && f === 0.1) return "coherence";
+    if (s === 0.1 && f === 0.9) return "salience";
+    if (s === 0.7 && f === 0.3) return "balanced";
+    if (s === 1.0 && f === 1.0) return "comprehensive";
     return "custom";
   })();
 
@@ -128,7 +125,7 @@ export function AnalysisControls({
         </Label>
         
         <Tabs value={clusteringMode} onValueChange={(v) => onClusteringModeChange(v as any)}>
-          <TabsList className="grid w-full grid-cols-3 bg-slate-100/50 p-1 border border-slate-200/60 rounded-xl" style={{ height: 'auto' }}>
+          <TabsList className="grid w-full grid-cols-2 bg-slate-100/50 p-1 border border-slate-200/60 rounded-xl" style={{ height: 'auto' }}>
             <TabsTrigger 
               value="kmeans" 
               className="flex items-center gap-1.5 py-1.5 transition-all duration-200"
@@ -142,13 +139,6 @@ export function AnalysisControls({
             >
               <GitMerge className="h-3.5 w-3.5" />
               <span className="text-[10px] font-bold uppercase tracking-tight">Tree</span>
-            </TabsTrigger>
-            <TabsTrigger 
-              value="hybrid" 
-              className="flex items-center gap-1.5 py-1.5 transition-all duration-200"
-            >
-              <Zap className="h-3.5 w-3.5" />
-              <span className="text-[10px] font-bold uppercase tracking-tight">Hybrid</span>
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -169,7 +159,7 @@ export function AnalysisControls({
           {showClusteringSettings && (
             <div className="space-y-2.5 pt-0.5 animate-in fade-in slide-in-from-top-1 duration-200">
               {/* Cut Type Toggle */}
-              {(clusteringMode === "hierarchical" || clusteringMode === "hybrid") && (
+              {(clusteringMode === "hierarchical") && (
                 <div className="space-y-1.5">
                   <Label className="text-[9px] font-bold uppercase text-slate-400">Cut Method</Label>
                   <Tabs value={cutType} onValueChange={(v) => onCutTypeChange(v as "count" | "granularity")}>
@@ -227,6 +217,58 @@ export function AnalysisControls({
                     onValueChange={(v) => onClusterSeedChange(v[0])} 
                   />
                 </div>
+
+                {/* Manual Concept / Granularity when Auto-K is off */}
+                {!autoK && (
+                  <>
+                    <div className="h-px bg-slate-100" />
+
+                    {(cutType === "count" || (clusteringMode !== "hierarchical")) && (
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                            <Target className="h-3 w-3 text-indigo-500" />
+                            Manual Concepts (k)
+                          </Label>
+                          <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                            {kConcepts}
+                          </Badge>
+                        </div>
+                        <Slider 
+                          value={[kConcepts]} 
+                          min={4} 
+                          max={30} 
+                          step={1} 
+                          onValueChange={(v) => onKConceptsChange(v[0])} 
+                        />
+                      </div>
+                    )}
+
+                    {cutType === "granularity" && (clusteringMode === "hierarchical") && (
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                            <Scale className="h-3 w-3 text-indigo-500" />
+                            Granularity
+                          </Label>
+                          <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                            {granularityPercent}%
+                          </Badge>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[8px] text-slate-400 uppercase tracking-tighter">0% fine / 100% broad</p>
+                          <Slider 
+                            value={[granularityPercent]} 
+                            min={0} 
+                            max={100} 
+                            step={1} 
+                            onValueChange={(v) => onGranularityPercentChange(v[0])} 
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -235,16 +277,16 @@ export function AnalysisControls({
 
       <Separator className="bg-slate-100/80" />
 
-      {/* Category: Interpretation Lens */}
+      {/* Category: Evidence Ranking Settings */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-900">
-            <Sparkles className="h-3 w-3" />
-            Interpretation Lens
+            <Library className="h-3 w-3" />
+            Evidence Ranking
           </Label>
-          {currentPreset !== "custom" && (
+          {currentEvidencePreset !== "custom" && (
             <Badge variant="outline" className="h-4 text-[8px] uppercase border-indigo-200 text-indigo-500 font-bold bg-indigo-50/50 px-1.5">
-              {currentPreset}
+              {currentEvidencePreset}
             </Badge>
           )}
         </div>
@@ -252,78 +294,78 @@ export function AnalysisControls({
         <div className="space-y-2">
           {/* Preset Tabs */}
           <Tabs 
-            value={currentPreset} 
+            value={currentEvidencePreset} 
             onValueChange={(v) => {
-              if (v === "meaning") { onSemanticWeightChange(0.9); onFrequencyWeightChange(0.1); }
-              else if (v === "wording") { onSemanticWeightChange(0.1); onFrequencyWeightChange(0.9); }
-              else if (v === "balanced") { onSemanticWeightChange(0.5); onFrequencyWeightChange(0.5); }
-              else if (v === "precision") { onSemanticWeightChange(0.9); onFrequencyWeightChange(0.9); }
+              if (v === "coherence") { onEvidenceRankingParamsChange({ semanticWeight: 0.9, frequencyWeight: 0.1 }); }
+              else if (v === "salience") { onEvidenceRankingParamsChange({ semanticWeight: 0.1, frequencyWeight: 0.9 }); }
+              else if (v === "balanced") { onEvidenceRankingParamsChange({ semanticWeight: 0.7, frequencyWeight: 0.3 }); }
+              else if (v === "comprehensive") { onEvidenceRankingParamsChange({ semanticWeight: 1.0, frequencyWeight: 1.0 }); }
             }}
           >
             <TabsList className="grid w-full grid-cols-4 bg-slate-100/50 p-1 border border-slate-200/60 rounded-xl" style={{ height: 'auto' }}>
-              <TabsTrigger value="meaning" className="flex flex-col items-center gap-0.5 py-1.5 transition-all">
+              <TabsTrigger value="coherence" className="flex flex-col items-center gap-0.5 py-1.5 transition-all">
                 <Brain className="h-3 w-3" />
-                <span className="text-[8px] font-bold uppercase">Meaning</span>
+                <span className="text-[8px] font-bold uppercase">Coherence</span>
               </TabsTrigger>
-              <TabsTrigger value="wording" className="flex flex-col items-center gap-0.5 py-1.5 transition-all">
+              <TabsTrigger value="salience" className="flex flex-col items-center gap-0.5 py-1.5 transition-all">
                 <Type className="h-3 w-3" />
-                <span className="text-[8px] font-bold uppercase">Wording</span>
+                <span className="text-[8px] font-bold uppercase">Salience</span>
               </TabsTrigger>
               <TabsTrigger value="balanced" className="flex flex-col items-center gap-0.5 py-1.5 transition-all">
                 <Scale className="h-3 w-3" />
                 <span className="text-[8px] font-bold uppercase">Balanced</span>
               </TabsTrigger>
-              <TabsTrigger value="precision" className="flex flex-col items-center gap-0.5 py-1.5 transition-all">
+              <TabsTrigger value="comprehensive" className="flex flex-col items-center gap-0.5 py-1.5 transition-all">
                 <Sparkles className="h-3 w-3" />
-                <span className="text-[8px] font-bold uppercase">Precision</span>
+                <span className="text-[8px] font-bold uppercase">Full</span>
               </TabsTrigger>
             </TabsList>
           </Tabs>
 
-          {/* Lens Settings Accordion */}
+          {/* Evidence Settings Accordion */}
           <div className="space-y-2">
             <button 
-              onClick={() => setShowLensSettings(!showLensSettings)}
+              onClick={() => setShowEvidenceSettings(!showEvidenceSettings)}
               className="flex w-full items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-indigo-500 transition-colors py-0.5 px-1 border-b border-dashed border-slate-200"
             >
               <div className="flex items-center gap-1.5">
                 <Settings2 className="h-3 w-3" />
-                Advanced Lens Settings
+                Evidence Ranking Weights
               </div>
-              {showLensSettings ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              {showEvidenceSettings ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
             </button>
 
-            {showLensSettings && (
+            {showEvidenceSettings && (
               <div className="space-y-3 pt-0.5 animate-in fade-in slide-in-from-top-1 duration-200">
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
-                    <Label className="text-[11px] font-bold text-slate-700">Semantic weight</Label>
+                    <Label className="text-[11px] font-bold text-slate-700">Semantic Coherence</Label>
                     <Badge variant="secondary" className="bg-indigo-100 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
-                      {Math.round(semanticWeight * 100)}%
+                      {Math.round(evidenceRankingParams.semanticWeight * 100)}%
                     </Badge>
                   </div>
                   <Slider
-                    value={[semanticWeight]}
+                    value={[evidenceRankingParams.semanticWeight]}
                     min={0}
                     max={1}
                     step={0.05}
-                    onValueChange={(v) => onSemanticWeightChange(v[0])}
+                    onValueChange={(v) => onEvidenceRankingParamsChange({ ...evidenceRankingParams, semanticWeight: v[0] })}
                   />
                 </div>
 
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
-                    <Label className="text-[11px] font-bold text-slate-700">Frequency weight</Label>
+                    <Label className="text-[11px] font-bold text-slate-700">Frequency Salience</Label>
                     <Badge variant="secondary" className="bg-emerald-100 px-1.5 py-0 text-[9px] font-bold text-emerald-700">
-                      {Math.round(frequencyWeight * 100)}%
+                      {Math.round(evidenceRankingParams.frequencyWeight * 100)}%
                     </Badge>
                   </div>
                   <Slider
-                    value={[frequencyWeight]}
+                    value={[evidenceRankingParams.frequencyWeight]}
                     min={0}
                     max={1}
                     step={0.05}
-                    onValueChange={(v) => onFrequencyWeightChange(v[0])}
+                    onValueChange={(v) => onEvidenceRankingParamsChange({ ...evidenceRankingParams, frequencyWeight: v[0] })}
                   />
                 </div>
               </div>
@@ -565,61 +607,6 @@ export function AnalysisControls({
           </div>
         </div>
       </div>
-
-      <Separator className="bg-slate-100/80" />
-
-      {/* Manual Controls (K / Granularity) */}
-      {!autoK && (
-        <div className="space-y-2">
-          <Label className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-900">
-            <Target className="h-3 w-3" />
-            Manual Concept Control
-          </Label>
-          
-          <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50/30 p-2.5">
-            {/* Show K slider when cutType is "count" or not in hierarchical/hybrid mode */}
-            {(cutType === "count" || (clusteringMode !== "hierarchical" && clusteringMode !== "hybrid")) && (
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label className="text-[11px] font-bold text-slate-700">Manual Concepts (k)</Label>
-                  <Badge variant="secondary" className="bg-slate-100 px-1.5 py-0 text-[9px] font-bold text-slate-700">
-                    {kConcepts}
-                  </Badge>
-                </div>
-                <Slider 
-                  value={[kConcepts]} 
-                  min={4} 
-                  max={30} 
-                  step={1} 
-                  onValueChange={(v) => onKConceptsChange(v[0])} 
-                />
-              </div>
-            )}
-            
-            {/* Show granularity slider when cutType is "granularity" and in hierarchical/hybrid mode */}
-            {cutType === "granularity" && (clusteringMode === "hierarchical" || clusteringMode === "hybrid") && (
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label className="text-[11px] font-bold text-slate-700">Granularity</Label>
-                  <Badge variant="secondary" className="bg-slate-100 px-1.5 py-0 text-[9px] font-bold text-slate-700">
-                    {granularityPercent}%
-                  </Badge>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[8px] text-slate-400 uppercase tracking-tighter">0% fine / 100% broad</p>
-                  <Slider 
-                    value={[granularityPercent]} 
-                    min={0} 
-                    max={100} 
-                    step={1} 
-                    onValueChange={(v) => onGranularityPercentChange(v[0])} 
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

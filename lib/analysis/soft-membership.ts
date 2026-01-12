@@ -1,4 +1,4 @@
-import { hybridCosine } from "./hybrid-vectors";
+import { cosine } from "./tfidf";
 
 /**
  * Compute soft membership weights for each vector relative to centroids
@@ -16,7 +16,7 @@ export function computeSoftMembership(
   return vectors.map((v) => {
     const similarities = centroids.map((c, idx) => ({
       conceptId: `concept:${idx}`,
-      similarity: Math.max(0, hybridCosine(v, c)) // Clamp to 0
+      similarity: Math.max(0, cosine(v, c)) // Clamp to 0
     }));
 
     // Sort by similarity descending

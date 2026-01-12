@@ -220,8 +220,8 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
                 <p className="text-[9px] text-blue-600 font-bold opacity-70">Linguistics analysis</p>
               </div>
               <div className="text-right">
-                <h3 className="text-xs font-black text-red-900 uppercase tracking-tight">Semantic Fingerprint</h3>
-                <p className="text-[9px] text-red-600 font-bold opacity-70">Hybrid vectors</p>
+                <h3 className="text-xs font-black text-red-900 uppercase tracking-tight">BM25 Frequency Terms</h3>
+                <p className="text-[9px] text-red-600 font-bold opacity-70">Contrastive labeling</p>
               </div>
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -342,20 +342,29 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
                   <p className="text-[8px] text-indigo-500 font-medium opacity-70">Synthesized from feedback</p>
                 </div>
               </div>
-              <div className="flex flex-col items-end gap-1">
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-col items-end gap-1">
+                  <div className="flex items-center gap-1.5">
+                    <Badge 
+                      variant="secondary" 
+                      className="font-bold text-[9px] px-1.5 h-4 border-none transition-colors hover:bg-white"
+                      style={{ backgroundColor: `${nodeColor}15`, color: nodeColor }}
+                      title="W = total concept weight (sum of sentence memberships)"
+                    >
+                      W={totalWeight.toFixed(1)}
+                    </Badge>
                   <Badge 
-                    variant="secondary" 
-                    className="font-bold text-[9px] px-1.5 h-4 border-none"
-                    style={{ backgroundColor: `${nodeColor}15`, color: nodeColor }}
+                    variant="outline" 
+                    className="text-slate-600 border-slate-200 font-bold text-[9px] px-1.5 h-4 transition-colors hover:bg-slate-100/60"
+                    title="N = number of evidence sentences contributing to this concept"
                   >
-                    {totalWeight.toFixed(1)} Weight
+                    N={sentenceCount}
                   </Badge>
-                  <Badge variant="outline" className="text-slate-500 border-slate-200 font-bold text-[9px] px-1.5 h-4">
-                    n={sentenceCount}
-                  </Badge>
-                  <Badge variant="outline" className="text-slate-500 border-slate-200 font-bold text-[9px] px-1.5 h-4">
-                    {jurorCount} {jurorCount === 1 ? 'Juror' : 'Jurors'}
+                  <Badge 
+                    variant="outline" 
+                    className="text-slate-600 border-slate-200 font-bold text-[9px] px-1.5 h-4 transition-colors hover:bg-slate-100/60"
+                    title="J = distinct jurors contributing evidence to this concept"
+                  >
+                    J={jurorCount}
                   </Badge>
                 </div>
                 {insight?.isLoadingSummary && (
@@ -422,8 +431,8 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
             style={{ borderColor: `${nodeColor}20`, backgroundColor: `${nodeColor}05` }}
           >
             <div className="mb-3">
-              <h3 className="text-xs font-black uppercase tracking-tight" style={{ color: nodeColor }}>Semantic Fingerprint</h3>
-              <p className="text-[9px] text-slate-500 font-medium opacity-80">Top terms from cluster centroid</p>
+              <h3 className="text-xs font-black uppercase tracking-tight" style={{ color: nodeColor }}>BM25 Frequency Terms</h3>
+              <p className="text-[9px] text-slate-500 font-medium opacity-80">Distinctive terms from BM25 analysis</p>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {topTerms.map((t) => (
@@ -493,16 +502,25 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
             <div className="flex items-center gap-1.5">
               <Badge 
                 variant="secondary" 
-                className="border-none font-bold text-[10px] px-2"
+                className="border-none font-bold text-[10px] px-2 transition-colors hover:bg-white"
                 style={{ backgroundColor: `${nodeColor}15`, color: nodeColor }}
+                title="W = total concept weight (sum of sentence memberships)"
               >
-                {totalWeight.toFixed(1)} Weight
+                W={totalWeight.toFixed(1)}
               </Badge>
-              <Badge variant="outline" className="text-slate-500 border-slate-200 font-bold text-[10px] px-2">
-                n={sentenceCount}
+              <Badge 
+                variant="outline" 
+                className="text-slate-600 border-slate-200 font-bold text-[10px] px-2 transition-colors hover:bg-slate-100/60"
+                title="N = number of evidence sentences contributing to this concept"
+              >
+                N={sentenceCount}
               </Badge>
-              <Badge variant="outline" className="text-slate-500 border-slate-200 font-bold text-[10px] px-2">
-                {jurorCount} {jurorCount === 1 ? 'Juror' : 'Jurors'}
+              <Badge 
+                variant="outline" 
+                className="text-slate-600 border-slate-200 font-bold text-[10px] px-2 transition-colors hover:bg-slate-100/60"
+                title="J = distinct jurors contributing evidence to this concept"
+              >
+                J={jurorCount}
               </Badge>
             </div>
           </div>
