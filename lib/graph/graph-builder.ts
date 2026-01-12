@@ -51,6 +51,10 @@ export async function buildAnalysis(
     autoK?: boolean;
     kMin?: number;
     kMax?: number;
+    autoKStability?: boolean;
+    autoKDominanceThreshold?: number;
+    autoKKPenalty?: number;
+    autoKEpsilon?: number;
     softMembership?: boolean;
     softTopN?: number;
     cutType?: "count" | "granularity";
@@ -77,12 +81,16 @@ export async function buildAnalysis(
     evidenceRankingParams = DEFAULT_EVIDENCE_RANKING_PARAMS,
     clusteringMode = "hierarchical",
     autoK = true,
-    kMin = 4,
-    kMax = 20,
+    kMin,
+    kMax,
+    autoKStability = false,
+    autoKDominanceThreshold = 0.35,
+    autoKKPenalty = 0.001,
+    autoKEpsilon = 0.02,
     softMembership = true,
     softTopN = 3,
     cutType = "count",
-    granularityPercent = 50,
+    granularityPercent = 60,
     seed = 42,
     numDimensions = 3,
     dimensionMode = "manual",
@@ -94,7 +102,7 @@ export async function buildAnalysis(
       entropyCap: 0.8
     },
     useTwoLayer = true,
-    primaryGranularity = 70,
+    primaryGranularity = 75,
     detailGranularity = 30,
     applyPopularityDampening = false,
     anchorAxes = [],
@@ -170,19 +178,73 @@ export async function buildAnalysis(
   const semanticVectors = semanticResult.vectors;
   const semanticDim = semanticResult.dimension;
 
+  const resolvedCutQualityParams: CutQualityParams = {
+    minEffectiveMassPerConcept: 3,
+    maxJurorDominance: 0.35,
+    ...cutQualityParams,
+  };
+
   // CHECKPOINT 2: Vectors Built
   // In reality, we might skip this or show them as points in space
   
   // Determine K
   let K = clamp(kConcepts, 4, 30);
   let recommendedK: number | undefined;
-  let kSearchMetrics: Array<{ k: number; score: number }> | undefined;
+  let kSearchMetrics: Array<{
+    k: number;
+    score: number;
+    silhouette?: number;
+    maxClusterShare?: number;
+    stabilityScore?: number;
+    valid: boolean;
+  }> | undefined;
+  let autoKReasoning: string | undefined;
   const requestedNumDimensions = numDimensions;
 
   if (autoK) {
-    const evalResult = evaluateKRange(semanticVectors, effectiveSentences, kMin, kMax, seed, cutQualityParams);
+    const sentenceCount = effectiveSentences.length;
+    const dynamicKMin = Math.max(4, Math.round(Math.sqrt(sentenceCount)));
+    const dynamicKMax = Math.max(
+      dynamicKMin + 1,
+      Math.min(20, Math.floor(sentenceCount / 4) || dynamicKMin + 1)
+    );
+    const resolvedKMin = clamp(kMin ?? dynamicKMin, 2, dynamicKMax);
+    const resolvedKMax = Math.max(
+      resolvedKMin + 1,
+      clamp(kMax ?? dynamicKMax, resolvedKMin + 1, Math.max(dynamicKMax, resolvedKMin + 1))
+    );
+
+    log("analysis", `AutoK testing K range: ${resolvedKMin} to ${resolvedKMax} (N=${sentenceCount})`);
+
+    const evalResult = evaluateKRange(
+      semanticVectors,
+      effectiveSentences,
+      resolvedKMin,
+      resolvedKMax,
+      seed,
+      resolvedCutQualityParams,
+      {
+        dominanceThreshold: autoKDominanceThreshold,
+        kPenalty: autoKKPenalty,
+        epsilon: autoKEpsilon,
+        enableStability: autoKStability,
+      }
+    );
     recommendedK = evalResult.recommendedK;
     kSearchMetrics = evalResult.metrics;
+    autoKReasoning = evalResult.reason;
+    kSearchMetrics?.forEach((m) => {
+      log(
+        "analysis",
+        `AutoK K=${m.k}: score=${Number.isFinite(m.score) ? m.score.toFixed(4) : "-inf"}, silhouette=${(m.silhouette ?? 0).toFixed(4)}, dominance=${((m.maxClusterShare ?? 0) * 100).toFixed(1)}%, valid=${m.valid}${m.stabilityScore !== undefined ? `, stability=${m.stabilityScore.toFixed(3)}` : ""}`
+      );
+    });
+    if (recommendedK !== undefined) {
+      log(
+        "analysis",
+        `AutoK selected K=${recommendedK}${autoKReasoning ? ` (reason: ${autoKReasoning})` : ""}`
+      );
+    }
     K = recommendedK;
   }
 
@@ -199,14 +261,16 @@ export async function buildAnalysis(
     
     if (useTwoLayer) {
       // Perform two-layer cut
+      const detailAutoRange = autoK ? { min: 20, max: 50, step: 5 } : undefined;
       const twoLayerResult = cutDendrogramTwoLayer(
         dendrogram,
         semanticVectors,
         effectiveSentences,
-        cutQualityParams,
-        { ...cutQualityParams, minJurorSupportPerConcept: 1, minEffectiveMassPerConcept: 1 }, // Looser constraints for detail
+        resolvedCutQualityParams,
+        { ...resolvedCutQualityParams, minJurorSupportPerConcept: 1, minEffectiveMassPerConcept: 1 }, // Looser constraints for detail
         primaryGranularity,
-        detailGranularity
+        detailGranularity,
+        detailAutoRange
       );
       assignments = twoLayerResult.primaryAssignments;
       detailAssignments = twoLayerResult.detailAssignments;
@@ -219,6 +283,12 @@ export async function buildAnalysis(
       detailCentroids = computeCentroids(semanticVectors, detailAssignments, numDetail);
       
       log("analysis", `Two-layer cut complete: Primary=${K}, Detail=${numDetail} concepts`);
+      if (twoLayerResult.detailGranularities && Object.keys(twoLayerResult.detailGranularities).length > 0) {
+        const detailLog = Object.entries(twoLayerResult.detailGranularities)
+          .map(([p, g]) => `P${p}: ${g}%`)
+          .join(", ");
+        log("analysis", `Detail granularity selections: ${detailLog}`);
+      }
       
       // Compute avg detail per primary
       const detailCounts = Object.values(parentMap).reduce((acc, pId) => {
@@ -234,7 +304,7 @@ export async function buildAnalysis(
         semanticVectors, 
         effectiveSentences, 
         granularityPercent, 
-        cutQualityParams
+        resolvedCutQualityParams
       );
       // Get actual K from assignments
       K = new Set(assignments).size;
@@ -251,8 +321,62 @@ export async function buildAnalysis(
     centroids = km.centroids;
   }
 
+  // Enforce cluster size cap in single-layer mode
+  if (!useTwoLayer) {
+    const capShare = 0.35;
+    const maxClusterSize = Math.max(1, Math.floor(effectiveSentences.length * capShare));
+    const clusterMembers: Record<number, number[]> = {};
+    for (let i = 0; i < assignments.length; i++) {
+      const a = assignments[i];
+      clusterMembers[a] = clusterMembers[a] || [];
+      clusterMembers[a].push(i);
+    }
+
+    const newAssignments = new Array(assignments.length).fill(-1);
+    let nextClusterId = 0;
+    let appliedSplit = false;
+
+    for (const [clusterIdStr, indices] of Object.entries(clusterMembers)) {
+      const clusterSize = indices.length;
+      if (clusterSize > maxClusterSize) {
+        appliedSplit = true;
+        const targetK = Math.min(
+          clusterSize,
+          Math.max(2, Math.ceil(clusterSize / maxClusterSize))
+        );
+        const clusterVectors = indices.map((idx) => semanticVectors[idx]);
+        const dendro = buildDendrogram(clusterVectors);
+        const subAssignments = cutDendrogramByCount(clusterVectors, targetK);
+        const subIds = Array.from(new Set(subAssignments)).sort((a, b) => a - b);
+        const subMap = new Map<number, number>();
+        for (const subId of subIds) {
+          subMap.set(subId, nextClusterId++);
+        }
+        for (let i = 0; i < subAssignments.length; i++) {
+          const globalId = subMap.get(subAssignments[i])!;
+          newAssignments[indices[i]] = globalId;
+        }
+        log(
+          "quality",
+          `Cluster cap split applied: cluster ${clusterIdStr} size ${clusterSize} -> ${subIds.length} clusters (cap ${maxClusterSize})`
+        );
+      } else {
+        const globalId = nextClusterId++;
+        for (const idx of indices) {
+          newAssignments[idx] = globalId;
+        }
+      }
+    }
+
+    if (appliedSplit) {
+      assignments = newAssignments;
+      K = nextClusterId;
+      centroids = computeCentroids(semanticVectors, assignments, K);
+    }
+  }
+
   // Quality check for primary layer
-  const quality = evaluateCutQuality(assignments, effectiveSentences, centroids, cutQualityParams);
+  const quality = evaluateCutQuality(assignments, effectiveSentences, centroids, resolvedCutQualityParams);
   log("quality", `Primary cut quality for K=${K}: score=${quality.score.toFixed(2)}, valid=${quality.isValid}`, quality);
   if (quality.penalties.supportViolations > 0) {
     log("quality", `Quality warning: ${quality.penalties.supportViolations} primary concepts violate minJurorSupport`);
@@ -631,7 +755,13 @@ export async function buildAnalysis(
   const jurorSimilarityLinks = buildJurorSimilarityLinks(jurorList, jurorVectors, primaryConceptIds, similarityThreshold);
   links.push(...jurorSimilarityLinks);
 
-  const conceptSimilarityLinks = buildConceptSimilarityLinks(primaryConceptIds, centroids, similarityThreshold);
+  const conceptConceptThreshold = similarityThreshold * 0.7;
+  const conceptSimilarityLinks = buildConceptSimilarityLinks(
+    primaryConceptIds,
+    centroids,
+    similarityThreshold,
+    conceptConceptThreshold
+  );
   links.push(...conceptSimilarityLinks);
 
   // Anchored axis projections (optional, measurement only)
@@ -675,6 +805,7 @@ export async function buildAnalysis(
     },
     recommendedK,
     kSearchMetrics,
+    autoKReasoning,
     clusteringMode,
     checkpoints,
     jurorTopTerms,

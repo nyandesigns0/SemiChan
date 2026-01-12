@@ -73,11 +73,17 @@ export default function HomePage() {
   // New algorithm state
   const [clusteringMode, setClusteringMode] = useState<"kmeans" | "hierarchical">("hierarchical");
   const [autoK, setAutoK] = useState(true);
+  const [autoKStability, setAutoKStability] = useState(false);
+  const [autoKDominanceThreshold, setAutoKDominanceThreshold] = useState(0.35);
+  const [autoKKPenalty, setAutoKKPenalty] = useState(0.001);
+  const [autoKEpsilon, setAutoKEpsilon] = useState(0.02);
+  const [kMinOverride, setKMinOverride] = useState<number | undefined>(undefined);
+  const [kMaxOverride, setKMaxOverride] = useState<number | undefined>(undefined);
   const [clusterSeed, setClusterSeed] = useState(42);
   const [softMembership, setSoftMembership] = useState(true);
   const [evidenceRankingParams, setEvidenceRankingParams] = useState({ semanticWeight: 0.7, frequencyWeight: 0.3 });
   const [cutType, setCutType] = useState<"count" | "granularity">("count");
-  const [granularityPercent, setGranularityPercent] = useState(50);
+  const [granularityPercent, setGranularityPercent] = useState(60);
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   const [search, setSearch] = useState("");
 
@@ -285,6 +291,12 @@ export default function HomePage() {
         evidenceRankingParams,
         clusteringMode,
         autoK,
+        autoKStability,
+        autoKDominanceThreshold,
+        autoKKPenalty,
+        autoKEpsilon,
+        kMinOverride,
+        kMaxOverride,
         clusterSeed,
         softMembership,
         cutType,
@@ -319,6 +331,12 @@ export default function HomePage() {
     evidenceRankingParams,
     clusteringMode,
     autoK,
+    autoKStability,
+    autoKDominanceThreshold,
+    autoKKPenalty,
+    autoKEpsilon,
+    kMinOverride,
+    kMaxOverride,
     clusterSeed,
     softMembership,
     cutType,
@@ -388,6 +406,12 @@ export default function HomePage() {
             evidenceRankingParams,
             clusteringMode,
             autoK,
+            autoKStability,
+            autoKDominanceThreshold,
+            autoKKPenalty,
+            autoKEpsilon,
+            kMin: kMinOverride,
+            kMax: kMaxOverride,
             clusterSeed,
             softMembership,
             cutType,
@@ -427,7 +451,7 @@ export default function HomePage() {
     };
 
     analyze();
-  }, [jurorBlocks, kConcepts, similarityThreshold, evidenceRankingParams, clusteringMode, autoK, clusterSeed, softMembership, cutType, granularityPercent, numDimensions, selectedModel, dimensionMode, varianceThreshold, anchorAxes, addLog]);
+  }, [jurorBlocks, kConcepts, similarityThreshold, evidenceRankingParams, clusteringMode, autoK, autoKStability, autoKDominanceThreshold, autoKKPenalty, autoKEpsilon, kMinOverride, kMaxOverride, clusterSeed, softMembership, cutType, granularityPercent, numDimensions, selectedModel, dimensionMode, varianceThreshold, anchorAxes, addLog]);
 
   // Helper function to get node network (node + connected links + connected nodes)
   const getNodeNetwork = useCallback((nodeId: string, nodes: GraphNode[], links: GraphLink[]) => {
@@ -902,6 +926,18 @@ export default function HomePage() {
             onClusteringModeChange={setClusteringMode}
             autoK={autoK}
             onAutoKChange={setAutoK}
+            autoKStability={autoKStability}
+            onAutoKStabilityChange={setAutoKStability}
+            autoKDominanceThreshold={autoKDominanceThreshold}
+            onAutoKDominanceThresholdChange={setAutoKDominanceThreshold}
+            autoKKPenalty={autoKKPenalty}
+            onAutoKKPenaltyChange={setAutoKKPenalty}
+            autoKEpsilon={autoKEpsilon}
+            onAutoKEpsilonChange={setAutoKEpsilon}
+            kMinOverride={kMinOverride}
+            kMaxOverride={kMaxOverride}
+            onKMinOverrideChange={setKMinOverride}
+            onKMaxOverrideChange={setKMaxOverride}
             clusterSeed={clusterSeed}
             onClusterSeedChange={setClusterSeed}
             softMembership={softMembership}

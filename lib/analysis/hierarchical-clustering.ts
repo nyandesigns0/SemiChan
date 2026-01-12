@@ -271,6 +271,7 @@ export interface TwoLayerCut {
   primaryAssignments: number[];
   detailAssignments: number[];
   parentMap: Record<number, number>; // detail cluster index -> primary cluster index
+  detailGranularities?: Record<number, number>; // primary cluster id -> chosen detail granularity
 }
 
 /**
@@ -294,7 +295,8 @@ export function cutDendrogramTwoLayer(
   primaryParams: CutQualityParams,
   detailParams: CutQualityParams,
   primaryGranularity: number = 70,
-  detailGranularity: number = 30
+  detailGranularity: number = 30,
+  detailAutoRange?: { min: number; max: number; step?: number }
 ): TwoLayerCut {
   const n = vectors.length;
   if (n === 0) {
@@ -316,6 +318,7 @@ export function cutDendrogramTwoLayer(
   // 2. For each primary cluster, perform a detail cut
   const detailAssignments = new Array(n).fill(-1);
   const parentMap: Record<number, number> = {};
+  const detailGranularities: Record<number, number> = {};
   let nextDetailId = 0;
 
   for (let pIdx = 0; pIdx < numPrimary; pIdx++) {
@@ -343,15 +346,32 @@ export function cutDendrogramTwoLayer(
 
     // Build sub-dendrogram for this cluster
     const subDendrogram = buildDendrogram(clusterVectors);
-    
-    // Cut sub-dendrogram with finer granularity
-    const subAssignments = cutDendrogramByThreshold(
-      subDendrogram,
-      clusterVectors,
-      clusterSentences,
-      detailGranularity,
-      detailParams
-    );
+
+    let chosenGranularity = detailGranularity;
+    let subAssignments: number[] = [];
+
+    if (detailAutoRange) {
+      const detailEval = findOptimalDetailGranularity(
+        subDendrogram,
+        clusterVectors,
+        clusterSentences,
+        detailParams,
+        detailAutoRange.min,
+        detailAutoRange.max,
+        detailAutoRange.step ?? 5
+      );
+      chosenGranularity = detailEval.granularity;
+      subAssignments = detailEval.assignments;
+    } else {
+      // Cut sub-dendrogram with finer granularity
+      subAssignments = cutDendrogramByThreshold(
+        subDendrogram,
+        clusterVectors,
+        clusterSentences,
+        detailGranularity,
+        detailParams
+      );
+    }
 
     const subClusterIds = Array.from(new Set(subAssignments)).sort((a, b) => a - b);
     
@@ -361,6 +381,7 @@ export function cutDendrogramTwoLayer(
       const globalDetailId = nextDetailId++;
       subIdToGlobalMap.set(subId, globalDetailId);
       parentMap[globalDetailId] = pId;
+      detailGranularities[pId] = chosenGranularity;
     }
 
     for (let i = 0; i < clusterIndices.length; i++) {
@@ -368,7 +389,63 @@ export function cutDendrogramTwoLayer(
     }
   }
 
-  return { primaryAssignments, detailAssignments, parentMap };
+  return { primaryAssignments, detailAssignments, parentMap, detailGranularities };
+}
+
+export function findOptimalDetailGranularity(
+  dendrogram: Dendrogram,
+  vectors: Float64Array[],
+  sentences: SentenceRecord[],
+  detailParams: CutQualityParams,
+  minGranularity: number,
+  maxGranularity: number,
+  step: number = 5
+): { granularity: number; assignments: number[] } {
+  const candidates: number[] = [];
+  for (let g = minGranularity; g <= maxGranularity; g += step) {
+    candidates.push(g);
+  }
+  if (candidates.length === 0) {
+    candidates.push(30);
+  }
+
+  let bestGranularity = candidates[0];
+  let bestScore = -Infinity;
+  let bestAssignments: number[] = [];
+
+  for (const gran of candidates) {
+    const assignments = cutDendrogramByThreshold(
+      dendrogram,
+      vectors,
+      sentences,
+      gran,
+      detailParams
+    );
+    const numClusters = new Set(assignments).size;
+    if (numClusters <= 1) {
+      continue;
+    }
+    const centroids = computeCentroids(vectors, assignments, numClusters);
+    const quality = evaluateCutQuality(assignments, sentences, centroids, detailParams);
+    if (!quality.isValid) continue;
+    if (quality.score > bestScore) {
+      bestScore = quality.score;
+      bestGranularity = gran;
+      bestAssignments = assignments;
+    }
+  }
+
+  if (bestAssignments.length === 0) {
+    bestAssignments = cutDendrogramByThreshold(
+      dendrogram,
+      vectors,
+      sentences,
+      bestGranularity,
+      detailParams
+    );
+  }
+
+  return { granularity: bestGranularity, assignments: bestAssignments };
 }
 
 /**
@@ -380,4 +457,3 @@ function findRoot(x: number, parent: number[]): number {
   }
   return parent[x] === -1 ? x : parent[x];
 }
-

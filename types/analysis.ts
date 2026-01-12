@@ -47,7 +47,16 @@ export interface AnalysisResult {
     stanceCounts: Record<Stance, number>;
   };
   recommendedK?: number;
-  kSearchMetrics?: Array<{ k: number; score: number }>;
+  kSearchMetrics?: Array<{
+    k: number;
+    score: number;
+    quality?: any;
+    silhouette?: number;
+    maxClusterShare?: number;
+    stabilityScore?: number;
+    valid: boolean;
+  }>;
+  autoKReasoning?: string;
   clusteringMode?: "kmeans" | "hierarchical" | "hybrid";
   checkpoints?: AnalysisCheckpoint[];
   requestedNumDimensions?: number;

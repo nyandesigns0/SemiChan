@@ -29,6 +29,18 @@ interface AnalysisControlsAccordionProps {
   onCutTypeChange: (type: "count" | "granularity") => void;
   granularityPercent: number;
   onGranularityPercentChange: (value: number) => void;
+  autoKStability: boolean;
+  onAutoKStabilityChange: (value: boolean) => void;
+  autoKDominanceThreshold: number;
+  onAutoKDominanceThresholdChange: (value: number) => void;
+  autoKKPenalty: number;
+  onAutoKKPenaltyChange: (value: number) => void;
+  autoKEpsilon: number;
+  onAutoKEpsilonChange: (value: number) => void;
+  kMinOverride?: number;
+  kMaxOverride?: number;
+  onKMinOverrideChange: (value?: number) => void;
+  onKMaxOverrideChange: (value?: number) => void;
 
   // Visualization Dimensions
   numDimensions: number;
@@ -63,6 +75,18 @@ export function AnalysisControlsAccordion({
   onCutTypeChange,
   granularityPercent,
   onGranularityPercentChange,
+  autoKStability,
+  onAutoKStabilityChange,
+  autoKDominanceThreshold,
+  onAutoKDominanceThresholdChange,
+  autoKKPenalty,
+  onAutoKKPenaltyChange,
+  autoKEpsilon,
+  onAutoKEpsilonChange,
+  kMinOverride,
+  kMaxOverride,
+  onKMinOverrideChange,
+  onKMaxOverrideChange,
   numDimensions,
   onNumDimensionsChange,
   dimensionMode,
@@ -117,6 +141,18 @@ export function AnalysisControlsAccordion({
             onCutTypeChange={onCutTypeChange}
             granularityPercent={granularityPercent}
             onGranularityPercentChange={onGranularityPercentChange}
+            autoKStability={autoKStability}
+            onAutoKStabilityChange={onAutoKStabilityChange}
+            autoKDominanceThreshold={autoKDominanceThreshold}
+            onAutoKDominanceThresholdChange={onAutoKDominanceThresholdChange}
+            autoKKPenalty={autoKKPenalty}
+            onAutoKKPenaltyChange={onAutoKKPenaltyChange}
+            autoKEpsilon={autoKEpsilon}
+            onAutoKEpsilonChange={onAutoKEpsilonChange}
+            kMinOverride={kMinOverride}
+            kMaxOverride={kMaxOverride}
+            onKMinOverrideChange={onKMinOverrideChange}
+            onKMaxOverrideChange={onKMaxOverrideChange}
             numDimensions={numDimensions}
             onNumDimensionsChange={onNumDimensionsChange}
             dimensionMode={dimensionMode}

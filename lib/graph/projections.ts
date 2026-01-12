@@ -72,16 +72,18 @@ export function jensenShannonSimilarity(p: Float64Array, q: Float64Array): numbe
 export function buildConceptSimilarityLinks(
   conceptIds: string[],
   centroids: Float64Array[],
-  similarityThreshold: number
+  similarityThreshold: number,
+  conceptConceptThreshold?: number
 ): GraphLink[] {
   const links: GraphLink[] = [];
+  const threshold = conceptConceptThreshold ?? similarityThreshold * 0.7;
 
   for (let i = 0; i < conceptIds.length; i++) {
     for (let j = i + 1; j < conceptIds.length; j++) {
       const ca = conceptIds[i];
       const cb = conceptIds[j];
       const sim = cosine(centroids[i], centroids[j]);
-      if (sim >= similarityThreshold) {
+      if (sim >= threshold) {
         links.push({
           id: `sim:concept:${i}__concept:${j}`,
           source: ca,

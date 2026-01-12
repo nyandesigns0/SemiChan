@@ -28,6 +28,10 @@ export interface AnalyzeRequest {
   autoK?: boolean;
   kMin?: number;
   kMax?: number;
+  autoKStability?: boolean;
+  autoKDominanceThreshold?: number;
+  autoKKPenalty?: number;
+  autoKEpsilon?: number;
   softMembership?: boolean;
   softTopN?: number;
   cutType?: "count" | "granularity";

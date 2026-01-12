@@ -695,6 +695,68 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
         </div>
       </div>
 
+      {analysis && analysis.kSearchMetrics && analysis.kSearchMetrics.length > 0 && (
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="bg-indigo-50 text-indigo-700">
+                AutoK Selection
+              </Badge>
+              <span className="text-sm font-semibold text-slate-600">
+                Tested K {analysis.kSearchMetrics[0]?.k} - {analysis.kSearchMetrics[analysis.kSearchMetrics.length - 1]?.k}
+              </span>
+            </div>
+            {analysis.recommendedK !== undefined && (
+              <Badge variant="outline" className="border-indigo-200 bg-indigo-50 px-2 py-0 text-[11px] font-black text-indigo-700">
+                Chosen K = {analysis.recommendedK}
+              </Badge>
+            )}
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            {analysis.autoKReasoning && (
+              <p className="text-[12px] text-slate-600">
+                Reasoning: {analysis.autoKReasoning}
+              </p>
+            )}
+            <div className="overflow-hidden rounded-lg border border-slate-100">
+              <table className="min-w-full divide-y divide-slate-100 text-[12px]">
+                <thead className="bg-slate-50 text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold">K</th>
+                    <th className="px-3 py-2 text-left font-semibold">Score</th>
+                    <th className="px-3 py-2 text-left font-semibold">Dominance</th>
+                    <th className="px-3 py-2 text-left font-semibold">Stability</th>
+                    <th className="px-3 py-2 text-left font-semibold">Valid</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {analysis.kSearchMetrics.map((m) => {
+                    const isSelected = analysis.recommendedK === m.k;
+                    return (
+                      <tr key={`k-${m.k}`} className={isSelected ? "bg-indigo-50/50" : ""}>
+                        <td className="px-3 py-2 font-semibold text-slate-800">{m.k}</td>
+                        <td className="px-3 py-2 text-slate-700">{m.valid && Number.isFinite(m.score) ? m.score.toFixed(3) : "—"}</td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {m.maxClusterShare !== undefined ? `${(m.maxClusterShare * 100).toFixed(1)}%` : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {m.stabilityScore !== undefined ? m.stabilityScore.toFixed(3) : "—"}
+                        </td>
+                        <td className="px-3 py-2">
+                          <Badge variant={m.valid ? "secondary" : "outline"} className={m.valid ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}>
+                            {m.valid ? "Yes" : "No"}
+                          </Badge>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Three-column layout: Juror, Dimension, Concept */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Juror Analysis */}

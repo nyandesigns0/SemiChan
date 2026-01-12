@@ -19,7 +19,8 @@ import {
   Scale,
   Sparkles,
   Settings2,
-  Library
+  Library,
+  Gauge
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -27,6 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
 
 interface AnalysisControlsProps {
   kConcepts: number;
@@ -51,6 +53,18 @@ interface AnalysisControlsProps {
   onCutTypeChange: (type: "count" | "granularity") => void;
   granularityPercent: number;
   onGranularityPercentChange: (value: number) => void;
+  autoKStability: boolean;
+  onAutoKStabilityChange: (value: boolean) => void;
+  autoKDominanceThreshold: number;
+  onAutoKDominanceThresholdChange: (value: number) => void;
+  autoKKPenalty: number;
+  onAutoKKPenaltyChange: (value: number) => void;
+  autoKEpsilon: number;
+  onAutoKEpsilonChange: (value: number) => void;
+  kMinOverride?: number;
+  kMaxOverride?: number;
+  onKMinOverrideChange: (value?: number) => void;
+  onKMaxOverrideChange: (value?: number) => void;
   
   // Visualization Dimensions
   numDimensions: number;
@@ -83,6 +97,18 @@ export function AnalysisControls({
   onCutTypeChange,
   granularityPercent,
   onGranularityPercentChange,
+  autoKStability,
+  onAutoKStabilityChange,
+  autoKDominanceThreshold,
+  onAutoKDominanceThresholdChange,
+  autoKKPenalty,
+  onAutoKKPenaltyChange,
+  autoKEpsilon,
+  onAutoKEpsilonChange,
+  kMinOverride,
+  kMaxOverride,
+  onKMinOverrideChange,
+  onKMaxOverrideChange,
   numDimensions,
   onNumDimensionsChange,
   dimensionMode,
@@ -92,6 +118,7 @@ export function AnalysisControls({
   appliedNumDimensions,
 }: AnalysisControlsProps) {
   const [showClusteringSettings, setShowClusteringSettings] = useState(false);
+  const [showAutoKSettings, setShowAutoKSettings] = useState(false);
   const [showEvidenceSettings, setShowEvidenceSettings] = useState(false);
   const [showNetworkSettings, setShowNetworkSettings] = useState(false);
   const [showDimensionSettings, setShowDimensionSettings] = useState(false);
@@ -181,6 +208,111 @@ export function AnalysisControls({
                     </Label>
                   </div>
                   <Switch checked={autoK} onCheckedChange={onAutoKChange} className="scale-75" />
+                </div>
+
+                <div className="space-y-1">
+                  <button
+                    onClick={() => setShowAutoKSettings(!showAutoKSettings)}
+                    className="flex w-full items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-indigo-500 transition-colors py-0.5 px-1"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Gauge className="h-3 w-3" />
+                      Auto-K Settings
+                    </div>
+                    {showAutoKSettings ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  </button>
+
+                  {showAutoKSettings && (
+                    <div className="space-y-2 rounded-lg border border-slate-100 bg-white/60 p-2">
+                      <p className="text-[10px] text-slate-500">
+                        Default range: sqrt(N) to N/4 (clamped 4-20). Overrides below tweak the search window.
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <Label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                          <Sparkles className="h-3 w-3 text-indigo-500" />
+                          Stability Check
+                        </Label>
+                        <Switch checked={autoKStability} onCheckedChange={onAutoKStabilityChange} className="scale-75" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-[11px] font-bold text-slate-700">Dominance Threshold</Label>
+                          <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                            {autoKDominanceThreshold.toFixed(2)}
+                          </Badge>
+                        </div>
+                        <Slider
+                          value={[autoKDominanceThreshold]}
+                          min={0.25}
+                          max={0.5}
+                          step={0.01}
+                          onValueChange={(v) => onAutoKDominanceThresholdChange(v[0])}
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-[11px] font-bold text-slate-700">K Penalty</Label>
+                          <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                            {autoKKPenalty.toFixed(4)}
+                          </Badge>
+                        </div>
+                        <Slider
+                          value={[autoKKPenalty]}
+                          min={0.0001}
+                          max={0.005}
+                          step={0.0001}
+                          onValueChange={(v) => onAutoKKPenaltyChange(Number(v[0].toFixed(4)))}
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-[11px] font-bold text-slate-700">Epsilon (Tie Bias)</Label>
+                          <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                            {autoKEpsilon.toFixed(3)}
+                          </Badge>
+                        </div>
+                        <Slider
+                          value={[autoKEpsilon]}
+                          min={0.005}
+                          max={0.05}
+                          step={0.001}
+                          onValueChange={(v) => onAutoKEpsilonChange(Number(v[0].toFixed(3)))}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] font-bold uppercase text-slate-500">kMin Override</Label>
+                          <Input
+                            type="number"
+                            value={kMinOverride ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              onKMinOverrideChange(val === "" ? undefined : Number(val));
+                            }}
+                            min={2}
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] font-bold uppercase text-slate-500">kMax Override</Label>
+                          <Input
+                            type="number"
+                            value={kMaxOverride ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              onKMaxOverrideChange(val === "" ? undefined : Number(val));
+                            }}
+                            min={3}
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="h-px bg-slate-100" />

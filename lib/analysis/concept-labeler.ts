@@ -1,6 +1,18 @@
 import type { BM25Model } from "@/types/nlp";
-import { extractNgrams } from "@/lib/nlp/ngram-extractor";
-import { topN } from "@/lib/utils/array-utils";
+
+const STEM_SUFFIXES = ["ation", "ition", "tion", "sion", "ingly", "edly", "ing", "ed", "est", "er", "ly", "es", "s"];
+
+function stemTerm(term: string): string {
+  const cleaned = term.toLowerCase().trim();
+  if (!cleaned) return "";
+  const token = cleaned.split(/\s+/)[0];
+  for (const suffix of STEM_SUFFIXES) {
+    if (token.endsWith(suffix) && token.length - suffix.length >= 3) {
+      return token.slice(0, -suffix.length);
+    }
+  }
+  return token;
+}
 
 /**
  * Generate concept labels using contrastive BM25 scoring.
@@ -25,11 +37,30 @@ export function contrastiveLabelCluster(
     bm25Model,
     sentencesInCluster,
     allSentences,
-    topNCount
+    Math.max(topNCount * 2, 8)
   );
 
   if (terms.length === 0) return "Concept";
-  return terms.join(" · ");
+
+  const seenStems = new Set<string>();
+  const deduped: string[] = [];
+
+  for (const term of terms) {
+    const stem = stemTerm(term);
+    if (!stem) continue;
+    if (seenStems.has(stem)) continue;
+    const normalized = term.toLowerCase();
+    const isSubstringDuplicate = deduped.some((t) => {
+      const tNorm = t.toLowerCase();
+      return tNorm.includes(normalized) || normalized.includes(tNorm);
+    });
+    if (isSubstringDuplicate) continue;
+    seenStems.add(stem);
+    deduped.push(term);
+    if (deduped.length >= topNCount) break;
+  }
+
+  return deduped.join(" Aú ");
 }
 
 /**
