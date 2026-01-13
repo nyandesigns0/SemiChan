@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useState } from "react";
-import { RotateCcw, Grid3X3, Box, Eye, EyeOff, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
+import { RotateCcw, RotateCw, Grid3X3, Box, Eye, EyeOff, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -17,6 +17,8 @@ interface Graph3DControlsProps {
   showGraph: boolean;
   onToggleGraph: () => void;
   onResetCamera: () => void;
+  turntableEnabled?: boolean;
+  onToggleTurntable?: () => void;
   axisLabels?: AnalysisResult["axisLabels"];
   enableAxisLabelAI?: boolean;
   onToggleAxisLabelAI?: (enabled: boolean) => void;
@@ -33,6 +35,8 @@ export function Graph3DControls({
   showGraph,
   onToggleGraph,
   onResetCamera,
+  turntableEnabled = false,
+  onToggleTurntable,
   axisLabels,
   enableAxisLabelAI = false,
   onToggleAxisLabelAI,
@@ -48,6 +52,19 @@ export function Graph3DControls({
   return (
     <>
       <div className="absolute bottom-4 left-4 flex flex-col gap-2 z-10">
+        {onToggleTurntable && (
+          <Button
+            variant={turntableEnabled ? "default" : "outline"}
+            className={`h-9 w-9 rounded-lg p-0 shadow-md backdrop-blur-sm ${
+              turntableEnabled ? "bg-slate-800 hover:bg-slate-700" : "bg-white/90 hover:bg-white"
+            }`}
+            onClick={onToggleTurntable}
+            title={turntableEnabled ? "Stop turntable" : "Start turntable"}
+          >
+            <RotateCw className={`h-4 w-4 ${turntableEnabled ? "text-white" : "text-slate-700"}`} />
+          </Button>
+        )}
+        
         <Button
           variant="outline"
           className="h-9 w-9 rounded-lg bg-white/90 p-0 shadow-md backdrop-blur-sm hover:bg-white"

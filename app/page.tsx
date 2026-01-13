@@ -49,6 +49,7 @@ export default function HomePage() {
   const [sampleProgressId, setSampleProgressId] = useState<string | null>(null);
   const [samplePhase, setSamplePhase] = useState<"idle" | "loading" | "ready">("idle");
   const [autoRotateDisabled, setAutoRotateDisabled] = useState(false);
+  const [turntableEnabled, setTurntableEnabled] = useState(true);
   const sampleEventSourceRef = useRef<EventSource | null>(null);
   const sampleLoadPendingRef = useRef(false);
   const sampleProgressIdRef = useRef<string | null>(null);
@@ -1117,8 +1118,20 @@ export default function HomePage() {
 
   const handleAutoRotateDisabled = useCallback(() => {
     setAutoRotateDisabled(true);
-    addLog("interaction", "User clicked 3D canvas - auto-rotation disabled");
+    setTurntableEnabled(false);
+    addLog("interaction", "User interacted with 3D canvas - turntable disabled");
   }, [addLog]);
+
+  const handleToggleTurntable = useCallback(() => {
+    setTurntableEnabled((prev) => {
+      const newValue = !prev;
+      // When enabling turntable, clear the auto-rotate disabled flag so rotation can start
+      if (newValue) {
+        setAutoRotateDisabled(false);
+      }
+      return newValue;
+    });
+  }, []);
 
   const handleOpenUploadSidebar = useCallback(() => {
     // Open the left sidebar
@@ -1393,6 +1406,8 @@ export default function HomePage() {
                   samplePhase={samplePhase}
                   autoRotateDisabled={autoRotateDisabled}
                   onAutoRotateDisabled={handleAutoRotateDisabled}
+                  turntableEnabled={turntableEnabled}
+                  onToggleTurntable={handleToggleTurntable}
                   onOpenUploadSidebar={handleOpenUploadSidebar}
               />
               </div>

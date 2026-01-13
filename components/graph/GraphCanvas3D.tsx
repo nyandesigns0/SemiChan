@@ -4,7 +4,7 @@ import { useRef, useState, useMemo, useCallback, useEffect, Suspense, memo } fro
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, Environment, PerspectiveCamera, Grid, Html } from "@react-three/drei";
 import * as THREE from "three";
-import { BrainCircuit, Play, FastForward, SkipBack } from "lucide-react";
+import { BrainCircuit, Play, FastForward, SkipBack, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils/cn";
@@ -66,21 +66,42 @@ interface GraphCanvas3DProps {
   focusScale?: number;
   autoRotateDisabled?: boolean;
   onAutoRotateDisabled?: () => void;
+  turntableEnabled?: boolean;
+  onToggleTurntable?: () => void;
   onOpenUploadSidebar?: () => void;
 }
 
 // Camera controller component to handle reset
 function CameraController({ 
   controlsRef,
-  autoRotate = true,
+  turntableEnabled = false,
   autoRotateSpeed = 0.6,
   autoRotateDisabled = false,
+  onUserInteraction,
 }: { 
   controlsRef: React.RefObject<OrbitControlsType>,
-  autoRotate?: boolean;
+  turntableEnabled?: boolean;
   autoRotateSpeed?: number;
   autoRotateDisabled?: boolean;
+  onUserInteraction?: () => void;
 }) {
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls || !onUserInteraction) return;
+
+    const handleStart = () => {
+      if (turntableEnabled && !autoRotateDisabled) {
+        onUserInteraction();
+      }
+    };
+
+    controls.addEventListener("start", handleStart);
+
+    return () => {
+      controls.removeEventListener("start", handleStart);
+    };
+  }, [controlsRef, turntableEnabled, autoRotateDisabled, onUserInteraction]);
+
   return (
     <>
       <PerspectiveCamera makeDefault position={[15, 15, 15]} fov={50} />
@@ -93,7 +114,7 @@ function CameraController({
         panSpeed={0.5}
         minDistance={5}
         maxDistance={100}
-        autoRotate={autoRotate && !autoRotateDisabled}
+        autoRotate={turntableEnabled && !autoRotateDisabled}
         autoRotateSpeed={autoRotateSpeed}
       />
     </>
@@ -254,6 +275,8 @@ interface NeuronLoaderProps {
   coreColor?: string;
   disableRotation?: boolean;
   animateClustering?: boolean;
+  loadingProgress?: number;
+  samplePhase?: "idle" | "loading" | "ready";
 }
 
 function NeuronLoader({
@@ -263,19 +286,22 @@ function NeuronLoader({
   coreColor = "#1d4ed8",
   disableRotation = false,
   animateClustering = false,
+  loadingProgress,
+  samplePhase = "idle",
 }: NeuronLoaderProps) {
   const groupRef = useRef<THREE.Group>(null);
-  const coreRef = useRef<THREE.Mesh>(null);
   const pointsRef = useRef<THREE.Points>(null);
   const linesRef = useRef<THREE.LineSegments>(null);
+  const phase2StartTime = useRef<number | null>(null);
 
-  // Store initial positions and create color array
-  const { initialPositions, initialColors, initialLinePositions } = useMemo(() => {
+  // Store initial positions, colors, sizes, and create color array
+  const { initialPositions, initialColors, initialSizes, initialLinePositions } = useMemo(() => {
     const count = 80;
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
     
-    // Generate colors: start with single color, transition to varied
+    // Generate colors: varied colors from the start
     const colorVariations = [
       new THREE.Color("#38bdf8"), // blue
       new THREE.Color("#fbbf24"), // amber
@@ -294,10 +320,14 @@ function NeuronLoader({
       positions[i * 3 + 1] = radius * Math.cos(phi);
       positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
       
+      // Assign varied colors immediately
       const targetColor = colorVariations[i % colorVariations.length];
       colors[i * 3] = targetColor.r;
       colors[i * 3 + 1] = targetColor.g;
       colors[i * 3 + 2] = targetColor.b;
+      
+      // Assign varied sizes (0.12 to 0.25)
+      sizes[i] = 0.12 + Math.random() * 0.13;
     }
 
     const connections = 120;
@@ -313,7 +343,7 @@ function NeuronLoader({
       lineArray[i * 6 + 5] = positions[b * 3 + 2];
     }
 
-    return { initialPositions: positions, initialColors: colors, initialLinePositions: lineArray };
+    return { initialPositions: positions, initialColors: colors, initialSizes: sizes, initialLinePositions: lineArray };
   }, [pointColor]);
 
   // Store line connections for animation
@@ -329,32 +359,53 @@ function NeuronLoader({
   }, [initialPositions.length]);
 
   // Animation state
-  const animationStartTime = useRef<number | null>(null);
-  const animationDuration = 2000; // 2 seconds
   const currentPositions = useRef<Float32Array>(new Float32Array(initialPositions));
   const currentColors = useRef<Float32Array>(new Float32Array(initialPositions.length));
+  const currentSizes = useRef<Float32Array>(new Float32Array(initialSizes));
   const currentLinePositions = useRef<Float32Array>(new Float32Array(initialLinePositions));
+  const previousSamplePhase = useRef<SamplePhase>(samplePhase);
+  const phase1StartTime = useRef<number | null>(null);
   
-  // Initialize current colors with base color
+  // Store color variations for glow effects
+  const colorVariations = useMemo(() => [
+    new THREE.Color("#38bdf8"), // blue
+    new THREE.Color("#fbbf24"), // amber
+    new THREE.Color("#34d399"), // emerald
+    new THREE.Color("#f472b6"), // pink
+    new THREE.Color("#a78bfa"), // violet
+    new THREE.Color("#fb7185"), // rose
+  ], []);
+  
+  // Initialize current colors and sizes with initial values (varied from start)
   useEffect(() => {
-    const baseColor = new THREE.Color(pointColor);
-    for (let i = 0; i < currentColors.current.length / 3; i++) {
-      currentColors.current[i * 3] = baseColor.r;
-      currentColors.current[i * 3 + 1] = baseColor.g;
-      currentColors.current[i * 3 + 2] = baseColor.b;
-    }
-  }, [pointColor]);
+    currentColors.current.set(initialColors);
+    currentSizes.current.set(initialSizes);
+  }, [initialColors, initialSizes]);
 
-  // Reset animation when animateClustering changes
+  // Track phase transitions and reset animations
   useEffect(() => {
-    if (animateClustering) {
-      animationStartTime.current = null;
+    if (previousSamplePhase.current === "idle" && samplePhase === "loading") {
+      // Phase 1 starts when transitioning from idle to loading
+      phase1StartTime.current = null;
+    }
+    if (previousSamplePhase.current === "loading" && samplePhase === "ready") {
+      // Phase 2 starts when transitioning from loading to ready
+      phase2StartTime.current = null;
+    }
+    previousSamplePhase.current = samplePhase;
+  }, [samplePhase]);
+
+  // Reset positions when samplePhase goes back to idle
+  useEffect(() => {
+    if (samplePhase === "idle") {
       currentPositions.current.set(initialPositions);
       currentLinePositions.current.set(initialLinePositions);
+      phase1StartTime.current = null;
+      phase2StartTime.current = null;
     }
-  }, [animateClustering, initialPositions, initialLinePositions]);
+  }, [samplePhase, initialPositions, initialLinePositions]);
 
-  // Easing function (easeOutCubic)
+  // Easing function (easeOutCubic) for Phase 2
   const easeOutCubic = (t: number): number => {
     return 1 - Math.pow(1 - t, 3);
   };
@@ -362,44 +413,78 @@ function NeuronLoader({
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
     
+    // Rotation speed
     if (!disableRotation && groupRef.current) {
-      groupRef.current.rotation.y = t * 0.2;
-      groupRef.current.rotation.x = t * 0.12;
-    }
-    
-    if (coreRef.current) {
-      const pulse = 1 + Math.sin(t * 2.2) * 0.08;
-      coreRef.current.scale.set(pulse, pulse, pulse);
+      groupRef.current.rotation.y = t * 0.08;
+      groupRef.current.rotation.x = t * 0.05;
     }
 
-    // Handle clustering animation
-    if (animateClustering && pointsRef.current && linesRef.current) {
-      if (animationStartTime.current === null) {
-        animationStartTime.current = clock.getElapsedTime();
-      }
-      
-      const elapsed = (clock.getElapsedTime() - animationStartTime.current) * 1000;
-      const progress = Math.min(elapsed / animationDuration, 1);
-      const easedProgress = easeOutCubic(progress);
-      
+    // Handle two-phase shrinking animation
+    if (pointsRef.current && linesRef.current && (samplePhase === "loading" || samplePhase === "ready")) {
       const geometry = pointsRef.current.geometry;
       const positionAttribute = geometry.getAttribute("position") as THREE.BufferAttribute;
       const colorAttribute = geometry.getAttribute("color") as THREE.BufferAttribute;
-      
-      const baseColor = new THREE.Color(pointColor);
+      const sizeAttribute = geometry.getAttribute("size") as THREE.BufferAttribute;
 
-      for (let i = 0; i < initialPositions.length / 3; i++) {
+      let shrinkFactor = 1.0;
+
+      if (samplePhase === "loading") {
+        // Phase 1: Smooth animated shrink from 100% to 50% when loading starts
+        if (phase1StartTime.current === null) {
+          phase1StartTime.current = clock.getElapsedTime();
+        }
+        const phase1Duration = 1500; // 1.5 seconds for smooth transition
+        const elapsed = (clock.getElapsedTime() - phase1StartTime.current) * 1000;
+        const progress = Math.min(elapsed / phase1Duration, 1);
+        const easedProgress = easeOutCubic(progress);
+        // Animate from 1.0 (100%) to 0.5 (50%)
+        shrinkFactor = 1.0 - easedProgress * 0.5;
+      } else if (samplePhase === "ready") {
+        // Phase 2: Shrink from 50% to 0% after loading completes
+        if (phase2StartTime.current === null) {
+          phase2StartTime.current = clock.getElapsedTime();
+        }
+        const phase2Duration = 700; // 700ms duration
+        const elapsed = (clock.getElapsedTime() - phase2StartTime.current) * 1000;
+        const progress = Math.min(elapsed / phase2Duration, 1);
+        const easedProgress = easeOutCubic(progress);
+        // Start at 0.5 (50%), end at 0.0 (0%)
+        shrinkFactor = 0.5 * (1 - easedProgress);
+      }
+
+      const nodeCount = initialPositions.length / 3;
+      const glowTimeOffset = 0.15; // Time offset between nodes for staggered effect
+      const glowCycleSpeed = 2.5; // Speed of glow cycle
+
+      for (let i = 0; i < nodeCount; i++) {
         const ix = i * 3;
         const iy = i * 3 + 1;
         const iz = i * 3 + 2;
         
-        currentPositions.current[ix] = initialPositions[ix] * (1 - easedProgress);
-        currentPositions.current[iy] = initialPositions[iy] * (1 - easedProgress);
-        currentPositions.current[iz] = initialPositions[iz] * (1 - easedProgress);
+        // Apply shrink factor to positions
+        currentPositions.current[ix] = initialPositions[ix] * shrinkFactor;
+        currentPositions.current[iy] = initialPositions[iy] * shrinkFactor;
+        currentPositions.current[iz] = initialPositions[iz] * shrinkFactor;
         
-        currentColors.current[ix] = baseColor.r * (1 - easedProgress) + initialColors[ix] * easedProgress;
-        currentColors.current[iy] = baseColor.g * (1 - easedProgress) + initialColors[iy] * easedProgress;
-        currentColors.current[iz] = baseColor.b * (1 - easedProgress) + initialColors[iz] * easedProgress;
+        // Staggered glow effect
+        const glowOffset = i * glowTimeOffset;
+        const glowPhase = (t * glowCycleSpeed + glowOffset) % (Math.PI * 2);
+        const glowIntensity = Math.max(0, Math.sin(glowPhase));
+        
+        // Apply glow to colors (blend base color with white for glow)
+        const baseColor = colorVariations[i % colorVariations.length];
+        const glowColor = new THREE.Color().lerpColors(
+          baseColor,
+          new THREE.Color(1, 1, 1),
+          glowIntensity * 0.6
+        );
+        
+        currentColors.current[ix] = glowColor.r;
+        currentColors.current[iy] = glowColor.g;
+        currentColors.current[iz] = glowColor.b;
+        
+        // Sizes stay varied (unchanged)
+        currentSizes.current[i] = initialSizes[i];
       }
       
       positionAttribute.array = currentPositions.current;
@@ -407,6 +492,10 @@ function NeuronLoader({
       if (colorAttribute) {
         colorAttribute.array = currentColors.current;
         colorAttribute.needsUpdate = true;
+      }
+      if (sizeAttribute) {
+        sizeAttribute.array = currentSizes.current;
+        sizeAttribute.needsUpdate = true;
       }
 
       // Update line positions based on stored connections
@@ -438,10 +527,11 @@ function NeuronLoader({
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" array={currentPositions.current} count={initialPositions.length / 3} itemSize={3} />
           <bufferAttribute attach="attributes-color" array={currentColors.current} count={currentColors.current.length / 3} itemSize={3} />
+          <bufferAttribute attach="attributes-size" array={currentSizes.current} count={initialSizes.length} itemSize={1} />
         </bufferGeometry>
         <pointsMaterial
           vertexColors={true}
-          size={0.08}
+          size={1}
           sizeAttenuation
           transparent
           opacity={0.9}
@@ -453,10 +543,6 @@ function NeuronLoader({
         </bufferGeometry>
         <lineBasicMaterial color={lineColor} transparent opacity={0.35 * (animateClustering ? 0.7 : 1)} />
       </lineSegments>
-      <mesh ref={coreRef}>
-        <sphereGeometry args={[0.35, 32, 32]} />
-        <meshStandardMaterial color={coreColor} emissive="#f97316" emissiveIntensity={0.7} />
-      </mesh>
     </group>
   );
 }
@@ -818,6 +904,8 @@ export function GraphCanvas3D({
   focusScale: focusScaleProp,
   autoRotateDisabled = false,
   onAutoRotateDisabled,
+  turntableEnabled = false,
+  onToggleTurntable,
   onOpenUploadSidebar,
 }: GraphCanvas3DProps) {
   const controlsRef = useRef<OrbitControlsType>(null);
@@ -825,6 +913,7 @@ export function GraphCanvas3D({
   const [revealedAxisCount, setRevealedAxisCount] = useState(numDimensions);
   const [revealedNodeIds, setRevealedNodeIds] = useState<Set<string>>(new Set());
   const [revealLinks, setRevealLinks] = useState(false);
+  const [modelReady, setModelReady] = useState(false);
   const focusScale = typeof focusScaleProp === "number" ? focusScaleProp : samplePhase === "ready" ? 0.55 : samplePhase === "loading" ? 0.8 : 1;
   const autoRotateSpeed = samplePhase === "ready" ? 1.6 : samplePhase === "loading" ? 1.1 : 0.35;
   const projectionKey = useMemo(() => {
@@ -883,6 +972,18 @@ export function GraphCanvas3D({
       controlsRef.current.reset();
     }
   }, []);
+
+  // Mark model as ready after a short delay to allow 3D scene to initialize
+  useEffect(() => {
+    if (empty && samplePhase === "idle") {
+      const timer = setTimeout(() => {
+        setModelReady(true);
+      }, 800); // Give the 3D scene time to initialize
+      return () => clearTimeout(timer);
+    } else {
+      setModelReady(false);
+    }
+  }, [empty, samplePhase]);
 
   useEffect(() => {
     if (!analysis || empty) {
@@ -994,18 +1095,21 @@ export function GraphCanvas3D({
           <Suspense fallback={null}>
             <CameraController
               controlsRef={controlsRef}
-              autoRotate
+              turntableEnabled={turntableEnabled}
               autoRotateSpeed={autoRotateSpeed}
               autoRotateDisabled={autoRotateDisabled}
+              onUserInteraction={onAutoRotateDisabled}
             />
             {empty ? (
               <NeuronLoader
-                scale={samplePhase === "idle" ? 4.5 : 2.5}
+                scale={6.75}
                 pointColor={samplePhase === "idle" ? "#38bdf8" : "#fbbf24"}
                 lineColor={samplePhase === "idle" ? "#60a5fa" : "#fcd34d"}
                 coreColor={samplePhase === "idle" ? "#1d4ed8" : "#c026d3"}
                 disableRotation={autoRotateDisabled}
                 animateClustering={samplePhase === "loading"}
+                loadingProgress={loadingProgress}
+                samplePhase={samplePhase}
               />
             ) : (
               <SceneContent
@@ -1042,40 +1146,48 @@ export function GraphCanvas3D({
 
         {empty && samplePhase === "idle" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
-            <div className="max-w-3xl rounded-3xl border border-white/60 bg-white/85 p-8 shadow-2xl shadow-slate-200 backdrop-blur">
-              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-slate-900 to-slate-700 text-white shadow-lg">
-                <BrainCircuit className="h-10 w-10" />
-              </div>
-              <h2 className="mt-6 text-2xl font-bold text-slate-900">
-                Explore juror sentiment in real time.
-              </h2>
-              <p className="mt-3 text-sm text-slate-500">
-                The neural canvas keeps spinning while you prepare your inputs.
-                Jumpstart the workflow with a curated sample dataset or upload yours.
-              </p>
-              <div className="mt-6 flex items-center justify-center gap-3">
-                <Button
-                  onClick={onLoadSample}
-                  className="group relative inline-flex h-14 items-center justify-center rounded-2xl bg-slate-900 px-8 text-sm font-semibold text-white shadow-lg shadow-slate-300/60 transition-all hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-xl"
-                  disabled={!onLoadSample}
-                >
-                  <span className="absolute inset-0 -z-10 rounded-2xl bg-gradient-to-r from-slate-800/0 via-slate-700/40 to-slate-800/0 opacity-0 blur-md transition-opacity duration-500 group-hover:opacity-100" />
-                  Load Sample Dataset
-                </Button>
-                {onOpenUploadSidebar ? (
-                  <Button
-                    onClick={onOpenUploadSidebar}
-                    className="group relative inline-flex h-14 items-center justify-center rounded-2xl bg-slate-900 px-8 text-sm font-semibold text-white shadow-lg shadow-slate-300/60 transition-all hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-xl"
-                  >
-                    <span className="absolute inset-0 -z-10 rounded-2xl bg-gradient-to-r from-slate-800/0 via-slate-700/40 to-slate-800/0 opacity-0 blur-md transition-opacity duration-500 group-hover:opacity-100" />
-                    Upload Your Data
-                  </Button>
-                ) : (
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                    Or upload via sidebar
-                  </span>
-                )}
-              </div>
+            <div className="max-w-3xl min-w-[32rem] min-h-[28rem] rounded-3xl border border-white/60 bg-white/85 p-8 shadow-2xl shadow-slate-200 backdrop-blur flex flex-col items-center justify-center">
+              {!modelReady ? (
+                <div className="flex flex-col items-center gap-6">
+                  <Loader2 className="h-16 w-16 animate-spin text-slate-400" />
+                  <p className="text-base font-medium text-slate-600">Loading 3D model...</p>
+                </div>
+              ) : (
+                <>
+                  <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-slate-900 to-slate-700 text-white shadow-lg">
+                    <BrainCircuit className="h-10 w-10" />
+                  </div>
+                  <h2 className="mt-6 text-2xl font-bold text-slate-900">
+                    Explore juror sentiment in real time.
+                  </h2>
+                  <p className="mt-3 text-sm text-slate-500">
+                    Interactive juror sentiment visualization in real time.
+                  </p>
+                  <div className="mt-6 flex items-center justify-center gap-3">
+                    <Button
+                      onClick={onLoadSample}
+                      className="group relative inline-flex h-14 items-center justify-center rounded-2xl bg-slate-900 px-8 text-sm font-semibold text-white shadow-lg shadow-slate-300/60 transition-all hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-xl"
+                      disabled={!onLoadSample}
+                    >
+                      <span className="absolute inset-0 -z-10 rounded-2xl bg-gradient-to-r from-slate-800/0 via-slate-700/40 to-slate-800/0 opacity-0 blur-md transition-opacity duration-500 group-hover:opacity-100" />
+                      Load Sample Dataset
+                    </Button>
+                    {onOpenUploadSidebar ? (
+                      <Button
+                        onClick={onOpenUploadSidebar}
+                        className="group relative inline-flex h-14 items-center justify-center rounded-2xl bg-slate-900 px-8 text-sm font-semibold text-white shadow-lg shadow-slate-300/60 transition-all hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-xl"
+                      >
+                        <span className="absolute inset-0 -z-10 rounded-2xl bg-gradient-to-r from-slate-800/0 via-slate-700/40 to-slate-800/0 opacity-0 blur-md transition-opacity duration-500 group-hover:opacity-100" />
+                        Upload Your Data
+                      </Button>
+                    ) : (
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                        Or upload via sidebar
+                      </span>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -1112,6 +1224,8 @@ export function GraphCanvas3D({
               showGraph={showGraph}
               onToggleGraph={onToggleGraph ? () => onToggleGraph(!showGraph) : () => {}}
               onResetCamera={handleResetCamera}
+              turntableEnabled={turntableEnabled}
+              onToggleTurntable={onToggleTurntable}
               axisLabels={axisLabels}
               enableAxisLabelAI={enableAxisLabelAI}
               onToggleAxisLabelAI={onToggleAxisLabelAI}
