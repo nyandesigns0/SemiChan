@@ -26,7 +26,7 @@ import { rankEvidenceForConcept, DEFAULT_EVIDENCE_RANKING_PARAMS } from "@/lib/a
 import { createSentenceWindows } from "@/lib/analysis/contextual-units";
 
 // Clustering algorithm imports
-import { evaluateKRange, evaluateKRangeWithAutoSeed, evaluateUnitMode, evaluateWeightRange, selectBestSeed, selectOptimalMinClusterSize, mergeSmallClusters, type SeedEvaluationResult } from "@/lib/analysis/cluster-eval";
+import { evaluateKRange, evaluateKRangeWithAutoSeed, evaluateUnitMode, evaluateWeightRange, selectBestSeed, selectOptimalMinClusterSize, mergeSmallClusters, type SeedEvaluationResult, type KRangeMetric } from "@/lib/analysis/cluster-eval";
 import { 
   buildDendrogram, 
   cutDendrogramByCount, 
@@ -363,14 +363,7 @@ export async function buildAnalysis(
   // Determine K
   let K = clamp(kConcepts, 4, 30);
   let recommendedK: number | undefined;
-  let kSearchMetrics: Array<{
-    k: number;
-    score: number;
-    silhouette?: number;
-    maxClusterShare?: number;
-    stabilityScore?: number;
-    valid: boolean;
-  }> | undefined;
+  let kSearchMetrics: KRangeMetric[] | undefined;
   let autoKReasoning: string | undefined;
   const requestedNumDimensions = numDimensions;
 
