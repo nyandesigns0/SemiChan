@@ -930,7 +930,7 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                 </div>
                 {analysis.minClusterSizeDetails && (
                   <div className="text-[11px] text-slate-500">
-                    Clusters: {analysis.minClusterSizeDetails.beforeSize} -> {analysis.minClusterSizeDetails.afterSize}
+                    Clusters: {analysis.minClusterSizeDetails.beforeSize} → {analysis.minClusterSizeDetails.afterSize}
                   </div>
                 )}
               </div>
