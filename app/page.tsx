@@ -1119,7 +1119,7 @@ export default function HomePage() {
   const handleAutoRotateDisabled = useCallback(() => {
     setAutoRotateDisabled(true);
     setTurntableEnabled(false);
-    addLog("interaction", "User interacted with 3D canvas - turntable disabled");
+    addLog("info", "User interacted with 3D canvas - turntable disabled");
   }, [addLog]);
 
   const handleToggleTurntable = useCallback(() => {
@@ -1147,7 +1147,7 @@ export default function HomePage() {
       }
     }, 550); // Wait for sidebar animation (500ms) + small buffer
     
-    addLog("interaction", "User opened upload sidebar from welcome screen");
+    addLog("info", "User opened upload sidebar from welcome screen");
   }, [addLog]);
 
   return (
