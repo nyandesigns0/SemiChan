@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { DesignerAnalysisControls } from "@/components/controls/DesignerAnalysisControls";
-import { DesignerIngestModal } from "./DesignerIngestModal";
+import { IngestModal } from "./IngestModal";
 import { ChevronDown, ChevronUp, PenSquare, Settings2, Trash2 } from "lucide-react";
 
 interface DesignerInputPanelProps {
@@ -134,7 +134,7 @@ export function DesignerInputPanel({
         )}
       </div>
 
-      <DesignerIngestModal open={modalOpen} onOpenChange={setModalOpen} onAddBlock={addBlock} />
+      <IngestModal open={modalOpen} onOpenChange={setModalOpen} mode="designer" onAddDesignerBlock={addBlock} />
     </>
   );
 }
