@@ -42,6 +42,16 @@ export interface AnalyzeRequest {
     minWeight?: number;
     entropyCap?: number;
   };
+  autoSeed?: boolean;
+  seedCandidates?: number;
+  seedPerturbations?: number;
+  seedCoherenceWeight?: number;
+  seedSeparationWeight?: number;
+  seedStabilityWeight?: number;
+  seedDominancePenaltyWeight?: number;
+  seedMicroClusterPenaltyWeight?: number;
+  seedLabelPenaltyWeight?: number;
+  seedDominanceThreshold?: number;
   cutQualityParams?: {
     minEffectiveMassPerConcept?: number;
     minJurorSupportPerConcept?: number;

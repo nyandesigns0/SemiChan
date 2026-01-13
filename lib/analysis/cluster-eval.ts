@@ -11,6 +11,9 @@ export type KRangeMetric = {
   maxClusterShare?: number;
   stabilityScore?: number;
   valid: boolean;
+  bestSeed?: number;
+  seedScore?: number;
+  seedLeaderboard?: SeedEvaluationResult[];
 };
 
 export type EvaluateKRangeOptions = {
@@ -21,6 +24,431 @@ export type EvaluateKRangeOptions = {
   enableStability?: boolean;
   stabilityWeight?: number;
 };
+
+export type SeedScoreWeights = {
+  coherenceWeight?: number;
+  separationWeight?: number;
+  stabilityWeight?: number;
+  labelabilityWeight?: number;
+  dominancePenaltyWeight?: number;
+  microClusterPenaltyWeight?: number;
+  labelPenaltyWeight?: number;
+  dominanceThreshold?: number;
+};
+
+export interface SeedEvaluationResult {
+  seed: number;
+  score: number;
+  assignments: number[];
+  centroids: Float64Array[];
+  stability: number;
+  coherence?: number;
+  separation?: number;
+  labelability?: number;
+  maxClusterShare: number;
+  microClusters: number;
+}
+
+export interface SelectBestSeedOptions extends SeedScoreWeights {
+  k: number;
+  candidateCount?: number;
+  perturbations?: number;
+  baseSeed?: number;
+  evidenceRankingParams?: { semanticWeight: number; frequencyWeight: number };
+  extraHashComponent?: string;
+  onProgress?: (evaluated: number, total: number, best?: SeedEvaluationResult, k?: number) => void;
+}
+
+export function computeDataHash(params: {
+  sentences: SentenceRecord[];
+  jurorNames?: string[];
+  evidenceRankingParams?: { semanticWeight: number; frequencyWeight: number };
+  extra?: string;
+}): number {
+  const jurorNames = (params.jurorNames ?? params.sentences.map((s) => s.juror))
+    .filter(Boolean)
+    .map((j) => j.trim().toLowerCase())
+    .sort();
+  const normalizedSentences = [...params.sentences]
+    .map((s) => (s.sentence || "").trim().toLowerCase())
+    .sort();
+
+  const semanticWeight = params.evidenceRankingParams?.semanticWeight ?? 0;
+  const frequencyWeight = params.evidenceRankingParams?.frequencyWeight ?? 0;
+
+  const payload = `${jurorNames.join("|")}::${normalizedSentences.join("||")}::${semanticWeight.toFixed(
+    3
+  )}:${frequencyWeight.toFixed(3)}${params.extra ? `::${params.extra}` : ""}`;
+
+  // Simple FNV-1a style hash for determinism
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < payload.length; i++) {
+    hash ^= payload.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+    hash >>>= 0;
+  }
+  return hash >>> 0;
+}
+
+export function generateCandidateSeeds(hash: number, count: number, offset: number = 0): number[] {
+  const normalized = Math.abs((hash + offset) % 1_000_000);
+  const start = normalized === 0 ? 42 : normalized;
+  return Array.from({ length: Math.max(1, count) }, (_, i) => start + i);
+}
+
+export function computeCoherence(
+  vectors: Float64Array[],
+  assignments: number[],
+  centroids: Float64Array[]
+): number {
+  if (vectors.length === 0 || centroids.length === 0) return 0;
+  let total = 0;
+  for (let i = 0; i < vectors.length; i++) {
+    const clusterIdx = assignments[i] ?? 0;
+    const centroid = centroids[clusterIdx];
+    if (!centroid) continue;
+    total += cosine(vectors[i], centroid);
+  }
+  return total / vectors.length;
+}
+
+export function computeSeparation(centroids: Float64Array[]): number {
+  if (centroids.length < 2) return 0;
+  const comb = (n: number) => (n * (n - 1)) / 2;
+  const pairs = comb(centroids.length);
+  let totalDistance = 0;
+  for (let i = 0; i < centroids.length; i++) {
+    for (let j = i + 1; j < centroids.length; j++) {
+      const sim = cosine(centroids[i], centroids[j]);
+      const dist = (1 - sim) / 2; // normalize cosine distance into [0,1]
+      totalDistance += dist;
+    }
+  }
+  return pairs > 0 ? totalDistance / pairs : 0;
+}
+
+export function computeLabelability(clusterSizes: number[], total: number): number {
+  if (clusterSizes.length === 0 || total === 0) return 0;
+  const proportions = clusterSizes
+    .map((s) => s / total)
+    .filter((p) => Number.isFinite(p) && p > 0);
+  if (proportions.length === 0) return 0;
+
+  const entropy =
+    proportions.length > 1
+      ? -proportions.reduce((acc, p) => acc + p * Math.log(p), 0) / Math.log(proportions.length)
+      : 0;
+  const maxShare = Math.max(...proportions);
+  const microRatio = clusterSizes.filter((s) => s < 3).length / Math.max(1, clusterSizes.length);
+  const balanceScore = 1 - Math.abs(maxShare - 1 / Math.max(1, clusterSizes.length));
+  const diversityScore = 1 - entropy; // peaked distributions are more labelable
+
+  const labelability = 0.5 * balanceScore + 0.3 * diversityScore + 0.2 * (1 - microRatio);
+  return Math.max(0, Math.min(1, labelability));
+}
+
+function computeStability(
+  vectors: Float64Array[],
+  k: number,
+  seed: number,
+  baseAssignments: number[],
+  perturbations: number
+): number {
+  if (perturbations <= 0 || vectors.length === 0) return 1;
+  const dropCount = Math.floor(vectors.length * 0.1);
+  if (dropCount <= 0) return 1;
+
+  let totalAri = 0;
+  let runs = 0;
+  for (let p = 0; p < perturbations; p++) {
+    const stride = Math.max(2, Math.floor(vectors.length / Math.max(1, dropCount)));
+    const keptVectors: Float64Array[] = [];
+    const keptIndices: number[] = [];
+    let dropped = 0;
+
+    for (let i = 0; i < vectors.length; i++) {
+      const shouldDrop = dropped < dropCount && (i + p) % stride === 0;
+      if (shouldDrop) {
+        dropped++;
+        continue;
+      }
+      keptVectors.push(vectors[i]);
+      keptIndices.push(i);
+    }
+
+    if (keptVectors.length <= k) continue;
+
+    const km = kmeansCosine(keptVectors, k, 20, seed + p + 1);
+    const pertAssignments = km.assignments;
+    const baseSubset = keptIndices.map((idx) => baseAssignments[idx]);
+    const ari = adjustedRandIndex(baseSubset, pertAssignments);
+    if (Number.isFinite(ari)) {
+      totalAri += ari;
+      runs++;
+    }
+  }
+
+  return runs > 0 ? totalAri / runs : 0;
+}
+
+export function scoreClusteringOutcome(
+  metrics: {
+    coherence?: number;
+    separation?: number;
+    stability?: number;
+    labelability?: number;
+    maxClusterShare: number;
+    microClusters: number;
+    k: number;
+  },
+  weights: SeedScoreWeights = {}
+): number {
+  const {
+    coherenceWeight = 0.3,
+    separationWeight = 0.25,
+    stabilityWeight = 0.2,
+    labelabilityWeight = 0.05,
+    dominancePenaltyWeight = 0.15,
+    microClusterPenaltyWeight = 0.05,
+    labelPenaltyWeight = 0.05,
+    dominanceThreshold = 0.35,
+  } = weights;
+
+  const dominancePenalty =
+    metrics.maxClusterShare > dominanceThreshold
+      ? Math.pow(metrics.maxClusterShare - dominanceThreshold, 2)
+      : 0;
+  const microPenalty = metrics.microClusters / Math.max(1, metrics.k);
+  const labelPenalty = metrics.labelability !== undefined ? 1 - metrics.labelability : 0.5;
+
+  return (
+    (metrics.coherence ?? 0) * coherenceWeight +
+    (metrics.separation ?? 0) * separationWeight +
+    (metrics.stability ?? 0) * stabilityWeight +
+    (metrics.labelability ?? 0) * labelabilityWeight -
+    dominancePenalty * dominancePenaltyWeight -
+    microPenalty * microClusterPenaltyWeight -
+    labelPenalty * labelPenaltyWeight
+  );
+}
+
+export function evaluateSeed(
+  vectors: Float64Array[],
+  k: number,
+  seed: number,
+  options: SeedScoreWeights & { perturbations?: number } = {}
+): SeedEvaluationResult {
+  const km = kmeansCosine(vectors, k, 25, seed);
+  const assignments = km.assignments;
+  const centroids = km.centroids;
+  const effectiveK = Math.max(1, km.k || k);
+
+  const clusterSizes: number[] = Array.from({ length: effectiveK }, () => 0);
+  for (const a of assignments) {
+    clusterSizes[a] = (clusterSizes[a] ?? 0) + 1;
+  }
+
+  const maxClusterShare =
+    clusterSizes.length > 0 ? Math.max(...clusterSizes) / Math.max(1, vectors.length) : 0;
+  const microClusters = clusterSizes.filter((s) => s < 3).length;
+  const coherence = computeCoherence(vectors, assignments, centroids);
+  const separation = computeSeparation(centroids);
+  const labelability = computeLabelability(clusterSizes, vectors.length);
+  const stability = computeStability(
+    vectors,
+    effectiveK,
+    seed,
+    assignments,
+    options.perturbations ?? 3
+  );
+
+  const score = scoreClusteringOutcome(
+    { coherence, separation, stability, labelability, maxClusterShare, microClusters, k: effectiveK },
+    options
+  );
+
+  return {
+    seed,
+    score,
+    assignments,
+    centroids,
+    stability,
+    coherence,
+    separation,
+    labelability,
+    maxClusterShare,
+    microClusters,
+  };
+}
+
+export function selectBestSeed(
+  vectors: Float64Array[],
+  sentences: SentenceRecord[],
+  options: SelectBestSeedOptions
+): {
+  best: SeedEvaluationResult;
+  leaderboard: SeedEvaluationResult[];
+  dataHash: number;
+  candidates: number[];
+  reasoning: string;
+} {
+  const {
+    k,
+    candidateCount = 32,
+    baseSeed = 42,
+    perturbations = 3,
+    extraHashComponent,
+    onProgress,
+    ...weights
+  } = options;
+
+  const dataHash = computeDataHash({
+    sentences,
+    evidenceRankingParams: options.evidenceRankingParams,
+    extra: extraHashComponent,
+  });
+
+  const candidates = generateCandidateSeeds(dataHash + baseSeed, candidateCount, k);
+  const leaderboard: SeedEvaluationResult[] = [];
+  let best: SeedEvaluationResult | undefined;
+
+  candidates.forEach((candidate, idx) => {
+    const result = evaluateSeed(vectors, k, candidate, { ...weights, perturbations });
+    leaderboard.push(result);
+
+    if (
+      !best ||
+      result.score > best.score + 1e-6 ||
+      (Math.abs(result.score - best.score) <= 1e-6 &&
+        (result.maxClusterShare < best.maxClusterShare ||
+          (result.maxClusterShare === best.maxClusterShare && result.seed < best.seed)))
+    ) {
+      best = result;
+    }
+
+    onProgress?.(idx + 1, candidates.length, best, k);
+  });
+
+  leaderboard.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (a.maxClusterShare !== b.maxClusterShare) return a.maxClusterShare - b.maxClusterShare;
+    return a.seed - b.seed;
+  });
+
+  const resolvedBest = best ?? leaderboard[0];
+  return {
+    best: resolvedBest,
+    leaderboard,
+    dataHash,
+    candidates,
+    reasoning: `Evaluated ${leaderboard.length} seeds; selected ${resolvedBest.seed} (score=${resolvedBest.score.toFixed(
+      4
+    )})`,
+  };
+}
+
+export function evaluateKRangeWithAutoSeed(
+  vectors: Float64Array[],
+  sentences: SentenceRecord[],
+  kMin: number = 4,
+  kMax: number = 20,
+  seed: number = 42,
+  _qualityParams: CutQualityParams = {},
+  options: EvaluateKRangeOptions = {},
+  seedOptions: Partial<Omit<SelectBestSeedOptions, "k">> = {}
+): {
+  recommendedK: number;
+  recommendedSeed: number;
+  metrics: KRangeMetric[];
+  reason?: string;
+  seedLeaderboard?: SeedEvaluationResult[];
+} {
+  const {
+    kPenalty = 0.001,
+    epsilon = 0.02,
+    dominanceThreshold = seedOptions.dominanceThreshold,
+    dominancePenaltyWeight = seedOptions.dominancePenaltyWeight,
+  } = options;
+
+  if (vectors.length < kMin) {
+    const fallbackSeed = seed;
+    return {
+      recommendedK: Math.max(1, vectors.length),
+      recommendedSeed: fallbackSeed,
+      metrics: [],
+      reason: "Corpus too small for range",
+      seedLeaderboard: [],
+    };
+  }
+
+  const metrics: KRangeMetric[] = [];
+  const actualKMax = Math.max(kMin, Math.min(kMax, vectors.length - 1));
+
+  let bestK = kMin;
+  let bestSeed = seed;
+  let bestScore = -Infinity;
+  let winningLeaderboard: SeedEvaluationResult[] | undefined;
+
+  for (let k = kMin; k <= actualKMax; k++) {
+    const seedResult = selectBestSeed(vectors, sentences, {
+      k,
+      baseSeed: seed,
+      candidateCount: seedOptions.candidateCount,
+      perturbations: seedOptions.perturbations ?? 3,
+      evidenceRankingParams: seedOptions.evidenceRankingParams,
+      extraHashComponent: `k=${k}`,
+      coherenceWeight: seedOptions.coherenceWeight,
+      separationWeight: seedOptions.separationWeight,
+      stabilityWeight: seedOptions.stabilityWeight,
+      labelabilityWeight: seedOptions.labelabilityWeight,
+      dominancePenaltyWeight: dominancePenaltyWeight,
+      microClusterPenaltyWeight: seedOptions.microClusterPenaltyWeight,
+      labelPenaltyWeight: seedOptions.labelPenaltyWeight,
+      dominanceThreshold: dominanceThreshold,
+      onProgress: seedOptions.onProgress,
+    });
+
+    const penalizedScore = seedResult.best.score - k * kPenalty;
+    const entry: KRangeMetric = {
+      k,
+      score: penalizedScore,
+      silhouette: seedResult.best.coherence,
+      maxClusterShare: seedResult.best.maxClusterShare,
+      stabilityScore: seedResult.best.stability,
+      quality: { score: seedResult.best.score },
+      valid: Number.isFinite(seedResult.best.score),
+      bestSeed: seedResult.best.seed,
+      seedScore: seedResult.best.score,
+      seedLeaderboard: seedResult.leaderboard,
+    };
+    metrics.push(entry);
+
+    if (penalizedScore > bestScore + epsilon) {
+      bestScore = penalizedScore;
+      bestK = k;
+      bestSeed = seedResult.best.seed;
+      winningLeaderboard = seedResult.leaderboard;
+    } else if (Math.abs(penalizedScore - bestScore) <= epsilon) {
+      if (seedResult.best.maxClusterShare < (metrics.find((m) => m.k === bestK)?.maxClusterShare ?? 1)) {
+        bestK = k;
+        bestSeed = seedResult.best.seed;
+        winningLeaderboard = seedResult.leaderboard;
+      } else if (k < bestK) {
+        bestK = k;
+        bestSeed = seedResult.best.seed;
+        winningLeaderboard = seedResult.leaderboard;
+      }
+    }
+  }
+
+  return {
+    recommendedK: bestK,
+    recommendedSeed: bestSeed,
+    metrics,
+    reason: "Highest Auto-Seed composite score",
+    seedLeaderboard: winningLeaderboard,
+  };
+}
 
 /**
  * Evaluate a range of K values using both silhouette-like separation scores

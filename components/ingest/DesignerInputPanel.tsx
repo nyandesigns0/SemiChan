@@ -3,28 +3,35 @@
 import { useState } from "react";
 import type { DesignerBlock } from "@/types/nlp";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { handleFileUpload, loadImageFromUrl, validateImageUrl } from "@/lib/utils/image-upload";
-import { ImagePlus, Trash2 } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { DesignerAnalysisControls } from "@/components/controls/DesignerAnalysisControls";
+import { DesignerIngestModal } from "./DesignerIngestModal";
+import { ChevronDown, ChevronUp, PenSquare, Settings2, Trash2 } from "lucide-react";
 
 interface DesignerInputPanelProps {
   blocks: DesignerBlock[];
   onChange: (blocks: DesignerBlock[]) => void;
+  kConcepts: number;
+  onKConceptsChange: (v: number) => void;
+  loading?: boolean;
+  onAnalyze: () => void;
 }
 
-export function DesignerInputPanel({ blocks, onChange }: DesignerInputPanelProps) {
-  const [designer, setDesigner] = useState("");
-  const [text, setText] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
+export function DesignerInputPanel({
+  blocks,
+  onChange,
+  kConcepts,
+  onKConceptsChange,
+  loading,
+  onAnalyze,
+}: DesignerInputPanelProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [showRefine, setShowRefine] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
 
-  const addBlock = () => {
-    if (!designer.trim()) return;
-    const newBlock: DesignerBlock = { designer: designer.trim(), text, images: [] };
-    onChange([...blocks, newBlock]);
-    setDesigner("");
-    setText("");
+  const addBlock = (block: DesignerBlock) => {
+    onChange([...blocks, block]);
   };
 
   const removeBlock = (idx: number) => {
@@ -32,106 +39,102 @@ export function DesignerInputPanel({ blocks, onChange }: DesignerInputPanelProps
     onChange(updated);
   };
 
-  const addImageFromUrl = async () => {
-    if (!imageUrl.trim()) return;
-    const ok = await validateImageUrl(imageUrl.trim());
-    if (!ok) return;
-    const nextBlocks = [...blocks];
-    const target = nextBlocks[nextBlocks.length - 1];
-    if (!target) return;
-    const loaded = await loadImageFromUrl(imageUrl.trim());
-    target.images = [...(target.images || []), loaded];
-    onChange(nextBlocks);
-    setImageUrl("");
-  };
-
-  const handleFiles = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    const nextBlocks = [...blocks];
-    const target = nextBlocks[nextBlocks.length - 1];
-    if (!target) return;
-    const uploaded: DesignerBlock["images"] = [];
-    for (const file of Array.from(files)) {
-      const data = await handleFileUpload(file);
-      uploaded.push(data);
-    }
-    target.images = [...(target.images || []), ...uploaded];
-    onChange(nextBlocks);
-  };
-
   return (
-    <div className="space-y-3">
-      <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-        <div className="grid gap-2">
-          <Input
-            value={designer}
-            onChange={(e) => setDesigner(e.target.value)}
-            placeholder="Designer / creator name"
-            className="h-8 text-sm"
-          />
-          <Textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Designer description or notes"
-            className="min-h-[80px] text-sm"
-          />
-          <div className="flex items-center gap-2">
-            <Input
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="Add image by URL"
-              className="h-8 text-sm"
-            />
-            <Button variant="outline" onClick={addImageFromUrl} className="h-8 px-3 text-sm">
-              Add URL
-            </Button>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600 shadow-sm hover:bg-slate-50">
-              <ImagePlus className="h-4 w-4" />
-              Upload images
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(e) => handleFiles(e.target.files)}
-              />
-            </label>
-            <Button onClick={addBlock} className="h-9 px-3 text-sm">
-              Add Designer
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        {blocks.map((block, idx) => (
-          <div key={`${block.designer}-${idx}`} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-            <div className="mb-2 flex items-center justify-between">
-              <Badge variant="secondary" className="bg-emerald-50 text-emerald-700">
-                {block.designer}
-              </Badge>
-              <Button variant="ghost" onClick={() => removeBlock(idx)} className="h-8 w-8 p-0">
-                <Trash2 className="h-4 w-4 text-slate-400 mx-auto" />
-              </Button>
+    <>
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md">
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex w-full items-center justify-between px-4 py-3 transition-colors hover:bg-slate-50"
+        >
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
+              <PenSquare className="h-5 w-5" />
             </div>
-            {block.text && <p className="text-xs text-slate-700">{block.text}</p>}
-            {block.images?.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {block.images.map((img) => (
-                  <div key={img.id} className="h-16 w-16 overflow-hidden rounded-md border border-slate-100">
-                    <img src={img.data} alt={img.id} className="h-full w-full object-cover" />
-                  </div>
-                ))}
-              </div>
-            )}
+            <span className="font-bold text-slate-800">Designer Input</span>
           </div>
-        ))}
-        {blocks.length === 0 && (
-          <p className="text-[11px] text-slate-500">No designer inputs yet.</p>
+          {isExpanded ? (
+            <ChevronUp className="h-5 w-5 text-slate-400" />
+          ) : (
+            <ChevronDown className="h-5 w-5 text-slate-400" />
+          )}
+        </button>
+
+        {isExpanded && (
+          <div className="border-t border-slate-100 p-3 pt-2">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-900">
+                  <PenSquare className="h-3 w-3" />
+                  Designer Input
+                </Label>
+
+                <Button
+                  onClick={() => setModalOpen(true)}
+                  className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm transition-all hover:shadow-md py-2.5"
+                >
+                  Upload Designer Input
+                </Button>
+
+                <div className="space-y-2">
+                  <button
+                    onClick={() => setShowRefine(!showRefine)}
+                    className="flex w-full items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-emerald-500 transition-colors py-0.5 px-1 border-b border-dashed border-slate-200"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Settings2 className="h-3 w-3" />
+                      Review & Tune Inputs
+                    </div>
+                    {showRefine ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  </button>
+
+                  {showRefine && (
+                    <div className="pt-0.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <div className="rounded-xl border border-slate-100 bg-slate-50/30 p-2.5 space-y-3">
+                        <div className="space-y-2">
+                          {blocks.map((block, idx) => (
+                            <div key={`${block.designer}-${idx}`} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                              <div className="mb-2 flex items-center justify-between">
+                                <Badge variant="secondary" className="bg-emerald-50 text-emerald-700">
+                                  {block.designer}
+                                </Badge>
+                                <Button variant="ghost" onClick={() => removeBlock(idx)} className="h-8 w-8 p-0">
+                                  <Trash2 className="h-4 w-4 text-slate-400 mx-auto" />
+                                </Button>
+                              </div>
+                              {block.text && <p className="text-xs text-slate-700">{block.text}</p>}
+                              {block.images?.length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {block.images.map((img) => (
+                                    <div key={img.id} className="h-16 w-16 overflow-hidden rounded-md border border-slate-100">
+                                      <img src={img.data} alt={img.id} className="h-full w-full object-cover" />
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          {blocks.length === 0 && (
+                            <p className="text-[11px] text-slate-500">No designer inputs yet.</p>
+                          )}
+                        </div>
+
+                        <DesignerAnalysisControls
+                          kConcepts={kConcepts}
+                          onKConceptsChange={onKConceptsChange}
+                          loading={loading}
+                          onAnalyze={onAnalyze}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
-    </div>
+
+      <DesignerIngestModal open={modalOpen} onOpenChange={setModalOpen} onAddBlock={addBlock} />
+    </>
   );
 }

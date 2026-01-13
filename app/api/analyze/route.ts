@@ -30,6 +30,16 @@ export async function POST(request: NextRequest) {
       autoKDominanceThreshold,
       autoKKPenalty,
       autoKEpsilon,
+      autoSeed,
+      seedCandidates,
+      seedPerturbations,
+      seedCoherenceWeight,
+      seedSeparationWeight,
+      seedStabilityWeight,
+      seedDominancePenaltyWeight,
+      seedMicroClusterPenaltyWeight,
+      seedLabelPenaltyWeight,
+      seedDominanceThreshold,
       softMembership,
       softTopN,
       cutType,
@@ -98,6 +108,9 @@ export async function POST(request: NextRequest) {
 
     // buildAnalysis is now async
     const logs: Array<{ type: any; message: string; data?: any }> = [];
+    if (autoSeed && clusteringMode === "hierarchical") {
+      logs.push({ type: "analysis", message: "Auto-Seed only supports k-means; proceeding without automatic seed selection." });
+    }
     const analysis = await buildAnalysis(
       blocks, 
       kConcepts, 
@@ -112,6 +125,16 @@ export async function POST(request: NextRequest) {
         autoKDominanceThreshold,
         autoKKPenalty,
         autoKEpsilon,
+        autoSeed,
+        seedCandidates,
+        seedPerturbations,
+        seedCoherenceWeight,
+        seedSeparationWeight,
+        seedStabilityWeight,
+        seedDominancePenaltyWeight,
+        seedMicroClusterPenaltyWeight,
+        seedLabelPenaltyWeight,
+        seedDominanceThreshold,
         softMembership,
         softTopN,
         cutType,

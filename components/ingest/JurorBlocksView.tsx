@@ -22,7 +22,7 @@ export function JurorBlocksView({ blocks }: JurorBlocksViewProps) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-semibold text-slate-700">Juror Blocks</h3>
+        <h3 className="text-sm font-semibold text-slate-700">Juror Review</h3>
         <Badge variant="outline" className="text-xs">
           {blocks.length} {blocks.length === 1 ? "block" : "blocks"}
         </Badge>
@@ -45,4 +45,3 @@ export function JurorBlocksView({ blocks }: JurorBlocksViewProps) {
     </div>
   );
 }
-

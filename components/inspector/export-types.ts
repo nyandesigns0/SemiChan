@@ -7,7 +7,17 @@ export interface ExportAnalysisParams {
   evidenceRankingParams?: { semanticWeight: number; frequencyWeight: number };
   clusteringMode: "kmeans" | "hierarchical";
   autoK: boolean;
+  autoSeed?: boolean;
   clusterSeed: number;
+  seedCandidates?: number;
+  seedPerturbations?: number;
+  seedCoherenceWeight?: number;
+  seedSeparationWeight?: number;
+  seedStabilityWeight?: number;
+  seedDominancePenaltyWeight?: number;
+  seedMicroClusterPenaltyWeight?: number;
+  seedLabelPenaltyWeight?: number;
+  seedDominanceThreshold?: number;
   softMembership: boolean;
   cutType: "count" | "granularity";
   granularityPercent: number;
@@ -38,4 +48,7 @@ export interface RawDataExportContext {
   apiCostTotal: number;
   selectedModel: string;
   exportTimestamp?: string | null;
+  autoSeed?: boolean;
+  seedChosen?: number;
+  seedCandidatesEvaluated?: number;
 }

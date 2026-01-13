@@ -36,7 +36,7 @@ jury-concept-graph/
 - **Text Ingestion**: Paste text or upload PDF/TXT files
 - **Juror Segmentation**: Automatic detection and segmentation of juror comments
 - **Semantic Analysis**: Uses sentence embeddings with BM25 frequency signals for rich concept discovery
-- **Advanced Clustering**: Hierarchical clustering (default) or K-Means with automatic K recommendation and soft membership support
+- **Advanced Clustering**: K-Means clustering (default) or Hierarchical with automatic K recommendation and soft membership support
 - **Interactive 3D Graph**: WebGL-powered 3D visualization with PCA-based dimensionality reduction
 - **Explainability**: Every edge links to supporting evidence excerpts with stance classification (praise, critique, suggestion, neutral)
 - **Export**: Download analysis results as JSON or PDF reports

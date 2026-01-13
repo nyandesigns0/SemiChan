@@ -21,6 +21,26 @@ interface AnalysisControlsAccordionProps {
   onClusteringModeChange: (mode: "kmeans" | "hierarchical") => void;
   autoK: boolean;
   onAutoKChange: (value: boolean) => void;
+  autoSeed: boolean;
+  onAutoSeedChange: (value: boolean) => void;
+  seedCandidates: number;
+  onSeedCandidatesChange: (value: number) => void;
+  seedPerturbations: number;
+  onSeedPerturbationsChange: (value: number) => void;
+  seedCoherenceWeight: number;
+  onSeedCoherenceWeightChange: (value: number) => void;
+  seedSeparationWeight: number;
+  onSeedSeparationWeightChange: (value: number) => void;
+  seedStabilityWeight: number;
+  onSeedStabilityWeightChange: (value: number) => void;
+  seedDominancePenaltyWeight: number;
+  onSeedDominancePenaltyWeightChange: (value: number) => void;
+  seedMicroClusterPenaltyWeight: number;
+  onSeedMicroClusterPenaltyWeightChange: (value: number) => void;
+  seedLabelPenaltyWeight: number;
+  onSeedLabelPenaltyWeightChange: (value: number) => void;
+  seedDominanceThreshold: number;
+  onSeedDominanceThresholdChange: (value: number) => void;
   clusterSeed: number;
   onClusterSeedChange: (value: number) => void;
   softMembership: boolean;
@@ -67,6 +87,26 @@ export function AnalysisControlsAccordion({
   onClusteringModeChange,
   autoK,
   onAutoKChange,
+  autoSeed,
+  onAutoSeedChange,
+  seedCandidates,
+  onSeedCandidatesChange,
+  seedPerturbations,
+  onSeedPerturbationsChange,
+  seedCoherenceWeight,
+  onSeedCoherenceWeightChange,
+  seedSeparationWeight,
+  onSeedSeparationWeightChange,
+  seedStabilityWeight,
+  onSeedStabilityWeightChange,
+  seedDominancePenaltyWeight,
+  onSeedDominancePenaltyWeightChange,
+  seedMicroClusterPenaltyWeight,
+  onSeedMicroClusterPenaltyWeightChange,
+  seedLabelPenaltyWeight,
+  onSeedLabelPenaltyWeightChange,
+  seedDominanceThreshold,
+  onSeedDominanceThresholdChange,
   clusterSeed,
   onClusterSeedChange,
   softMembership,
@@ -133,6 +173,26 @@ export function AnalysisControlsAccordion({
             onClusteringModeChange={onClusteringModeChange}
             autoK={autoK}
             onAutoKChange={onAutoKChange}
+            autoSeed={autoSeed}
+            onAutoSeedChange={onAutoSeedChange}
+            seedCandidates={seedCandidates}
+            onSeedCandidatesChange={onSeedCandidatesChange}
+            seedPerturbations={seedPerturbations}
+            onSeedPerturbationsChange={onSeedPerturbationsChange}
+            seedCoherenceWeight={seedCoherenceWeight}
+            onSeedCoherenceWeightChange={onSeedCoherenceWeightChange}
+            seedSeparationWeight={seedSeparationWeight}
+            onSeedSeparationWeightChange={onSeedSeparationWeightChange}
+            seedStabilityWeight={seedStabilityWeight}
+            onSeedStabilityWeightChange={onSeedStabilityWeightChange}
+            seedDominancePenaltyWeight={seedDominancePenaltyWeight}
+            onSeedDominancePenaltyWeightChange={onSeedDominancePenaltyWeightChange}
+            seedMicroClusterPenaltyWeight={seedMicroClusterPenaltyWeight}
+            onSeedMicroClusterPenaltyWeightChange={onSeedMicroClusterPenaltyWeightChange}
+            seedLabelPenaltyWeight={seedLabelPenaltyWeight}
+            onSeedLabelPenaltyWeightChange={onSeedLabelPenaltyWeightChange}
+            seedDominanceThreshold={seedDominanceThreshold}
+            onSeedDominanceThresholdChange={onSeedDominanceThresholdChange}
             clusterSeed={clusterSeed}
             onClusterSeedChange={onClusterSeedChange}
             softMembership={softMembership}

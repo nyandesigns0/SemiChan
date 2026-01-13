@@ -26,7 +26,7 @@ import { rankEvidenceForConcept, DEFAULT_EVIDENCE_RANKING_PARAMS } from "@/lib/a
 import { createSentenceWindows } from "@/lib/analysis/contextual-units";
 
 // Clustering algorithm imports
-import { evaluateKRange } from "@/lib/analysis/cluster-eval";
+import { evaluateKRange, evaluateKRangeWithAutoSeed, selectBestSeed, type SeedEvaluationResult } from "@/lib/analysis/cluster-eval";
 import { 
   buildDendrogram, 
   cutDendrogramByCount, 
@@ -56,6 +56,16 @@ export async function buildAnalysis(
     autoKDominanceThreshold?: number;
     autoKKPenalty?: number;
     autoKEpsilon?: number;
+    autoSeed?: boolean;
+    seedCandidates?: number;
+    seedPerturbations?: number;
+    seedCoherenceWeight?: number;
+    seedSeparationWeight?: number;
+    seedStabilityWeight?: number;
+    seedDominancePenaltyWeight?: number;
+    seedMicroClusterPenaltyWeight?: number;
+    seedLabelPenaltyWeight?: number;
+    seedDominanceThreshold?: number;
     softMembership?: boolean;
     softTopN?: number;
     cutType?: "count" | "granularity";
@@ -80,7 +90,7 @@ export async function buildAnalysis(
 ): Promise<AnalysisResult> {
   const {
     evidenceRankingParams = DEFAULT_EVIDENCE_RANKING_PARAMS,
-    clusteringMode = "hierarchical",
+    clusteringMode = "kmeans",
     autoK = true,
     kMin,
     kMax,
@@ -88,6 +98,16 @@ export async function buildAnalysis(
     autoKDominanceThreshold = 0.35,
     autoKKPenalty = 0.001,
     autoKEpsilon = 0.02,
+    autoSeed = false,
+    seedCandidates = 32,
+    seedPerturbations = 3,
+    seedCoherenceWeight = 0.3,
+    seedSeparationWeight = 0.25,
+    seedStabilityWeight = 0.2,
+    seedDominancePenaltyWeight = 0.15,
+    seedMicroClusterPenaltyWeight = 0.05,
+    seedLabelPenaltyWeight = 0.05,
+    seedDominanceThreshold = 0.35,
     softMembership = true,
     softTopN = 3,
     cutType = "count",
@@ -114,6 +134,17 @@ export async function buildAnalysis(
     console.log(`[${type.toUpperCase()}] ${message}`);
     onLog?.(type, message, data);
   };
+
+  const autoSeedEnabled = autoSeed && clusteringMode === "kmeans";
+  let seedChosen: number | undefined;
+  let seedLeaderboard: SeedEvaluationResult[] | undefined;
+  let autoSeedReasoning: string | undefined;
+  let seedCandidatesEvaluated: number | undefined;
+  let resolvedSeed = seed;
+
+  if (autoSeed && clusteringMode !== "kmeans") {
+    log("analysis", "Auto-Seed requested but only supported for k-means; falling back to provided seed.");
+  }
 
   const checkpoints: AnalysisCheckpoint[] = [];
   const jurors = jurorBlocks.map((b) => b.juror).filter((j) => j !== "Unattributed");
@@ -224,6 +255,19 @@ export async function buildAnalysis(
     ...cutQualityParams,
   };
 
+  const seedSelectionOptions = {
+    candidateCount: seedCandidates,
+    perturbations: seedPerturbations,
+    coherenceWeight: seedCoherenceWeight,
+    separationWeight: seedSeparationWeight,
+    stabilityWeight: seedStabilityWeight,
+    dominancePenaltyWeight: seedDominancePenaltyWeight,
+    microClusterPenaltyWeight: seedMicroClusterPenaltyWeight,
+    labelPenaltyWeight: seedLabelPenaltyWeight,
+    dominanceThreshold: seedDominanceThreshold,
+    evidenceRankingParams,
+  };
+
   // CHECKPOINT 2: Vectors Built
   // In reality, we might skip this or show them as points in space
   
@@ -254,38 +298,143 @@ export async function buildAnalysis(
       clamp(kMax ?? dynamicKMax, resolvedKMin + 1, Math.max(dynamicKMax, resolvedKMin + 1))
     );
 
-    log("analysis", `AutoK testing K range: ${resolvedKMin} to ${resolvedKMax} (N=${unitCount} chunks)`);
-
-    const evalResult = evaluateKRange(
-      semanticVectors,
-      chunkRecords,
-      resolvedKMin,
-      resolvedKMax,
-      seed,
-      resolvedCutQualityParams,
-      {
-        dominanceThreshold: autoKDominanceThreshold,
-        kPenalty: autoKKPenalty,
-        epsilon: autoKEpsilon,
-        enableStability: autoKStability,
-      }
+    log(
+      "analysis",
+      `${autoSeedEnabled ? "AutoK+Seed" : "AutoK"} testing K range: ${resolvedKMin} to ${resolvedKMax} (N=${unitCount} chunks)`
     );
-    recommendedK = evalResult.recommendedK;
-    kSearchMetrics = evalResult.metrics;
-    autoKReasoning = evalResult.reason;
-    kSearchMetrics?.forEach((m) => {
-      log(
-        "analysis",
-        `AutoK K=${m.k}: score=${Number.isFinite(m.score) ? m.score.toFixed(4) : "-inf"}, silhouette=${(m.silhouette ?? 0).toFixed(4)}, dominance=${((m.maxClusterShare ?? 0) * 100).toFixed(1)}%, valid=${m.valid}${m.stabilityScore !== undefined ? `, stability=${m.stabilityScore.toFixed(3)}` : ""}`
+
+    if (autoSeedEnabled) {
+      const progressInterval = Math.max(1, Math.floor(seedCandidates / 4));
+      const evalResult = evaluateKRangeWithAutoSeed(
+        semanticVectors,
+        chunkRecords,
+        resolvedKMin,
+        resolvedKMax,
+        seed,
+        resolvedCutQualityParams,
+        {
+          dominanceThreshold: autoKDominanceThreshold,
+          kPenalty: autoKKPenalty,
+          epsilon: autoKEpsilon,
+        },
+        {
+          ...seedSelectionOptions,
+          onProgress: (evaluated, total, best, kValue) => {
+            if (!kValue) return;
+            if (evaluated === total || evaluated % progressInterval === 0) {
+              log(
+                "analysis",
+                `Auto-Seed progress (K=${kValue}): ${evaluated}/${total} seeds evaluated${best ? `, best=${best.seed} (${best.score.toFixed(4)})` : ""}`
+              );
+            }
+          },
+        }
       );
+      recommendedK = evalResult.recommendedK;
+      kSearchMetrics = evalResult.metrics;
+      autoKReasoning = evalResult.reason;
+      seedChosen = evalResult.recommendedSeed ?? seedChosen;
+      resolvedSeed = seedChosen ?? resolvedSeed;
+      seedLeaderboard = evalResult.seedLeaderboard ?? seedLeaderboard;
+      seedCandidatesEvaluated = seedLeaderboard?.length ?? seedCandidates;
+      autoSeedReasoning = evalResult.reason ?? autoSeedReasoning;
+
+      kSearchMetrics?.forEach((m) => {
+        log(
+          "analysis",
+          `AutoK+Seed K=${m.k}: bestSeed=${m.bestSeed ?? "n/a"}, score=${Number.isFinite(m.score) ? m.score.toFixed(4) : "-inf"}, coherence=${(m.silhouette ?? 0).toFixed(4)}, dominance=${((m.maxClusterShare ?? 0) * 100).toFixed(1)}%, valid=${m.valid}${m.stabilityScore !== undefined ? `, stability=${m.stabilityScore.toFixed(3)}` : ""}`
+        );
+      });
+
+      if (recommendedK !== undefined) {
+        log(
+          "analysis",
+          `AutoK+Seed selected K=${recommendedK}, seed=${resolvedSeed}${autoKReasoning ? ` (reason: ${autoKReasoning})` : ""}`
+        );
+      }
+      if (seedLeaderboard && seedLeaderboard.length > 0) {
+        seedLeaderboard.slice(0, 5).forEach((entry, idx) => {
+          log(
+            "analysis",
+            `Auto-Seed leaderboard #${idx + 1}: seed=${entry.seed}, score=${entry.score.toFixed(4)}, dominance=${(entry.maxClusterShare * 100).toFixed(1)}%, stability=${entry.stability.toFixed(3)}`
+          );
+        });
+      }
+
+      K = recommendedK;
+    } else {
+      const evalResult = evaluateKRange(
+        semanticVectors,
+        chunkRecords,
+        resolvedKMin,
+        resolvedKMax,
+        seed,
+        resolvedCutQualityParams,
+        {
+          dominanceThreshold: autoKDominanceThreshold,
+          kPenalty: autoKKPenalty,
+          epsilon: autoKEpsilon,
+          enableStability: autoKStability,
+        }
+      );
+      recommendedK = evalResult.recommendedK;
+      kSearchMetrics = evalResult.metrics;
+      autoKReasoning = evalResult.reason;
+      kSearchMetrics?.forEach((m) => {
+        log(
+          "analysis",
+          `AutoK K=${m.k}: score=${Number.isFinite(m.score) ? m.score.toFixed(4) : "-inf"}, silhouette=${(m.silhouette ?? 0).toFixed(4)}, dominance=${((m.maxClusterShare ?? 0) * 100).toFixed(1)}%, valid=${m.valid}${m.stabilityScore !== undefined ? `, stability=${m.stabilityScore.toFixed(3)}` : ""}`
+        );
+      });
+      if (recommendedK !== undefined) {
+        log(
+          "analysis",
+          `AutoK selected K=${recommendedK}${autoKReasoning ? ` (reason: ${autoKReasoning})` : ""}`
+        );
+      }
+      K = recommendedK;
+    }
+  }
+
+  if (!autoK && autoSeedEnabled) {
+    const resolvedK = Math.max(1, Math.min(K ?? 1, contextualUnits.length));
+    const progressInterval = Math.max(1, Math.floor(seedCandidates / 4));
+    log("analysis", `Auto-Seed evaluating ${seedCandidates} candidate seeds for K=${resolvedK}...`);
+
+    const seedResult = selectBestSeed(semanticVectors, chunkRecords, {
+      ...seedSelectionOptions,
+      k: resolvedK,
+      baseSeed: seed,
+      onProgress: (evaluated, total, best) => {
+        if (evaluated === total || evaluated % progressInterval === 0) {
+          log(
+            "analysis",
+            `Auto-Seed progress: ${evaluated}/${total} seeds evaluated${best ? `, best=${best.seed} (${best.score.toFixed(4)})` : ""}`
+          );
+        }
+      },
     });
-    if (recommendedK !== undefined) {
+
+    seedChosen = seedResult.best.seed;
+    resolvedSeed = seedChosen ?? resolvedSeed;
+    seedLeaderboard = seedResult.leaderboard;
+    seedCandidatesEvaluated = seedResult.leaderboard.length;
+    autoSeedReasoning = seedResult.reasoning;
+
+    if (seedLeaderboard && seedLeaderboard.length > 0) {
+      seedLeaderboard.slice(0, 5).forEach((entry, idx) => {
+        log(
+          "analysis",
+          `Auto-Seed leaderboard #${idx + 1}: seed=${entry.seed}, score=${entry.score.toFixed(4)}, dominance=${(entry.maxClusterShare * 100).toFixed(1)}%, stability=${entry.stability.toFixed(3)}`
+        );
+      });
       log(
         "analysis",
-        `AutoK selected K=${recommendedK}${autoKReasoning ? ` (reason: ${autoKReasoning})` : ""}`
+        `Auto-Seed selected seed=${seedChosen} (score=${seedResult.best.score.toFixed(4)}, dominance=${(seedResult.best.maxClusterShare * 100).toFixed(1)}%, stability=${seedResult.best.stability.toFixed(3)})`
       );
     }
-    K = recommendedK;
+
+    K = resolvedK;
   }
 
   K = Math.max(1, Math.min(K ?? 1, contextualUnits.length));
@@ -359,7 +508,7 @@ export async function buildAnalysis(
     }
   } else {
     // Default K-means
-    const km = kmeansCosine(semanticVectors, K, 25, seed);
+    const km = kmeansCosine(semanticVectors, K, 25, resolvedSeed);
     assignments = km.assignments;
     centroids = km.centroids;
   }
@@ -729,7 +878,7 @@ export async function buildAnalysis(
   let finalNumDimensions = numDimensions;
   if (dimensionMode !== "manual" && centroids.length > 1) {
     const scanTargetDimensions = Math.max(12, numDimensions);
-    const scanResult = reduceToND(centroids, scanTargetDimensions, 10, seed);
+    const scanResult = reduceToND(centroids, scanTargetDimensions, 10, resolvedSeed);
 
     if (dimensionMode === "threshold") {
       finalNumDimensions = findOptimalDimensionsThreshold(
@@ -754,7 +903,7 @@ export async function buildAnalysis(
     primaryConceptIds,
     finalNumDimensions,
     10, // scale
-    seed
+    resolvedSeed
   );
 
   // Nodes with 3D positions
@@ -949,6 +1098,22 @@ export async function buildAnalysis(
   const axisLabels = labelAxes(nodes, finalNumDimensions, conceptPcValues);
   const chunkAssignmentsByConceptId = assignments.map((clusterId) => primaryConceptIds[clusterId] ?? `concept:${clusterId}`);
 
+  const formattedSeedLeaderboard = seedLeaderboard?.map(
+    ({ seed: s, score, maxClusterShare, microClusters, stability, coherence, separation, labelability }) => ({
+      seed: s,
+      score,
+      maxClusterShare,
+      microClusters,
+      stability,
+      coherence,
+      separation,
+      labelability,
+    })
+  );
+  if (seedCandidatesEvaluated === undefined && formattedSeedLeaderboard) {
+    seedCandidatesEvaluated = formattedSeedLeaderboard.length;
+  }
+
   // Final Checkpoint
   checkpoints.push({
     id: "final",
@@ -980,6 +1145,11 @@ export async function buildAnalysis(
     recommendedK,
     kSearchMetrics,
     autoKReasoning,
+    autoSeed: autoSeedEnabled,
+    seedChosen: seedChosen ?? (autoSeedEnabled ? resolvedSeed : undefined),
+    seedCandidatesEvaluated,
+    seedLeaderboard: formattedSeedLeaderboard,
+    autoSeedReasoning,
     clusteringMode,
     checkpoints,
     jurorTopTerms,

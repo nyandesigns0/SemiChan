@@ -475,7 +475,7 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
     if (!analysis || !rawExportContext) return [];
 
     const p = rawExportContext.analysisParams;
-    const separator = "─".repeat(80);
+    const separator = "=".repeat(80);
 
     // Format parameters section
     const formatParameters = () => {
@@ -483,7 +483,8 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
       return `ANALYSIS PARAMETERS
 ${separator}
 kConcepts: ${p.kConcepts} | minEdgeWeight: ${p.minEdgeWeight} | similarityThreshold: ${p.similarityThreshold}
-clusteringMode: ${p.clusteringMode} | autoK: ${p.autoK} | clusterSeed: ${p.clusterSeed} | softMembership: ${p.softMembership}
+clusteringMode: ${p.clusteringMode} | autoK: ${p.autoK} | autoSeed: ${p.autoSeed ?? false} | clusterSeed: ${p.clusterSeed} | softMembership: ${p.softMembership}
+autoSeed params: candidates=${p.seedCandidates ?? "-"}, perturbations=${p.seedPerturbations ?? "-"}, weights(coh=${p.seedCoherenceWeight ?? "-"}, sep=${p.seedSeparationWeight ?? "-"}, stab=${p.seedStabilityWeight ?? "-"}, domPen=${p.seedDominancePenaltyWeight ?? "-"}, microPen=${p.seedMicroClusterPenaltyWeight ?? "-"}, labelPen=${p.seedLabelPenaltyWeight ?? "-"}), domThresh=${p.seedDominanceThreshold ?? "-"}
 evidenceRanking: sem=${e.semanticWeight}, freq=${e.frequencyWeight} | dimensionMode: ${p.dimensionMode}
 appliedDimensions: ${p.appliedNumDimensions} | varianceThreshold: ${p.varianceThreshold}
 Model: ${rawExportContext.selectedModel} | Export: ${rawExportContext.exportTimestamp || new Date().toISOString()}`;
@@ -574,6 +575,14 @@ Top Links: ${topLinks || 'N/A'}`;
         kSearchInfo = `\nK-search: recommended k=${analysis.recommendedK}${scoreStr}${tested}`;
       }
 
+      let seedInfo = '';
+      if (analysis.autoSeed && analysis.seedLeaderboard && analysis.seedLeaderboard.length > 0) {
+        const bestSeed = analysis.seedLeaderboard.find(s => s.seed === analysis.seedChosen) || analysis.seedLeaderboard[0];
+        const scoreStr = bestSeed?.score !== undefined ? bestSeed.score.toFixed(4) : '-';
+        const evaluated = analysis.seedCandidatesEvaluated ?? analysis.seedLeaderboard.length;
+        seedInfo = `seed=${analysis.seedChosen ?? bestSeed?.seed ?? "-"} score=${scoreStr} (evaluated ${evaluated})`;
+      }
+
       const apiCost = rawExportContext.apiCostTotal > 0 
         ? `, $${rawExportContext.apiCostTotal.toFixed(4)} total cost`
         : '';
@@ -583,6 +592,7 @@ ${separator}
 Sentences: ${stats.totalSentences} (by juror: ${jurorCounts})
 Stance: ${stancePct}
 Variance: ${varInfo}${kSearchInfo}
+AutoSeed: ${seedInfo ? seedInfo.trim() : 'disabled'}
 API: ${rawExportContext.apiCallCount} calls${apiCost}`;
     };
 
@@ -747,6 +757,64 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                             {m.valid ? "Yes" : "No"}
                           </Badge>
                         </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {analysis?.autoSeed && analysis.seedLeaderboard && analysis.seedLeaderboard.length > 0 && (
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="bg-indigo-50 text-indigo-700">
+                Auto-Seed Selection
+              </Badge>
+              <span className="text-sm font-semibold text-slate-600">
+                Evaluated {analysis.seedCandidatesEvaluated ?? analysis.seedLeaderboard.length} candidate seeds
+              </span>
+            </div>
+            {analysis.seedChosen !== undefined && (
+              <Badge variant="outline" className="border-indigo-200 bg-indigo-50 px-2 py-0 text-[11px] font-black text-indigo-700">
+                Chosen Seed = {analysis.seedChosen}
+              </Badge>
+            )}
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            {analysis.autoSeedReasoning && (
+              <p className="text-[12px] text-slate-600">
+                Reasoning: {analysis.autoSeedReasoning}
+              </p>
+            )}
+            <div className="overflow-hidden rounded-lg border border-slate-100">
+              <table className="min-w-full divide-y divide-slate-100 text-[12px]">
+                <thead className="bg-slate-50 text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold">Seed</th>
+                    <th className="px-3 py-2 text-left font-semibold">Score</th>
+                    <th className="px-3 py-2 text-left font-semibold">Dominance</th>
+                    <th className="px-3 py-2 text-left font-semibold">Micro-Clusters</th>
+                    <th className="px-3 py-2 text-left font-semibold">Stability</th>
+                    <th className="px-3 py-2 text-left font-semibold">Coherence</th>
+                    <th className="px-3 py-2 text-left font-semibold">Separation</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {analysis.seedLeaderboard.slice(0, 10).map((entry, idx) => {
+                    const isSelected = analysis.seedChosen === entry.seed;
+                    return (
+                      <tr key={`seed-${entry.seed}-${idx}`} className={isSelected ? "bg-indigo-50/50" : ""}>
+                        <td className="px-3 py-2 font-semibold text-slate-800">{entry.seed}</td>
+                        <td className="px-3 py-2 text-slate-700">{Number.isFinite(entry.score) ? entry.score.toFixed(4) : "-"}</td>
+                        <td className="px-3 py-2 text-slate-700">{(entry.maxClusterShare * 100).toFixed(1)}%</td>
+                        <td className="px-3 py-2 text-slate-700">{entry.microClusters}</td>
+                        <td className="px-3 py-2 text-slate-700">{entry.stability.toFixed(3)}</td>
+                        <td className="px-3 py-2 text-slate-700">{entry.coherence !== undefined ? entry.coherence.toFixed(3) : "-"}</td>
+                        <td className="px-3 py-2 text-slate-700">{entry.separation !== undefined ? entry.separation.toFixed(3) : "-"}</td>
                       </tr>
                     );
                   })}

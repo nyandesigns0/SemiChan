@@ -6,11 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { IngestPanel } from "@/components/ingest/IngestPanel";
-import { DesignerInputPanel } from "@/components/ingest/DesignerInputPanel";
+import { DataInputPanel } from "@/components/ingest/DataInputPanel";
 import { IngestModal } from "@/components/ingest/IngestModal";
 import { AnalysisControlsAccordion } from "@/components/controls/AnalysisControlsAccordion";
-import { DesignerAnalysisControls } from "@/components/controls/DesignerAnalysisControls";
 import { AlignmentControls } from "@/components/controls/AlignmentControls";
 import { AIControlsAccordion } from "@/components/controls/AIControlsAccordion";
 import { SearchBarAccordion } from "@/components/controls/SearchBarAccordion";
@@ -40,9 +38,10 @@ export default function HomePage() {
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
   // Ingest
-  const [rawText, setRawText] = useState(DEFAULT_SAMPLE);
-  const [jurorBlocks, setJurorBlocks] = useState<JurorBlock[]>(() => segmentByJuror(DEFAULT_SAMPLE));
+  const [rawText, setRawText] = useState("");
+  const [jurorBlocks, setJurorBlocks] = useState<JurorBlock[]>([]);
   const [ingestModalOpen, setIngestModalOpen] = useState(false);
+  const [designerModalOpen, setDesignerModalOpen] = useState(false);
   const [ingestError, setIngestError] = useState<string | null>(null);
 
   // Analysis params
@@ -71,12 +70,22 @@ export default function HomePage() {
   const [showNeutral, setShowNeutral] = useState(true);
 
   // New algorithm state
-  const [clusteringMode, setClusteringMode] = useState<"kmeans" | "hierarchical">("hierarchical");
+  const [clusteringMode, setClusteringMode] = useState<"kmeans" | "hierarchical">("kmeans");
   const [autoK, setAutoK] = useState(true);
   const [autoKStability, setAutoKStability] = useState(false);
   const [autoKDominanceThreshold, setAutoKDominanceThreshold] = useState(0.35);
   const [autoKKPenalty, setAutoKKPenalty] = useState(0.001);
   const [autoKEpsilon, setAutoKEpsilon] = useState(0.02);
+  const [autoSeed, setAutoSeed] = useState(true);
+  const [seedCandidates, setSeedCandidates] = useState(32);
+  const [seedPerturbations, setSeedPerturbations] = useState(3);
+  const [seedCoherenceWeight, setSeedCoherenceWeight] = useState(0.3);
+  const [seedSeparationWeight, setSeedSeparationWeight] = useState(0.25);
+  const [seedStabilityWeight, setSeedStabilityWeight] = useState(0.2);
+  const [seedDominancePenaltyWeight, setSeedDominancePenaltyWeight] = useState(0.15);
+  const [seedMicroClusterPenaltyWeight, setSeedMicroClusterPenaltyWeight] = useState(0.05);
+  const [seedLabelPenaltyWeight, setSeedLabelPenaltyWeight] = useState(0.05);
+  const [seedDominanceThreshold, setSeedDominanceThreshold] = useState(0.35);
   const [kMinOverride, setKMinOverride] = useState<number | undefined>(undefined);
   const [kMaxOverride, setKMaxOverride] = useState<number | undefined>(undefined);
   const [clusterSeed, setClusterSeed] = useState(42);
@@ -291,10 +300,20 @@ export default function HomePage() {
         evidenceRankingParams,
         clusteringMode,
         autoK,
+        autoSeed,
         autoKStability,
         autoKDominanceThreshold,
         autoKKPenalty,
         autoKEpsilon,
+        seedCandidates,
+        seedPerturbations,
+        seedCoherenceWeight,
+        seedSeparationWeight,
+        seedStabilityWeight,
+        seedDominancePenaltyWeight,
+        seedMicroClusterPenaltyWeight,
+        seedLabelPenaltyWeight,
+        seedDominanceThreshold,
         kMinOverride,
         kMaxOverride,
         clusterSeed,
@@ -321,6 +340,9 @@ export default function HomePage() {
       apiCostTotal,
       selectedModel,
       exportTimestamp,
+      autoSeed: analysis?.autoSeed,
+      seedChosen: analysis?.seedChosen,
+      seedCandidatesEvaluated: analysis?.seedCandidatesEvaluated,
     };
   }, [
     rawText,
@@ -331,10 +353,20 @@ export default function HomePage() {
     evidenceRankingParams,
     clusteringMode,
     autoK,
+    autoSeed,
     autoKStability,
     autoKDominanceThreshold,
     autoKKPenalty,
     autoKEpsilon,
+    seedCandidates,
+    seedPerturbations,
+    seedCoherenceWeight,
+    seedSeparationWeight,
+    seedStabilityWeight,
+    seedDominancePenaltyWeight,
+    seedMicroClusterPenaltyWeight,
+    seedLabelPenaltyWeight,
+    seedDominanceThreshold,
     kMinOverride,
     kMaxOverride,
     clusterSeed,
@@ -410,6 +442,16 @@ export default function HomePage() {
             autoKDominanceThreshold,
             autoKKPenalty,
             autoKEpsilon,
+            autoSeed,
+            seedCandidates,
+            seedPerturbations,
+            seedCoherenceWeight,
+            seedSeparationWeight,
+            seedStabilityWeight,
+            seedDominancePenaltyWeight,
+            seedMicroClusterPenaltyWeight,
+            seedLabelPenaltyWeight,
+            seedDominanceThreshold,
             kMin: kMinOverride,
             kMax: kMaxOverride,
             clusterSeed,
@@ -451,7 +493,7 @@ export default function HomePage() {
     };
 
     analyze();
-  }, [jurorBlocks, kConcepts, similarityThreshold, evidenceRankingParams, clusteringMode, autoK, autoKStability, autoKDominanceThreshold, autoKKPenalty, autoKEpsilon, kMinOverride, kMaxOverride, clusterSeed, softMembership, cutType, granularityPercent, numDimensions, selectedModel, dimensionMode, varianceThreshold, anchorAxes, addLog]);
+  }, [jurorBlocks, kConcepts, similarityThreshold, evidenceRankingParams, clusteringMode, autoK, autoKStability, autoKDominanceThreshold, autoKKPenalty, autoKEpsilon, autoSeed, seedCandidates, seedPerturbations, seedCoherenceWeight, seedSeparationWeight, seedStabilityWeight, seedDominancePenaltyWeight, seedMicroClusterPenaltyWeight, seedLabelPenaltyWeight, seedDominanceThreshold, kMinOverride, kMaxOverride, clusterSeed, softMembership, cutType, granularityPercent, numDimensions, selectedModel, dimensionMode, varianceThreshold, anchorAxes, addLog]);
 
   // Helper function to get node network (node + connected links + connected nodes)
   const getNodeNetwork = useCallback((nodeId: string, nodes: GraphNode[], links: GraphLink[]) => {
@@ -879,6 +921,10 @@ export default function HomePage() {
     }
   }, [analysis, designerAnalysis, similarityThreshold, addLog]);
 
+  const handleAddDesignerBlock = useCallback((block: DesignerBlock) => {
+    setDesignerBlocks((prev) => [...prev, block]);
+  }, []);
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-slate-50 text-slate-900">
       {/* Left Sidebar */}
@@ -887,21 +933,21 @@ export default function HomePage() {
         isOpen={leftSidebarOpen}
         onToggle={() => setLeftSidebarOpen(!leftSidebarOpen)}
         width={400}
+        disableOutsideClick={ingestModalOpen || designerModalOpen}
       >
         <div className="space-y-4">
-          <IngestPanel 
-            rawText={rawText} 
-            onTextChange={setRawText} 
+          <DataInputPanel
             jurorBlocks={jurorBlocks}
-            onOpenModal={() => setIngestModalOpen(true)}
+            onOpenJurorModal={() => setIngestModalOpen(true)}
             ingestError={ingestError}
-          />
-          <DesignerInputPanel blocks={designerBlocks} onChange={setDesignerBlocks} />
-          <DesignerAnalysisControls
-            kConcepts={designerKConcepts}
-            onKConceptsChange={setDesignerKConcepts}
-            loading={designerLoading}
-            onAnalyze={handleDesignerAnalysis}
+            onOpenDesignerModal={() => setDesignerModalOpen(true)}
+            onLoadSample={() => setRawText(DEFAULT_SAMPLE)}
+            designerBlocks={designerBlocks}
+            onDesignerBlocksChange={setDesignerBlocks}
+            designerKConcepts={designerKConcepts}
+            onDesignerKConceptsChange={setDesignerKConcepts}
+            designerLoading={designerLoading}
+            onAnalyzeDesigner={handleDesignerAnalysis}
           />
 
           <AIControlsAccordion
@@ -926,6 +972,26 @@ export default function HomePage() {
             onClusteringModeChange={setClusteringMode}
             autoK={autoK}
             onAutoKChange={setAutoK}
+            autoSeed={autoSeed}
+            onAutoSeedChange={setAutoSeed}
+            seedCandidates={seedCandidates}
+            onSeedCandidatesChange={setSeedCandidates}
+            seedPerturbations={seedPerturbations}
+            onSeedPerturbationsChange={setSeedPerturbations}
+            seedCoherenceWeight={seedCoherenceWeight}
+            onSeedCoherenceWeightChange={setSeedCoherenceWeight}
+            seedSeparationWeight={seedSeparationWeight}
+            onSeedSeparationWeightChange={setSeedSeparationWeight}
+            seedStabilityWeight={seedStabilityWeight}
+            onSeedStabilityWeightChange={setSeedStabilityWeight}
+            seedDominancePenaltyWeight={seedDominancePenaltyWeight}
+            onSeedDominancePenaltyWeightChange={setSeedDominancePenaltyWeight}
+            seedMicroClusterPenaltyWeight={seedMicroClusterPenaltyWeight}
+            onSeedMicroClusterPenaltyWeightChange={setSeedMicroClusterPenaltyWeight}
+            seedLabelPenaltyWeight={seedLabelPenaltyWeight}
+            onSeedLabelPenaltyWeightChange={setSeedLabelPenaltyWeight}
+            seedDominanceThreshold={seedDominanceThreshold}
+            onSeedDominanceThresholdChange={setSeedDominanceThreshold}
             autoKStability={autoKStability}
             onAutoKStabilityChange={setAutoKStability}
             autoKDominanceThreshold={autoKDominanceThreshold}
@@ -1139,6 +1205,7 @@ export default function HomePage() {
         isOpen={rightSidebarOpen}
         onToggle={() => setRightSidebarOpen(!rightSidebarOpen)}
         width={400}
+        disableOutsideClick={ingestModalOpen || designerModalOpen}
       >
         <div className="space-y-4">
           <GraphFiltersAccordion
@@ -1185,10 +1252,18 @@ export default function HomePage() {
       <IngestModal
         open={ingestModalOpen}
         onOpenChange={setIngestModalOpen}
+        mode="juror"
         rawText={rawText}
         onTextChange={setRawText}
         jurorBlocks={jurorBlocks}
       />
+      <IngestModal
+        open={designerModalOpen}
+        onOpenChange={setDesignerModalOpen}
+        mode="designer"
+        onAddDesignerBlock={handleAddDesignerBlock}
+      />
     </div>
   );
 }
+

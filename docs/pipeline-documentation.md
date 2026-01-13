@@ -20,7 +20,7 @@ graph TD
     NgramPath --> BM25[7.1 BM25 Frequency Vectors<br/>Cross-Juror Word Frequencies]
     EmbedPath --> SemanticVecs[6.1 384-dim Semantic Vectors<br/>Meaning Representation]
     
-    SemanticVecs --> Clustering[8. Clustering<br/>Hierarchical (default) or K-Means]
+    SemanticVecs --> Clustering[8. Clustering<br/>K-Means (default) or Hierarchical]
     Clustering --> Centroids[8.1 Cluster Centroids<br/>Theme Centers]
     Clustering --> Assignments[8.2 Sentence Assignments<br/>Which Concept Each Sentence Belongs To]
     
@@ -286,11 +286,11 @@ Unlike standard TF-IDF, this implementation prioritizes n-grams that appear acro
 
 **Technical Detail:** The system supports multiple clustering algorithms using **unit-length semantic vectors**, governed by a **strict deterministic pipeline** to ensure reproducible results. By using purely semantic vectors for clustering, the system ensures that cluster boundaries are defined by meaning rather than specific word frequencies, preventing "label bleed" and "mega-concepts" driven by common technical terms.
 
-**Hierarchical Clustering (Default):** The system uses agglomerative hierarchical clustering as the default method, which builds a complete dendrogram tree of all possible cluster merges. This method is inherently deterministic as it relies on calculating distances between all pairs of semantic vectors using cosine similarity.
-- **Cut by Count:** The dendrogram is cut to produce exactly $K$ clusters (default mode).
-- **Cut by Granularity:** The dendrogram is cut at a distance threshold determined by a granularity percentage (0-100%), allowing the number of concepts to emerge naturally.
+**K-Means Clustering (Default):** The system defaults to K-Means clustering tailored for high-dimensional semantic cosine similarity. It initializes $K$ centroids using a **seeded pseudo-random number generator (PRNG)** derived from the user's "Solution Seed".
 
-**K-Means Clustering (Optional):** The system also supports K-Means clustering tailored for high-dimensional semantic cosine similarity. It initializes $K$ centroids using a **seeded pseudo-random number generator (PRNG)** derived from the user's "Solution Seed".
+**Hierarchical Clustering (Optional):** The system also supports agglomerative hierarchical clustering, which builds a complete dendrogram tree of all possible cluster merges. This method is inherently deterministic as it relies on calculating distances between all pairs of semantic vectors using cosine similarity.
+- **Cut by Count:** The dendrogram is cut to produce exactly $K$ clusters.
+- **Cut by Granularity:** The dendrogram is cut at a distance threshold determined by a granularity percentage (0-100%), allowing the number of concepts to emerge naturally.
 
 **Auto-K Recommendation (Default: Enabled):** When enabled, the system automatically evaluates a range of cluster counts ($K_{min}$ to $K_{max}$) and recommends an optimal value based on semantic separation metrics.
 

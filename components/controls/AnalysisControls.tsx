@@ -45,6 +45,26 @@ interface AnalysisControlsProps {
   onClusteringModeChange: (mode: "kmeans" | "hierarchical") => void;
   autoK: boolean;
   onAutoKChange: (value: boolean) => void;
+  autoSeed: boolean;
+  onAutoSeedChange: (value: boolean) => void;
+  seedCandidates: number;
+  onSeedCandidatesChange: (value: number) => void;
+  seedPerturbations: number;
+  onSeedPerturbationsChange: (value: number) => void;
+  seedCoherenceWeight: number;
+  onSeedCoherenceWeightChange: (value: number) => void;
+  seedSeparationWeight: number;
+  onSeedSeparationWeightChange: (value: number) => void;
+  seedStabilityWeight: number;
+  onSeedStabilityWeightChange: (value: number) => void;
+  seedDominancePenaltyWeight: number;
+  onSeedDominancePenaltyWeightChange: (value: number) => void;
+  seedMicroClusterPenaltyWeight: number;
+  onSeedMicroClusterPenaltyWeightChange: (value: number) => void;
+  seedLabelPenaltyWeight: number;
+  onSeedLabelPenaltyWeightChange: (value: number) => void;
+  seedDominanceThreshold: number;
+  onSeedDominanceThresholdChange: (value: number) => void;
   clusterSeed: number;
   onClusterSeedChange: (value: number) => void;
   softMembership: boolean;
@@ -89,6 +109,26 @@ export function AnalysisControls({
   onClusteringModeChange,
   autoK,
   onAutoKChange,
+  autoSeed,
+  onAutoSeedChange,
+  seedCandidates,
+  onSeedCandidatesChange,
+  seedPerturbations,
+  onSeedPerturbationsChange,
+  seedCoherenceWeight,
+  onSeedCoherenceWeightChange,
+  seedSeparationWeight,
+  onSeedSeparationWeightChange,
+  seedStabilityWeight,
+  onSeedStabilityWeightChange,
+  seedDominancePenaltyWeight,
+  onSeedDominancePenaltyWeightChange,
+  seedMicroClusterPenaltyWeight,
+  onSeedMicroClusterPenaltyWeightChange,
+  seedLabelPenaltyWeight,
+  onSeedLabelPenaltyWeightChange,
+  seedDominanceThreshold,
+  onSeedDominanceThresholdChange,
   clusterSeed,
   onClusterSeedChange,
   softMembership,
@@ -119,6 +159,7 @@ export function AnalysisControls({
 }: AnalysisControlsProps) {
   const [showClusteringSettings, setShowClusteringSettings] = useState(false);
   const [showAutoKSettings, setShowAutoKSettings] = useState(false);
+  const [showAutoSeedSettings, setShowAutoSeedSettings] = useState(false);
   const [showEvidenceSettings, setShowEvidenceSettings] = useState(false);
   const [showNetworkSettings, setShowNetworkSettings] = useState(false);
   const [showDimensionSettings, setShowDimensionSettings] = useState(false);
@@ -317,6 +358,205 @@ export function AnalysisControls({
 
                 <div className="h-px bg-slate-100" />
 
+                {/* Auto-Seed Toggle */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between group">
+                    <div className="space-y-0.5">
+                      <Label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                        <Zap className="h-3 w-3 text-indigo-500" />
+                        Auto-Seed Selection
+                      </Label>
+                      <p className="text-[10px] text-slate-400">
+                        Optimizes k-means initialization with composite quality scoring.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {autoSeed && clusteringMode === "kmeans" && (
+                        <Badge variant="secondary" className="bg-emerald-50 px-1.5 py-0 text-[9px] font-bold text-emerald-700">
+                          Auto-Seed: ON
+                        </Badge>
+                      )}
+                      <Switch
+                        checked={autoSeed && clusteringMode === "kmeans"}
+                        disabled={clusteringMode !== "kmeans"}
+                        onCheckedChange={onAutoSeedChange}
+                        className="scale-75"
+                      />
+                    </div>
+                  </div>
+                  {clusteringMode !== "kmeans" && (
+                    <p className="text-[10px] font-semibold text-amber-600">
+                      Auto-Seed is available only for k-means mode.
+                    </p>
+                  )}
+
+                  {clusteringMode === "kmeans" && (
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => setShowAutoSeedSettings(!showAutoSeedSettings)}
+                        className="flex w-full items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-indigo-500 transition-colors py-0.5 px-1"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Gauge className="h-3 w-3" />
+                          Auto-Seed Settings
+                        </div>
+                        {showAutoSeedSettings ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                      </button>
+
+                      {showAutoSeedSettings && (
+                        <div className="space-y-2 rounded-lg border border-slate-100 bg-white/60 p-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-[11px] font-bold text-slate-700">Candidates</Label>
+                                <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                                  {seedCandidates}
+                                </Badge>
+                              </div>
+                              <Slider
+                                value={[seedCandidates]}
+                                min={16}
+                                max={64}
+                                step={1}
+                                onValueChange={(v) => onSeedCandidatesChange(v[0])}
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-[11px] font-bold text-slate-700">Perturbations</Label>
+                                <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                                  {seedPerturbations}
+                                </Badge>
+                              </div>
+                              <Slider
+                                value={[seedPerturbations]}
+                                min={1}
+                                max={5}
+                                step={1}
+                                onValueChange={(v) => onSeedPerturbationsChange(v[0])}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-[11px] font-bold text-slate-700">Coherence Wt</Label>
+                                <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                                  {seedCoherenceWeight.toFixed(2)}
+                                </Badge>
+                              </div>
+                              <Slider
+                                value={[seedCoherenceWeight]}
+                                min={0}
+                                max={1}
+                                step={0.05}
+                                onValueChange={(v) => onSeedCoherenceWeightChange(Number(v[0].toFixed(2)))}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-[11px] font-bold text-slate-700">Separation Wt</Label>
+                                <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                                  {seedSeparationWeight.toFixed(2)}
+                                </Badge>
+                              </div>
+                              <Slider
+                                value={[seedSeparationWeight]}
+                                min={0}
+                                max={1}
+                                step={0.05}
+                                onValueChange={(v) => onSeedSeparationWeightChange(Number(v[0].toFixed(2)))}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-[11px] font-bold text-slate-700">Stability Wt</Label>
+                                <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                                  {seedStabilityWeight.toFixed(2)}
+                                </Badge>
+                              </div>
+                              <Slider
+                                value={[seedStabilityWeight]}
+                                min={0}
+                                max={1}
+                                step={0.05}
+                                onValueChange={(v) => onSeedStabilityWeightChange(Number(v[0].toFixed(2)))}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-[11px] font-bold text-slate-700">Dominance Penalty</Label>
+                                <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                                  {seedDominancePenaltyWeight.toFixed(2)}
+                                </Badge>
+                              </div>
+                              <Slider
+                                value={[seedDominancePenaltyWeight]}
+                                min={0}
+                                max={0.5}
+                                step={0.01}
+                                onValueChange={(v) => onSeedDominancePenaltyWeightChange(Number(v[0].toFixed(2)))}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-[11px] font-bold text-slate-700">Micro-Cluster Penalty</Label>
+                                <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                                  {seedMicroClusterPenaltyWeight.toFixed(2)}
+                                </Badge>
+                              </div>
+                              <Slider
+                                value={[seedMicroClusterPenaltyWeight]}
+                                min={0}
+                                max={0.5}
+                                step={0.01}
+                                onValueChange={(v) => onSeedMicroClusterPenaltyWeightChange(Number(v[0].toFixed(2)))}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-[11px] font-bold text-slate-700">Label Penalty</Label>
+                                <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                                  {seedLabelPenaltyWeight.toFixed(2)}
+                                </Badge>
+                              </div>
+                              <Slider
+                                value={[seedLabelPenaltyWeight]}
+                                min={0}
+                                max={0.5}
+                                step={0.01}
+                                onValueChange={(v) => onSeedLabelPenaltyWeightChange(Number(v[0].toFixed(2)))}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-[11px] font-bold text-slate-700">Dominance Threshold</Label>
+                              <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                                {seedDominanceThreshold.toFixed(2)}
+                              </Badge>
+                            </div>
+                            <Slider
+                              value={[seedDominanceThreshold]}
+                              min={0.25}
+                              max={0.5}
+                              step={0.01}
+                              onValueChange={(v) => onSeedDominanceThresholdChange(Number(v[0].toFixed(2)))}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="h-px bg-slate-100" />
+
                 {/* Soft Membership Toggle */}
                 <div className="flex items-center justify-between group">
                   <div className="space-y-0.5">
@@ -347,7 +587,11 @@ export function AnalysisControls({
                     max={100} 
                     step={1} 
                     onValueChange={(v) => onClusterSeedChange(v[0])} 
+                    disabled={autoSeed && clusteringMode === "kmeans"}
                   />
+                  {autoSeed && clusteringMode === "kmeans" && (
+                    <p className="text-[10px] text-slate-400">Auto-Seed will override the manual seed.</p>
+                  )}
                 </div>
 
                 {/* Manual Concept / Granularity when Auto-K is off */}

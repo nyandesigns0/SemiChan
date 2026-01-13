@@ -12,6 +12,7 @@ interface CollapsibleSidebarProps {
   children: React.ReactNode;
   width?: number;
   className?: string;
+  disableOutsideClick?: boolean;
 }
 
 export function CollapsibleSidebar({
@@ -21,6 +22,7 @@ export function CollapsibleSidebar({
   children,
   width = 320,
   className,
+  disableOutsideClick = false,
 }: CollapsibleSidebarProps) {
   const [isMounted, setIsMounted] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
@@ -32,7 +34,7 @@ export function CollapsibleSidebar({
 
   // Click outside to close
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || disableOutsideClick) return;
 
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
@@ -55,7 +57,7 @@ export function CollapsibleSidebar({
       clearTimeout(timeoutId);
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isOpen, onToggle]);
+  }, [isOpen, onToggle, disableOutsideClick]);
 
   const isLeft = side === "left";
   const translateX = isOpen ? 0 : isLeft ? `-${width}px` : `${width}px`;
@@ -63,7 +65,7 @@ export function CollapsibleSidebar({
   return (
     <>
       {/* Backdrop overlay for mobile */}
-      {isOpen && (
+      {isOpen && !disableOutsideClick && (
         <div
           className="fixed inset-0 z-40 bg-black/50 lg:hidden"
           onClick={onToggle}
@@ -124,4 +126,3 @@ export function CollapsibleSidebar({
     </>
   );
 }
-

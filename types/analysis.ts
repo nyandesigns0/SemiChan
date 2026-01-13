@@ -48,6 +48,17 @@ export interface ConceptSet {
   unitType?: "sentence" | "chunk";
 }
 
+export interface SeedLeaderboardEntry {
+  seed: number;
+  score: number;
+  maxClusterShare: number;
+  microClusters: number;
+  stability: number;
+  coherence?: number;
+  separation?: number;
+  labelability?: number;
+}
+
 export interface AnalysisResult {
   jurors: string[];
   concepts: Concept[]; // Backward compat - defaults to primary layer
@@ -106,4 +117,22 @@ export interface AnalysisResult {
   };
   chunks?: ContextualUnit[];
   chunkAssignments?: string[];
+  autoSeed?: boolean;
+  seedChosen?: number;
+  seedCandidatesEvaluated?: number;
+  seedLeaderboard?: SeedLeaderboardEntry[];
+  autoSeedReasoning?: string;
+  minClusterSize?: number;
+  minClusterSizeAuto?: boolean;
+  minClusterSizeMerged?: number;
+  minClusterSizeDetails?: {
+    beforeSize: number;
+    afterSize: number;
+    mergedCount: number;
+  };
+  dominanceSplitApplied?: boolean;
+  dominanceSplitDetails?: {
+    primary?: { splitCount: number; originalSizes: number[]; newSizes: number[] };
+    detail?: { splitCount: number; originalSizes: number[]; newSizes: number[] };
+  };
 }

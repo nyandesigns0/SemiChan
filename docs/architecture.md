@@ -510,7 +510,7 @@ Required environment variables:
 
 ### 4. Hierarchical Clustering as Default
 
-**Decision**: Use hierarchical clustering as the default method
+**Decision**: Use K-Means clustering as the default method
 
 **Rationale**:
 - More intuitive for exploring data at different granularities
@@ -600,5 +600,4 @@ The architecture supports extension through:
 ## Conclusion
 
 SemiChan's architecture balances flexibility, performance, and maintainability. The clear separation of concerns, strong typing, and modular design make it easy to understand, extend, and modify. The hybrid analysis approach and 3D visualization provide powerful tools for understanding complex textual relationships.
-
 
