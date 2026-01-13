@@ -16,7 +16,6 @@ interface DataInputPanelProps {
   onOpenJurorModal: () => void;
   ingestError?: string | null;
   onOpenDesignerModal: () => void;
-  onLoadSample: () => void;
   designerBlocks: DesignerBlock[];
   onDesignerBlocksChange: (blocks: DesignerBlock[]) => void;
   designerKConcepts: number;
@@ -30,7 +29,6 @@ export function DataInputPanel({
   onOpenJurorModal,
   ingestError,
   onOpenDesignerModal,
-  onLoadSample,
   designerBlocks,
   onDesignerBlocksChange,
   designerKConcepts,
@@ -114,20 +112,6 @@ export function DataInputPanel({
 
               <div className="space-y-2">
                 <Label className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-900">
-                  <FileUp className="h-3 w-3" />
-                  Sample Data Set
-                </Label>
-
-                <Button
-                  onClick={onLoadSample}
-                  className="w-full rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold shadow-sm transition-all hover:shadow-md py-2.5"
-                >
-                  Load Sample
-                </Button>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-900">
                   <PenSquare className="h-3 w-3" />
                   Designer Input
                 </Label>
@@ -194,6 +178,7 @@ export function DataInputPanel({
                   )}
                 </div>
               </div>
+
             </div>
           </div>
         )}

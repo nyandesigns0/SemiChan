@@ -26,7 +26,7 @@ import { rankEvidenceForConcept, DEFAULT_EVIDENCE_RANKING_PARAMS } from "@/lib/a
 import { createSentenceWindows } from "@/lib/analysis/contextual-units";
 
 // Clustering algorithm imports
-import { evaluateKRange, evaluateKRangeWithAutoSeed, selectBestSeed, type SeedEvaluationResult } from "@/lib/analysis/cluster-eval";
+import { evaluateKRange, evaluateKRangeWithAutoSeed, evaluateUnitMode, evaluateWeightRange, selectBestSeed, selectOptimalMinClusterSize, mergeSmallClusters, type SeedEvaluationResult } from "@/lib/analysis/cluster-eval";
 import { 
   buildDendrogram, 
   cutDendrogramByCount, 
@@ -50,12 +50,18 @@ export async function buildAnalysis(
     evidenceRankingParams?: { semanticWeight: number; frequencyWeight: number };
     clusteringMode?: "kmeans" | "hierarchical";
     autoK?: boolean;
+    autoUnit?: boolean;
+    autoWeights?: boolean;
     kMin?: number;
     kMax?: number;
     autoKStability?: boolean;
     autoKDominanceThreshold?: number;
     autoKKPenalty?: number;
     autoKEpsilon?: number;
+    autoMinClusterSize?: boolean;
+    minClusterSize?: number;
+    autoDominanceCap?: boolean;
+    autoDominanceCapThreshold?: number;
     autoSeed?: boolean;
     seedCandidates?: number;
     seedPerturbations?: number;
@@ -86,18 +92,25 @@ export async function buildAnalysis(
     applyPopularityDampening?: boolean;
     anchorAxes?: AnchorAxis[];
     onLog?: (type: "analysis" | "quality" | "hierarchy", message: string, data?: any) => void;
+    onProgress?: (payload: { progress: number; step: string }) => void;
   } = {}
 ): Promise<AnalysisResult> {
   const {
     evidenceRankingParams = DEFAULT_EVIDENCE_RANKING_PARAMS,
     clusteringMode = "kmeans",
     autoK = true,
+    autoUnit = false,
+    autoWeights = false,
     kMin,
     kMax,
     autoKStability = false,
     autoKDominanceThreshold = 0.35,
     autoKKPenalty = 0.001,
     autoKEpsilon = 0.02,
+    autoMinClusterSize = false,
+    minClusterSize,
+    autoDominanceCap = true,
+    autoDominanceCapThreshold,
     autoSeed = false,
     seedCandidates = 32,
     seedPerturbations = 3,
@@ -128,11 +141,15 @@ export async function buildAnalysis(
     applyPopularityDampening = false,
     anchorAxes = [],
     onLog,
+    onProgress,
   } = options;
 
   const log = (type: "analysis" | "quality" | "hierarchy", message: string, data?: any) => {
     console.log(`[${type.toUpperCase()}] ${message}`);
     onLog?.(type, message, data);
+  };
+  const progress = (value: number, step: string) => {
+    onProgress?.({ progress: value, step });
   };
 
   const autoSeedEnabled = autoSeed && clusteringMode === "kmeans";
@@ -149,6 +166,8 @@ export async function buildAnalysis(
   const checkpoints: AnalysisCheckpoint[] = [];
   const jurors = jurorBlocks.map((b) => b.juror).filter((j) => j !== "Unattributed");
   const sentences: SentenceRecord[] = [];
+
+  progress(15, "Preparing sentences");
   
   for (const b of jurorBlocks) {
     const sents = sentenceSplit(b.text);
@@ -200,8 +219,77 @@ export async function buildAnalysis(
   // Extract sentence texts
   const docs = effectiveSentences.map((s) => s.sentence);
 
+  let autoUnitResult:
+    | {
+        recommendedMode: { windowSize: number; label: string };
+        unitSearchMetrics: Array<{
+          mode: { windowSize: number; label: string };
+          score: number;
+          coherence?: number;
+          separation?: number;
+          dominance?: number;
+          kUsed?: number;
+          reasoning?: string;
+        }>;
+        reasoning: string;
+      }
+    | undefined;
+  let autoUnitReasoning: string | undefined;
+  let resolvedWindowSize = 3;
+
+  if (autoUnit) {
+    const defaultUnits = createSentenceWindows(docs, 3, 1);
+    const unitCount = Math.max(1, defaultUnits.length || docs.length);
+    const dynamicKMin = Math.max(4, Math.round(Math.sqrt(unitCount)));
+    const dynamicKMax = Math.max(
+      dynamicKMin + 1,
+      Math.min(20, Math.floor(unitCount / 4) || dynamicKMin + 1)
+    );
+    const resolvedKMin = clamp(kMin ?? dynamicKMin, 2, dynamicKMax);
+    const resolvedKMax = Math.max(
+      resolvedKMin + 1,
+      clamp(kMax ?? dynamicKMax, resolvedKMin + 1, Math.max(dynamicKMax, resolvedKMin + 1))
+    );
+    const progressInterval = Math.max(1, Math.floor((resolvedKMax - resolvedKMin + 1) / 3));
+
+    log(
+      "analysis",
+      `Auto-Unit evaluating modes across K=${resolvedKMin}-${resolvedKMax} (N=${unitCount} units)`
+    );
+
+    autoUnitResult = await evaluateUnitMode(
+      jurorBlocks,
+      effectiveSentences,
+      docs,
+      { min: resolvedKMin, max: resolvedKMax },
+      seed,
+      {
+        onProgress: (mode, progress, total) => {
+          if (progress === total || progress % progressInterval === 0) {
+            log("analysis", `Auto-Unit progress (${mode}): ${progress}/${total} K values evaluated`);
+          }
+        },
+        onLog: (message) => log("analysis", message),
+      }
+    );
+
+    resolvedWindowSize = autoUnitResult.recommendedMode.windowSize;
+    autoUnitReasoning = autoUnitResult.reasoning;
+    log(
+      "analysis",
+      `Auto-Unit selected: ${autoUnitResult.recommendedMode.label} (window=${resolvedWindowSize})`
+    );
+    autoUnitResult.unitSearchMetrics.forEach((m) => {
+      log(
+        "analysis",
+        `Auto-Unit mode=${m.mode.label}: score=${Number.isFinite(m.score) ? m.score.toFixed(4) : "-inf"}, coherence=${(m.coherence ?? 0).toFixed(4)}, dominance=${((m.dominance ?? 0) * 100).toFixed(1)}%`
+      );
+    });
+  }
+
   // Build contextual units (chunked windows) for clustering
-  let contextualUnits: ContextualUnit[] = createSentenceWindows(docs, 3, 1);
+  progress(25, "Chunking feedback");
+  let contextualUnits: ContextualUnit[] = createSentenceWindows(docs, resolvedWindowSize, 1);
   if (contextualUnits.length === 0 && docs.length > 0) {
     contextualUnits = docs.map((text, idx) => ({
       id: `chunk:win:${idx}`,
@@ -237,6 +325,7 @@ export async function buildAnalysis(
   });
 
   // Build embeddings and BM25 frequency channels
+  progress(40, "Embedding text");
   const [sentenceEmbeddingResult, chunkEmbeddingResult, bm25Models] = await Promise.all([
     embedSentences(docs),
     embedSentences(chunkTexts),
@@ -286,6 +375,7 @@ export async function buildAnalysis(
   const requestedNumDimensions = numDimensions;
 
   if (autoK) {
+    progress(50, "Optimizing cluster count");
     const unitCount = contextualUnits.length;
     const dynamicKMin = Math.max(4, Math.round(Math.sqrt(unitCount)));
     const dynamicKMax = Math.max(
@@ -440,6 +530,7 @@ export async function buildAnalysis(
   K = Math.max(1, Math.min(K ?? 1, contextualUnits.length));
 
   // Clustering
+  progress(65, "Clustering concepts");
   let assignments: number[];
   let detailAssignments: number[] | undefined;
   let parentMap: Record<number, number> | undefined;
@@ -513,30 +604,128 @@ export async function buildAnalysis(
     centroids = km.centroids;
   }
 
-  // Enforce cluster size cap in single-layer mode
-  if (!useTwoLayer) {
-    const capShare = 0.35;
-    const maxClusterSize = Math.max(1, Math.floor(contextualUnits.length * capShare));
-    const clusterMembers: Record<number, number[]> = {};
-    for (let i = 0; i < assignments.length; i++) {
-      const a = assignments[i];
-      clusterMembers[a] = clusterMembers[a] || [];
-      clusterMembers[a].push(i);
+  const normalizeDetailByPrimary = (
+    detailAssignmentsInput: number[],
+    primaryAssignments: number[]
+  ): { assignments: number[]; parentMap: Record<number, number> } => {
+    const detailGroups = new Map<number, number[]>();
+    for (let i = 0; i < detailAssignmentsInput.length; i++) {
+      const id = detailAssignmentsInput[i];
+      if (id === undefined || id < 0) continue;
+      const list = detailGroups.get(id) || [];
+      list.push(i);
+      detailGroups.set(id, list);
     }
 
-    const newAssignments = new Array(assignments.length).fill(-1);
-    let nextClusterId = 0;
-    let appliedSplit = false;
+    const newAssignments = new Array(detailAssignmentsInput.length).fill(-1);
+    const newParentMap: Record<number, number> = {};
+    let nextDetailId = 0;
 
-    for (const [clusterIdStr, indices] of Object.entries(clusterMembers)) {
+    for (const indices of detailGroups.values()) {
+      const byPrimary = new Map<number, number[]>();
+      for (const idx of indices) {
+        const pId = primaryAssignments[idx];
+        const bucket = byPrimary.get(pId) || [];
+        bucket.push(idx);
+        byPrimary.set(pId, bucket);
+      }
+
+      for (const [pId, bucket] of byPrimary.entries()) {
+        const globalId = nextDetailId++;
+        for (const idx of bucket) newAssignments[idx] = globalId;
+        newParentMap[globalId] = pId;
+      }
+    }
+
+    return { assignments: newAssignments, parentMap: newParentMap };
+  };
+
+  const mergeDetailClustersByPrimary = (
+    detailAssignmentsInput: number[],
+    primaryAssignments: number[],
+    vectors: Float64Array[],
+    minSize: number
+  ): {
+    assignments: number[];
+    parentMap: Record<number, number>;
+    mergedCount: number;
+    beforeSize: number;
+    afterSize: number;
+  } => {
+    const primaryMembers = new Map<number, number[]>();
+    for (let i = 0; i < primaryAssignments.length; i++) {
+      const pId = primaryAssignments[i];
+      const list = primaryMembers.get(pId) || [];
+      list.push(i);
+      primaryMembers.set(pId, list);
+    }
+
+    const beforeSize = new Set(detailAssignmentsInput).size;
+    const newAssignments = new Array(detailAssignmentsInput.length).fill(-1);
+    const newParentMap: Record<number, number> = {};
+    let nextDetailId = 0;
+    let mergedCount = 0;
+
+    for (const [pId, indices] of primaryMembers.entries()) {
+      if (indices.length === 0) continue;
+      const localAssignments = indices.map((idx) => detailAssignmentsInput[idx]);
+      const localVectors = indices.map((idx) => vectors[idx]);
+
+      const localIdMap = new Map<number, number>();
+      let nextLocalId = 0;
+      const normalizedLocalAssignments = localAssignments.map((a) => {
+        if (!localIdMap.has(a)) localIdMap.set(a, nextLocalId++);
+        return localIdMap.get(a)!;
+      });
+
+      const mergeResult = mergeSmallClusters(normalizedLocalAssignments, localVectors, minSize);
+      mergedCount += mergeResult.mergedCount;
+
+      const localIds = Array.from(new Set(mergeResult.assignments)).sort((a, b) => a - b);
+      const localToGlobal = new Map<number, number>();
+      for (const localId of localIds) {
+        const globalId = nextDetailId++;
+        localToGlobal.set(localId, globalId);
+        newParentMap[globalId] = pId;
+      }
+
+      for (let i = 0; i < indices.length; i++) {
+        const localId = mergeResult.assignments[i];
+        newAssignments[indices[i]] = localToGlobal.get(localId)!;
+      }
+    }
+
+    const afterSize = new Set(newAssignments).size;
+    return { assignments: newAssignments, parentMap: newParentMap, mergedCount, beforeSize, afterSize };
+  };
+
+  const applyDominanceCap = (
+    label: "primary" | "detail",
+    assignmentsInput: number[],
+    vectors: Float64Array[],
+    maxClusterSize: number
+  ): { assignments: number[]; splitCount: number; originalSizes: number[]; newSizes: number[]; applied: boolean } => {
+    const clusterMembers = new Map<number, number[]>();
+    for (let i = 0; i < assignmentsInput.length; i++) {
+      const a = assignmentsInput[i];
+      const list = clusterMembers.get(a) || [];
+      list.push(i);
+      clusterMembers.set(a, list);
+    }
+
+    const newAssignments = new Array(assignmentsInput.length).fill(-1);
+    let nextClusterId = 0;
+    let splitCount = 0;
+    const originalSizes: number[] = [];
+    const newSizes: number[] = [];
+
+    for (const [clusterId, indices] of clusterMembers.entries()) {
       const clusterSize = indices.length;
       if (clusterSize > maxClusterSize) {
-        appliedSplit = true;
-        const targetK = Math.min(
-          clusterSize,
-          Math.max(2, Math.ceil(clusterSize / maxClusterSize))
-        );
-        const clusterVectors = indices.map((idx) => semanticVectors[idx]);
+        splitCount++;
+        originalSizes.push(clusterSize);
+        const targetK = Math.min(clusterSize, Math.max(2, Math.ceil(clusterSize / maxClusterSize)));
+        const clusterVectors = indices.map((idx) => vectors[idx]);
         const dendro = buildDendrogram(clusterVectors);
         const subAssignments = cutDendrogramByCount(clusterVectors, targetK);
         const subIds = Array.from(new Set(subAssignments)).sort((a, b) => a - b);
@@ -544,13 +733,16 @@ export async function buildAnalysis(
         for (const subId of subIds) {
           subMap.set(subId, nextClusterId++);
         }
+        const subCounts = new Map<number, number>();
         for (let i = 0; i < subAssignments.length; i++) {
           const globalId = subMap.get(subAssignments[i])!;
           newAssignments[indices[i]] = globalId;
+          subCounts.set(globalId, (subCounts.get(globalId) ?? 0) + 1);
         }
+        newSizes.push(...Array.from(subCounts.values()));
         log(
           "quality",
-          `Cluster cap split applied: cluster ${clusterIdStr} size ${clusterSize} -> ${subIds.length} clusters (cap ${maxClusterSize})`
+          `Dominance cap split (${label}): cluster ${clusterId} size ${clusterSize} -> ${subIds.length} clusters (cap ${maxClusterSize})`
         );
       } else {
         const globalId = nextClusterId++;
@@ -560,10 +752,97 @@ export async function buildAnalysis(
       }
     }
 
-    if (appliedSplit) {
-      assignments = newAssignments;
-      K = nextClusterId;
+    return {
+      assignments: newAssignments,
+      splitCount,
+      originalSizes,
+      newSizes,
+      applied: splitCount > 0,
+    };
+  };
+
+  let minClusterSizeApplied: number | undefined;
+  let minClusterSizeMerged: number | undefined;
+  let minClusterSizeDetails: AnalysisResult["minClusterSizeDetails"] | undefined;
+  let dominanceSplitApplied = false;
+  let dominanceSplitDetails: AnalysisResult["dominanceSplitDetails"] | undefined;
+
+  if (autoMinClusterSize || minClusterSize !== undefined) {
+    const resolvedMinSize =
+      minClusterSize ?? selectOptimalMinClusterSize(semanticVectors, [2, 3, 4, 5], assignments);
+    const beforeSize = new Set(assignments).size;
+    const mergeResult = mergeSmallClusters(assignments, semanticVectors, resolvedMinSize);
+    assignments = mergeResult.assignments;
+    const afterSize = new Set(assignments).size;
+    minClusterSizeApplied = resolvedMinSize;
+    minClusterSizeMerged = mergeResult.mergedCount;
+    minClusterSizeDetails = { beforeSize, afterSize, mergedCount: mergeResult.mergedCount };
+    K = afterSize;
+    centroids = computeCentroids(semanticVectors, assignments, K);
+    if (mergeResult.mergedCount > 0) {
+      log("quality", `MinClusterSize: merged ${mergeResult.mergedCount} clusters (minSize=${resolvedMinSize})`);
+    }
+
+    if (useTwoLayer && detailAssignments) {
+      const aligned = normalizeDetailByPrimary(detailAssignments, assignments);
+      detailAssignments = aligned.assignments;
+      parentMap = aligned.parentMap;
+
+      const detailMerge = mergeDetailClustersByPrimary(detailAssignments, assignments, semanticVectors, resolvedMinSize);
+      detailAssignments = detailMerge.assignments;
+      parentMap = detailMerge.parentMap;
+      detailCentroids = computeCentroids(semanticVectors, detailAssignments, new Set(detailAssignments).size);
+      if (detailMerge.mergedCount > 0) {
+        log("quality", `MinClusterSize detail: merged ${detailMerge.mergedCount} clusters (minSize=${resolvedMinSize})`);
+      }
+    }
+  }
+
+  if (autoDominanceCap) {
+    const dominanceThreshold = autoDominanceCapThreshold ?? autoKDominanceThreshold ?? 0.35;
+    const maxClusterSize = Math.max(1, Math.floor(contextualUnits.length * dominanceThreshold));
+    const primarySplit = applyDominanceCap("primary", assignments, semanticVectors, maxClusterSize);
+    if (primarySplit.applied) {
+      assignments = primarySplit.assignments;
+      K = new Set(assignments).size;
       centroids = computeCentroids(semanticVectors, assignments, K);
+      dominanceSplitApplied = true;
+      dominanceSplitDetails = {
+        primary: {
+          splitCount: primarySplit.splitCount,
+          originalSizes: primarySplit.originalSizes,
+          newSizes: primarySplit.newSizes,
+        },
+      };
+    }
+
+    if (useTwoLayer && detailAssignments) {
+      const aligned = normalizeDetailByPrimary(detailAssignments, assignments);
+      detailAssignments = aligned.assignments;
+      parentMap = aligned.parentMap;
+      detailCentroids = computeCentroids(semanticVectors, detailAssignments, new Set(detailAssignments).size);
+
+      const detailSplit = applyDominanceCap("detail", detailAssignments, semanticVectors, maxClusterSize);
+      if (detailSplit.applied) {
+        detailAssignments = detailSplit.assignments;
+        detailCentroids = computeCentroids(semanticVectors, detailAssignments, new Set(detailAssignments).size);
+        dominanceSplitApplied = true;
+        dominanceSplitDetails = {
+          ...(dominanceSplitDetails ?? {}),
+          detail: {
+            splitCount: detailSplit.splitCount,
+            originalSizes: detailSplit.originalSizes,
+            newSizes: detailSplit.newSizes,
+          },
+        };
+      }
+
+      if (detailAssignments) {
+        const rebuilt = normalizeDetailByPrimary(detailAssignments, assignments);
+        detailAssignments = rebuilt.assignments;
+        parentMap = rebuilt.parentMap;
+        detailCentroids = computeCentroids(semanticVectors, detailAssignments, new Set(detailAssignments).size);
+      }
     }
   }
 
@@ -619,6 +898,80 @@ export async function buildAnalysis(
     }
   }
 
+  let finalEvidenceRankingParams = evidenceRankingParams;
+  let autoWeightsResult:
+    | {
+        recommendedWeights: { semanticWeight: number; frequencyWeight: number };
+        weightSearchMetrics: Array<{
+          weights: { semanticWeight: number; frequencyWeight: number };
+          score: number;
+          evidenceCoherence?: number;
+          evidenceSeparation?: number;
+          dominance?: number;
+          reasoning?: string;
+        }>;
+        reasoning: string;
+      }
+    | undefined;
+  let autoWeightsReasoning: string | undefined;
+
+  const conceptTopTermsMap: Record<number, string[]> = {};
+  for (let c = 0; c < K; c++) {
+    const clusterSentenceIndices = Array.from(clusterSentenceMap.get(c) ?? []).sort((a, b) => a - b);
+    const clusterSentences = clusterSentenceIndices.map((i) => docs[i]);
+    conceptTopTermsMap[c] = getClusterTopTerms(
+      centroids[c],
+      bm25Discriminative,
+      clusterSentences,
+      docs,
+      12
+    );
+  }
+
+  if (autoWeights && centroids.length > 0 && assignments.length > 0) {
+    log(
+      "analysis",
+      "Auto-Weights evaluating combinations: 0.9/0.1, 0.8/0.2, 0.7/0.3, 0.6/0.4..."
+    );
+    const clusterSentenceIndicesByConcept = Object.fromEntries(
+      Array.from(clusterSentenceMap.entries()).map(([key, value]) => [
+        key,
+        Array.from(value).sort((a, b) => a - b),
+      ])
+    );
+
+    autoWeightsResult = evaluateWeightRange(
+      effectiveSentences,
+      sentenceVectors,
+      chunkRecords,
+      centroids,
+      assignments,
+      bm25Consensus,
+      conceptTopTermsMap,
+      K,
+      {
+        onProgress: (evaluated, total) => {
+          log("analysis", `Auto-Weights progress: ${evaluated}/${total} combinations evaluated`);
+        },
+        clusterSentenceIndicesByConcept,
+      }
+    );
+
+    finalEvidenceRankingParams = autoWeightsResult.recommendedWeights;
+    autoWeightsReasoning = autoWeightsResult.reasoning;
+
+    log(
+      "analysis",
+      `Auto-Weights selected: ${finalEvidenceRankingParams.semanticWeight}/${finalEvidenceRankingParams.frequencyWeight}`
+    );
+    autoWeightsResult.weightSearchMetrics.forEach((m) => {
+      log(
+        "analysis",
+        `Auto-Weights weights=${m.weights.semanticWeight}/${m.weights.frequencyWeight}: score=${Number.isFinite(m.score) ? m.score.toFixed(4) : "-inf"}, coherence=${(m.evidenceCoherence ?? 0).toFixed(4)}, dominance=${((m.dominance ?? 0) * 100).toFixed(1)}%`
+      );
+    });
+  }
+
   // Build primary concept objects
   const primaryConceptIds = primaryConceptSet.stableIds;
   const primaryConcepts: Concept[] = [];
@@ -629,7 +982,7 @@ export async function buildAnalysis(
     const clusterSentences = clusterSentenceIndices.map(i => docs[i]);
     
     const { label, keyphrases } = contrastiveLabelCluster(centroids[c], bm25Discriminative, clusterSentences, docs, 4);
-    const topTerms = getClusterTopTerms(centroids[c], bm25Discriminative, clusterSentences, docs, 12);
+    const topTerms = conceptTopTermsMap[c] ?? getClusterTopTerms(centroids[c], bm25Discriminative, clusterSentences, docs, 12);
     
     const rankedEvidence = rankEvidenceForConcept(
       docs,
@@ -638,7 +991,7 @@ export async function buildAnalysis(
       sentenceVectors,
       bm25Consensus,
       topTerms,
-      evidenceRankingParams,
+      finalEvidenceRankingParams,
       3
     );
 
@@ -676,7 +1029,7 @@ export async function buildAnalysis(
         sentenceVectors,
         bm25Consensus,
         topTerms,
-        evidenceRankingParams,
+        finalEvidenceRankingParams,
         3
       );
 
@@ -802,6 +1155,7 @@ export async function buildAnalysis(
   }
 
   // Juror → concept weights
+  progress(83, "Computing juror vectors");
   const jurorVectors: Record<string, Record<string, number>> = {};
   const jurorVectorsDetail: Record<string, Record<string, number>> = {};
   const primaryConceptCounts: Record<string, number> = {};
@@ -896,6 +1250,7 @@ export async function buildAnalysis(
   }
 
   // Compute 3D positions
+  progress(90, "PCA + 3D vectors");
   const { positions: positions3D, conceptPcValues, jurorPcValues, varianceStats } = computeNode3DPositions(
     jurorVectors,
     centroids,
@@ -924,6 +1279,7 @@ export async function buildAnalysis(
   }
 
   // Build Primary Concept Nodes
+  progress(75, "Labeling concepts");
   for (const c of primaryConcepts) {
     const pos = positions3D.get(c.id) ?? { x: 0, y: 0, z: 0 };
     const weight = primaryConceptCounts[c.id] ?? 0;
@@ -992,6 +1348,7 @@ export async function buildAnalysis(
   }
 
   // Links
+  progress(98, "Building graph");
   const links: GraphLink[] = [];
   
   // 1. Juror → Primary Concept Links
@@ -1150,6 +1507,20 @@ export async function buildAnalysis(
     seedCandidatesEvaluated,
     seedLeaderboard: formattedSeedLeaderboard,
     autoSeedReasoning,
+    autoUnit,
+    recommendedUnitMode: autoUnitResult?.recommendedMode,
+    unitSearchMetrics: autoUnitResult?.unitSearchMetrics,
+    autoUnitReasoning,
+    autoWeights,
+    recommendedWeights: autoWeightsResult?.recommendedWeights,
+    weightSearchMetrics: autoWeightsResult?.weightSearchMetrics,
+    autoWeightsReasoning,
+    minClusterSize: minClusterSizeApplied,
+    minClusterSizeAuto: autoMinClusterSize && minClusterSize === undefined,
+    minClusterSizeMerged,
+    minClusterSizeDetails,
+    dominanceSplitApplied,
+    dominanceSplitDetails,
     clusteringMode,
     checkpoints,
     jurorTopTerms,

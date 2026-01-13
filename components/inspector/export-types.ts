@@ -7,6 +7,16 @@ export interface ExportAnalysisParams {
   evidenceRankingParams?: { semanticWeight: number; frequencyWeight: number };
   clusteringMode: "kmeans" | "hierarchical";
   autoK: boolean;
+  autoKStability?: boolean;
+  autoKDominanceThreshold?: number;
+  autoKKPenalty?: number;
+  autoKEpsilon?: number;
+  autoMinClusterSize?: boolean;
+  minClusterSize?: number;
+  autoDominanceCap?: boolean;
+  autoDominanceCapThreshold?: number;
+  autoUnit?: boolean;
+  autoWeights?: boolean;
   autoSeed?: boolean;
   clusterSeed: number;
   seedCandidates?: number;
@@ -18,6 +28,8 @@ export interface ExportAnalysisParams {
   seedMicroClusterPenaltyWeight?: number;
   seedLabelPenaltyWeight?: number;
   seedDominanceThreshold?: number;
+  kMinOverride?: number;
+  kMaxOverride?: number;
   softMembership: boolean;
   cutType: "count" | "granularity";
   granularityPercent: number;
@@ -29,6 +41,8 @@ export interface ExportAnalysisParams {
   showGraph: boolean;
   enableAxisLabelAI: boolean;
   autoSynthesize: boolean;
+  recommendedUnitMode?: { windowSize: number; label: string };
+  recommendedWeights?: { semanticWeight: number; frequencyWeight: number };
 }
 
 export interface ExportLogEntry {

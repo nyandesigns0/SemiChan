@@ -45,6 +45,10 @@ interface AnalysisControlsProps {
   onClusteringModeChange: (mode: "kmeans" | "hierarchical") => void;
   autoK: boolean;
   onAutoKChange: (value: boolean) => void;
+  autoUnit: boolean;
+  onAutoUnitChange: (value: boolean) => void;
+  autoWeights: boolean;
+  onAutoWeightsChange: (value: boolean) => void;
   autoSeed: boolean;
   onAutoSeedChange: (value: boolean) => void;
   seedCandidates: number;
@@ -81,6 +85,14 @@ interface AnalysisControlsProps {
   onAutoKKPenaltyChange: (value: number) => void;
   autoKEpsilon: number;
   onAutoKEpsilonChange: (value: number) => void;
+  autoMinClusterSize: boolean;
+  onAutoMinClusterSizeChange: (value: boolean) => void;
+  minClusterSize?: number;
+  onMinClusterSizeChange: (value?: number) => void;
+  autoDominanceCap: boolean;
+  onAutoDominanceCapChange: (value: boolean) => void;
+  autoDominanceCapThreshold?: number;
+  onAutoDominanceCapThresholdChange: (value?: number) => void;
   kMinOverride?: number;
   kMaxOverride?: number;
   onKMinOverrideChange: (value?: number) => void;
@@ -109,6 +121,10 @@ export function AnalysisControls({
   onClusteringModeChange,
   autoK,
   onAutoKChange,
+  autoUnit,
+  onAutoUnitChange,
+  autoWeights,
+  onAutoWeightsChange,
   autoSeed,
   onAutoSeedChange,
   seedCandidates,
@@ -145,6 +161,14 @@ export function AnalysisControls({
   onAutoKKPenaltyChange,
   autoKEpsilon,
   onAutoKEpsilonChange,
+  autoMinClusterSize,
+  onAutoMinClusterSizeChange,
+  minClusterSize,
+  onMinClusterSizeChange,
+  autoDominanceCap,
+  onAutoDominanceCapChange,
+  autoDominanceCapThreshold,
+  onAutoDominanceCapThresholdChange,
   kMinOverride,
   kMaxOverride,
   onKMinOverrideChange,
@@ -160,6 +184,9 @@ export function AnalysisControls({
   const [showClusteringSettings, setShowClusteringSettings] = useState(false);
   const [showAutoKSettings, setShowAutoKSettings] = useState(false);
   const [showAutoSeedSettings, setShowAutoSeedSettings] = useState(false);
+  const [showAutoUnitSettings, setShowAutoUnitSettings] = useState(false);
+  const [showAutoWeightsSettings, setShowAutoWeightsSettings] = useState(false);
+  const [showClusterHygieneSettings, setShowClusterHygieneSettings] = useState(false);
   const [showEvidenceSettings, setShowEvidenceSettings] = useState(false);
   const [showNetworkSettings, setShowNetworkSettings] = useState(false);
   const [showDimensionSettings, setShowDimensionSettings] = useState(false);
@@ -180,6 +207,7 @@ export function AnalysisControls({
     if (s === 1.0 && f === 1.0) return "comprehensive";
     return "custom";
   })();
+  const evidenceControlsDisabled = autoWeights;
 
   return (
     <div className="space-y-4">
@@ -557,6 +585,73 @@ export function AnalysisControls({
 
                 <div className="h-px bg-slate-100" />
 
+                {/* Cluster Hygiene */}
+                <div className="space-y-1">
+                  <button
+                    onClick={() => setShowClusterHygieneSettings(!showClusterHygieneSettings)}
+                    className="flex w-full items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-indigo-500 transition-colors py-0.5 px-1"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Gauge className="h-3 w-3" />
+                      Cluster Hygiene
+                    </div>
+                    {showClusterHygieneSettings ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  </button>
+
+                  {showClusterHygieneSettings && (
+                    <div className="space-y-2 rounded-lg border border-slate-100 bg-white/60 p-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-[11px] font-bold text-slate-700">Auto Min Cluster Size</Label>
+                        <Switch checked={autoMinClusterSize} onCheckedChange={onAutoMinClusterSizeChange} className="scale-75" />
+                      </div>
+
+                      {(autoMinClusterSize || minClusterSize !== undefined) && (
+                        <div className="space-y-1">
+                          <Label className="text-[10px] font-bold uppercase text-slate-500">Min Cluster Size Override</Label>
+                          <Input
+                            type="number"
+                            value={minClusterSize ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              onMinClusterSizeChange(val === "" ? undefined : Number(val));
+                            }}
+                            min={2}
+                            className="h-8 text-xs"
+                          />
+                          <p className="text-[9px] text-slate-400">Leave empty to auto-select 2-5.</p>
+                        </div>
+                      )}
+
+                      <div className="h-px bg-slate-100" />
+
+                      <div className="flex items-center justify-between">
+                        <Label className="text-[11px] font-bold text-slate-700">Auto Dominance Cap</Label>
+                        <Switch checked={autoDominanceCap} onCheckedChange={onAutoDominanceCapChange} className="scale-75" />
+                      </div>
+
+                      {autoDominanceCap && (
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-[11px] font-bold text-slate-700">Dominance Threshold</Label>
+                            <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                              {(autoDominanceCapThreshold ?? 0.35).toFixed(2)}
+                            </Badge>
+                          </div>
+                          <Slider
+                            value={[autoDominanceCapThreshold ?? 0.35]}
+                            min={0.25}
+                            max={0.5}
+                            step={0.01}
+                            onValueChange={(v) => onAutoDominanceCapThresholdChange(Number(v[0].toFixed(2)))}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="h-px bg-slate-100" />
+
                 {/* Soft Membership Toggle */}
                 <div className="flex items-center justify-between group">
                   <div className="space-y-0.5">
@@ -653,6 +748,88 @@ export function AnalysisControls({
 
       <Separator className="bg-slate-100/80" />
 
+      {/* Category: Model Tuning */}
+      <div className="space-y-2">
+        <Label className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-900">
+          <Sparkles className="h-3 w-3" />
+          Model Tuning
+        </Label>
+
+        <div className="space-y-2.5 rounded-xl border border-slate-100 bg-slate-50/30 p-2.5">
+          {/* Auto-Unit Toggle */}
+          <div className="flex items-center justify-between group">
+            <div className="space-y-0.5">
+              <Label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                <Target className="h-3 w-3 text-indigo-500" />
+                Auto-Unit Discovery
+              </Label>
+              <p className="text-[9px] text-slate-500">Optimize contextual window size</p>
+            </div>
+            <Switch checked={autoUnit} onCheckedChange={onAutoUnitChange} className="scale-75" />
+          </div>
+
+          {autoUnit && (
+            <div className="space-y-1">
+              <button
+                onClick={() => setShowAutoUnitSettings(!showAutoUnitSettings)}
+                className="flex w-full items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-indigo-500 transition-colors py-0.5 px-1"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Gauge className="h-3 w-3" />
+                  Auto-Unit Settings
+                </div>
+                {showAutoUnitSettings ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              </button>
+              {showAutoUnitSettings && (
+                <div className="space-y-2 rounded-lg border border-slate-100 bg-white/60 p-2">
+                  <p className="text-[10px] text-slate-500">
+                    Tests sentence-only, window-3 (A1), and window-5 (A2) modes against the Auto-K range.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="h-px bg-slate-100" />
+
+          {/* Auto-Weights Toggle */}
+          <div className="flex items-center justify-between group">
+            <div className="space-y-0.5">
+              <Label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                <Scale className="h-3 w-3 text-indigo-500" />
+                Auto-Weights Discovery
+              </Label>
+              <p className="text-[9px] text-slate-500">Optimize semantic/frequency balance</p>
+            </div>
+            <Switch checked={autoWeights} onCheckedChange={onAutoWeightsChange} className="scale-75" />
+          </div>
+
+          {autoWeights && (
+            <div className="space-y-1">
+              <button
+                onClick={() => setShowAutoWeightsSettings(!showAutoWeightsSettings)}
+                className="flex w-full items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-indigo-500 transition-colors py-0.5 px-1"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Gauge className="h-3 w-3" />
+                  Auto-Weights Settings
+                </div>
+                {showAutoWeightsSettings ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              </button>
+              {showAutoWeightsSettings && (
+                <div className="space-y-2 rounded-lg border border-slate-100 bg-white/60 p-2">
+                  <p className="text-[10px] text-slate-500">
+                    Evaluates 0.9/0.1, 0.8/0.2, 0.7/0.3, and 0.6/0.4 weight pairs for evidence ranking.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <Separator className="bg-slate-100/80" />
+
       {/* Category: Evidence Ranking Settings */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -660,7 +837,12 @@ export function AnalysisControls({
             <Library className="h-3 w-3" />
             Evidence Ranking
           </Label>
-          {currentEvidencePreset !== "custom" && (
+          {autoWeights && (
+            <Badge variant="outline" className="h-4 text-[8px] uppercase border-indigo-200 text-indigo-600 font-bold bg-indigo-50/60 px-1.5">
+              Auto-Weights
+            </Badge>
+          )}
+          {!autoWeights && currentEvidencePreset !== "custom" && (
             <Badge variant="outline" className="h-4 text-[8px] uppercase border-indigo-200 text-indigo-500 font-bold bg-indigo-50/50 px-1.5">
               {currentEvidencePreset}
             </Badge>
@@ -679,24 +861,38 @@ export function AnalysisControls({
             }}
           >
             <TabsList className="grid w-full grid-cols-4 bg-slate-100/50 p-1 border border-slate-200/60 rounded-xl" style={{ height: 'auto' }}>
-              <TabsTrigger value="coherence" className="flex flex-col items-center gap-0.5 py-1.5 transition-all">
+              <TabsTrigger value="coherence" disabled={evidenceControlsDisabled} className="flex flex-col items-center gap-0.5 py-1.5 transition-all">
                 <Brain className="h-3 w-3" />
                 <span className="text-[8px] font-bold uppercase">Coherence</span>
               </TabsTrigger>
-              <TabsTrigger value="salience" className="flex flex-col items-center gap-0.5 py-1.5 transition-all">
+              <TabsTrigger value="salience" disabled={evidenceControlsDisabled} className="flex flex-col items-center gap-0.5 py-1.5 transition-all">
                 <Type className="h-3 w-3" />
                 <span className="text-[8px] font-bold uppercase">Salience</span>
               </TabsTrigger>
-              <TabsTrigger value="balanced" className="flex flex-col items-center gap-0.5 py-1.5 transition-all">
+              <TabsTrigger value="balanced" disabled={evidenceControlsDisabled} className="flex flex-col items-center gap-0.5 py-1.5 transition-all">
                 <Scale className="h-3 w-3" />
                 <span className="text-[8px] font-bold uppercase">Balanced</span>
               </TabsTrigger>
-              <TabsTrigger value="comprehensive" className="flex flex-col items-center gap-0.5 py-1.5 transition-all">
+              <TabsTrigger value="comprehensive" disabled={evidenceControlsDisabled} className="flex flex-col items-center gap-0.5 py-1.5 transition-all">
                 <Sparkles className="h-3 w-3" />
                 <span className="text-[8px] font-bold uppercase">Full</span>
               </TabsTrigger>
             </TabsList>
           </Tabs>
+
+          {autoWeights && (
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                Semantic {Math.round(evidenceRankingParams.semanticWeight * 100)}%
+              </Badge>
+              <Badge variant="secondary" className="bg-emerald-50 px-1.5 py-0 text-[9px] font-bold text-emerald-700">
+                Frequency {Math.round(evidenceRankingParams.frequencyWeight * 100)}%
+              </Badge>
+              <Badge variant="outline" className="border-slate-200 text-[9px] font-bold text-slate-500">
+                Auto
+              </Badge>
+            </div>
+          )}
 
           {/* Evidence Settings Accordion */}
           <div className="space-y-2">
@@ -725,6 +921,7 @@ export function AnalysisControls({
                     min={0}
                     max={1}
                     step={0.05}
+                    disabled={evidenceControlsDisabled}
                     onValueChange={(v) => onEvidenceRankingParamsChange({ ...evidenceRankingParams, semanticWeight: v[0] })}
                   />
                 </div>
@@ -741,6 +938,7 @@ export function AnalysisControls({
                     min={0}
                     max={1}
                     step={0.05}
+                    disabled={evidenceControlsDisabled}
                     onValueChange={(v) => onEvidenceRankingParamsChange({ ...evidenceRankingParams, frequencyWeight: v[0] })}
                   />
                 </div>

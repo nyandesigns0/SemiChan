@@ -1,10 +1,10 @@
 "use client";
 
-import { useRef, useState, useMemo, useCallback, Suspense, memo } from "react";
+import { useRef, useState, useMemo, useCallback, useEffect, Suspense, memo } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, Environment, PerspectiveCamera, Grid, Html } from "@react-three/drei";
 import * as THREE from "three";
-import { FileText, Play, FastForward, SkipBack } from "lucide-react";
+import { BrainCircuit, Play, FastForward, SkipBack } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils/cn";
@@ -18,6 +18,8 @@ import type { GraphNode, GraphLink } from "@/types/graph";
 import type { AnalysisCheckpoint, AnalysisResult } from "@/types/analysis";
 import type { OrbitControls as OrbitControlsType } from "three-stdlib";
 import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
+
+type SamplePhase = "idle" | "loading" | "ready";
 
 interface GraphCanvas3DProps {
   nodes: GraphNode[];
@@ -56,13 +58,28 @@ interface GraphCanvas3DProps {
   anchorAxisScores?: AnalysisResult["anchorAxisScores"];
   selectedAnchorAxisId?: string | null;
   alignmentLinks?: GraphLink[];
+  onLoadSample?: () => void;
+  loadingSample?: boolean;
+  loadingProgress?: number;
+  loadingStep?: string;
+  samplePhase?: SamplePhase;
+  focusScale?: number;
+  autoRotateDisabled?: boolean;
+  onAutoRotateDisabled?: () => void;
+  onOpenUploadSidebar?: () => void;
 }
 
 // Camera controller component to handle reset
 function CameraController({ 
-  controlsRef 
+  controlsRef,
+  autoRotate = true,
+  autoRotateSpeed = 0.6,
+  autoRotateDisabled = false,
 }: { 
-  controlsRef: React.RefObject<OrbitControlsType> 
+  controlsRef: React.RefObject<OrbitControlsType>,
+  autoRotate?: boolean;
+  autoRotateSpeed?: number;
+  autoRotateDisabled?: boolean;
 }) {
   return (
     <>
@@ -76,6 +93,8 @@ function CameraController({
         panSpeed={0.5}
         minDistance={5}
         maxDistance={100}
+        autoRotate={autoRotate && !autoRotateDisabled}
+        autoRotateSpeed={autoRotateSpeed}
       />
     </>
   );
@@ -174,13 +193,15 @@ const MultiAxisLabels = memo(function MultiAxisLabels({
   axisLabels, 
   enableAI,
   numDimensions,
-  axisDirections
+  axisDirections,
+  revealedAxisCount
 }: { 
   visible: boolean; 
   axisLabels?: AnalysisResult["axisLabels"];
   enableAI?: boolean;
   numDimensions: number;
   axisDirections: AxisDirection[];
+  revealedAxisCount: number;
 }) {
   if (!visible || !axisLabels) return null;
   const size = 10;
@@ -201,7 +222,7 @@ const MultiAxisLabels = memo(function MultiAxisLabels({
   
   return (
     <group>
-      {axisDirections.map((dir, i) => {
+      {axisDirections.slice(0, revealedAxisCount).map((dir, i) => {
         const axisIdx = i.toString();
         const color = axisColors[i];
         
@@ -226,15 +247,231 @@ const MultiAxisLabels = memo(function MultiAxisLabels({
   );
 });
 
+interface NeuronLoaderProps {
+  scale?: number;
+  pointColor?: string;
+  lineColor?: string;
+  coreColor?: string;
+  disableRotation?: boolean;
+  animateClustering?: boolean;
+}
+
+function NeuronLoader({
+  scale = 1,
+  pointColor = "#7dd3fc",
+  lineColor = "#94a3b8",
+  coreColor = "#1d4ed8",
+  disableRotation = false,
+  animateClustering = false,
+}: NeuronLoaderProps) {
+  const groupRef = useRef<THREE.Group>(null);
+  const coreRef = useRef<THREE.Mesh>(null);
+  const pointsRef = useRef<THREE.Points>(null);
+  const linesRef = useRef<THREE.LineSegments>(null);
+
+  // Store initial positions and create color array
+  const { initialPositions, initialColors, initialLinePositions } = useMemo(() => {
+    const count = 80;
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    
+    // Generate colors: start with single color, transition to varied
+    const colorVariations = [
+      new THREE.Color("#38bdf8"), // blue
+      new THREE.Color("#fbbf24"), // amber
+      new THREE.Color("#34d399"), // emerald
+      new THREE.Color("#f472b6"), // pink
+      new THREE.Color("#a78bfa"), // violet
+      new THREE.Color("#fb7185"), // rose
+    ];
+    
+    for (let i = 0; i < count; i += 1) {
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      const radius = 2.2 + Math.random() * 0.8;
+      
+      positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3 + 1] = radius * Math.cos(phi);
+      positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
+      
+      const targetColor = colorVariations[i % colorVariations.length];
+      colors[i * 3] = targetColor.r;
+      colors[i * 3 + 1] = targetColor.g;
+      colors[i * 3 + 2] = targetColor.b;
+    }
+
+    const connections = 120;
+    const lineArray = new Float32Array(connections * 2 * 3);
+    for (let i = 0; i < connections; i += 1) {
+      const a = Math.floor(Math.random() * count);
+      const b = Math.floor(Math.random() * count);
+      lineArray[i * 6] = positions[a * 3];
+      lineArray[i * 6 + 1] = positions[a * 3 + 1];
+      lineArray[i * 6 + 2] = positions[a * 3 + 2];
+      lineArray[i * 6 + 3] = positions[b * 3];
+      lineArray[i * 6 + 4] = positions[b * 3 + 1];
+      lineArray[i * 6 + 5] = positions[b * 3 + 2];
+    }
+
+    return { initialPositions: positions, initialColors: colors, initialLinePositions: lineArray };
+  }, [pointColor]);
+
+  // Store line connections for animation
+  const lineConnections = useMemo(() => {
+    const connections: Array<[number, number]> = [];
+    const connectionsCount = 120;
+    for (let i = 0; i < connectionsCount; i++) {
+      const a = Math.floor(Math.random() * (initialPositions.length / 3));
+      const b = Math.floor(Math.random() * (initialPositions.length / 3));
+      connections.push([a, b]);
+    }
+    return connections;
+  }, [initialPositions.length]);
+
+  // Animation state
+  const animationStartTime = useRef<number | null>(null);
+  const animationDuration = 2000; // 2 seconds
+  const currentPositions = useRef<Float32Array>(new Float32Array(initialPositions));
+  const currentColors = useRef<Float32Array>(new Float32Array(initialPositions.length));
+  const currentLinePositions = useRef<Float32Array>(new Float32Array(initialLinePositions));
+  
+  // Initialize current colors with base color
+  useEffect(() => {
+    const baseColor = new THREE.Color(pointColor);
+    for (let i = 0; i < currentColors.current.length / 3; i++) {
+      currentColors.current[i * 3] = baseColor.r;
+      currentColors.current[i * 3 + 1] = baseColor.g;
+      currentColors.current[i * 3 + 2] = baseColor.b;
+    }
+  }, [pointColor]);
+
+  // Reset animation when animateClustering changes
+  useEffect(() => {
+    if (animateClustering) {
+      animationStartTime.current = null;
+      currentPositions.current.set(initialPositions);
+      currentLinePositions.current.set(initialLinePositions);
+    }
+  }, [animateClustering, initialPositions, initialLinePositions]);
+
+  // Easing function (easeOutCubic)
+  const easeOutCubic = (t: number): number => {
+    return 1 - Math.pow(1 - t, 3);
+  };
+
+  useFrame(({ clock }) => {
+    const t = clock.getElapsedTime();
+    
+    if (!disableRotation && groupRef.current) {
+      groupRef.current.rotation.y = t * 0.2;
+      groupRef.current.rotation.x = t * 0.12;
+    }
+    
+    if (coreRef.current) {
+      const pulse = 1 + Math.sin(t * 2.2) * 0.08;
+      coreRef.current.scale.set(pulse, pulse, pulse);
+    }
+
+    // Handle clustering animation
+    if (animateClustering && pointsRef.current && linesRef.current) {
+      if (animationStartTime.current === null) {
+        animationStartTime.current = clock.getElapsedTime();
+      }
+      
+      const elapsed = (clock.getElapsedTime() - animationStartTime.current) * 1000;
+      const progress = Math.min(elapsed / animationDuration, 1);
+      const easedProgress = easeOutCubic(progress);
+      
+      const geometry = pointsRef.current.geometry;
+      const positionAttribute = geometry.getAttribute("position") as THREE.BufferAttribute;
+      const colorAttribute = geometry.getAttribute("color") as THREE.BufferAttribute;
+      
+      const baseColor = new THREE.Color(pointColor);
+
+      for (let i = 0; i < initialPositions.length / 3; i++) {
+        const ix = i * 3;
+        const iy = i * 3 + 1;
+        const iz = i * 3 + 2;
+        
+        currentPositions.current[ix] = initialPositions[ix] * (1 - easedProgress);
+        currentPositions.current[iy] = initialPositions[iy] * (1 - easedProgress);
+        currentPositions.current[iz] = initialPositions[iz] * (1 - easedProgress);
+        
+        currentColors.current[ix] = baseColor.r * (1 - easedProgress) + initialColors[ix] * easedProgress;
+        currentColors.current[iy] = baseColor.g * (1 - easedProgress) + initialColors[iy] * easedProgress;
+        currentColors.current[iz] = baseColor.b * (1 - easedProgress) + initialColors[iz] * easedProgress;
+      }
+      
+      positionAttribute.array = currentPositions.current;
+      positionAttribute.needsUpdate = true;
+      if (colorAttribute) {
+        colorAttribute.array = currentColors.current;
+        colorAttribute.needsUpdate = true;
+      }
+
+      // Update line positions based on stored connections
+      const lineGeometry = linesRef.current.geometry;
+      const linePositionAttribute = lineGeometry.getAttribute("position") as THREE.BufferAttribute;
+      
+      for (let i = 0; i < lineConnections.length; i++) {
+        const [a, b] = lineConnections[i];
+        const ai = a * 3;
+        const bi = b * 3;
+        const li = i * 6;
+        
+        currentLinePositions.current[li] = currentPositions.current[ai];
+        currentLinePositions.current[li + 1] = currentPositions.current[ai + 1];
+        currentLinePositions.current[li + 2] = currentPositions.current[ai + 2];
+        currentLinePositions.current[li + 3] = currentPositions.current[bi];
+        currentLinePositions.current[li + 4] = currentPositions.current[bi + 1];
+        currentLinePositions.current[li + 5] = currentPositions.current[bi + 2];
+      }
+      
+      linePositionAttribute.array = currentLinePositions.current;
+      linePositionAttribute.needsUpdate = true;
+    }
+  });
+
+  return (
+    <group ref={groupRef} scale={[scale, scale, scale]}>
+      <points ref={pointsRef}>
+        <bufferGeometry>
+          <bufferAttribute attach="attributes-position" array={currentPositions.current} count={initialPositions.length / 3} itemSize={3} />
+          <bufferAttribute attach="attributes-color" array={currentColors.current} count={currentColors.current.length / 3} itemSize={3} />
+        </bufferGeometry>
+        <pointsMaterial
+          vertexColors={true}
+          size={0.08}
+          sizeAttenuation
+          transparent
+          opacity={0.9}
+        />
+      </points>
+      <lineSegments ref={linesRef}>
+        <bufferGeometry>
+          <bufferAttribute attach="attributes-position" array={currentLinePositions.current} count={initialLinePositions.length / 3} itemSize={3} />
+        </bufferGeometry>
+        <lineBasicMaterial color={lineColor} transparent opacity={0.35 * (animateClustering ? 0.7 : 1)} />
+      </lineSegments>
+      <mesh ref={coreRef}>
+        <sphereGeometry args={[0.35, 32, 32]} />
+        <meshStandardMaterial color={coreColor} emissive="#f97316" emissiveIntensity={0.7} />
+      </mesh>
+    </group>
+  );
+}
+
 // New Component for rendering axis lines
 function MultiAxisHelper({ 
   visible, 
   numDimensions, 
-  axisDirections 
+  axisDirections,
+  revealedAxisCount
 }: { 
   visible: boolean; 
   numDimensions: number; 
-  axisDirections: AxisDirection[] 
+  axisDirections: AxisDirection[];
+  revealedAxisCount: number;
 }) {
   if (!visible) return null;
   const size = 10;
@@ -242,7 +479,7 @@ function MultiAxisHelper({
 
   return (
     <group>
-      {axisDirections.map((dir, i) => (
+      {axisDirections.slice(0, revealedAxisCount).map((dir, i) => (
         <primitive 
           key={i}
           object={new THREE.ArrowHelper(
@@ -256,7 +493,7 @@ function MultiAxisHelper({
         />
       ))}
       {/* Also render the negative directions */}
-      {axisDirections.map((dir, i) => (
+      {axisDirections.slice(0, revealedAxisCount).map((dir, i) => (
         <primitive 
           key={`neg-${i}`}
           object={new THREE.ArrowHelper(
@@ -294,6 +531,12 @@ function SceneContent({
   enableAxisLabelAI,
   numDimensions = 3,
   showGraph = true,
+  revealedNodeIds,
+  revealLinks = true,
+  revealedAxisCount = 0,
+  focusScale = 1,
+  autoRotateDisabled = false,
+  onAutoRotateDisabled,
 }: {
   nodes: GraphNode[];
   links: GraphLink[];
@@ -314,28 +557,50 @@ function SceneContent({
   enableAxisLabelAI?: boolean;
   numDimensions?: number;
   showGraph?: boolean;
+  revealedNodeIds?: Set<string>;
+  revealLinks?: boolean;
+  revealedAxisCount?: number;
+  focusScale?: number;
+  autoRotateDisabled?: boolean;
+  onAutoRotateDisabled?: () => void;
 }) {
+  const scaledNodes = useMemo(() => {
+    return nodes.map((node) => ({
+      ...node,
+      x: (node.x ?? 0) * focusScale,
+      y: (node.y ?? 0) * focusScale,
+      z: (node.z ?? 0) * focusScale,
+    }));
+  }, [nodes, focusScale]);
+
   // Create node lookup map
   const nodeMap = useMemo(() => {
     const map = new Map<string, GraphNode>();
-    for (const node of nodes) {
+    for (const node of scaledNodes) {
       map.set(node.id, node);
     }
     return map;
-  }, [nodes]);
+  }, [scaledNodes]);
 
   // Filter nodes based on expansion
   const visibleNodes = useMemo(() => {
-    return nodes.filter(node => {
-      if (node.layer === "detail") {
-        return expandedPrimaryConcepts.has(node.parentConceptId || "");
+    return scaledNodes.filter(node => {
+      if (node.layer === "detail" && !expandedPrimaryConcepts.has(node.parentConceptId || "")) {
+        return false;
+      }
+      if (revealedNodeIds && revealedNodeIds.size > 0 && !revealedNodeIds.has(node.id)) {
+        return false;
+      }
+      if (revealedNodeIds && revealedNodeIds.size === 0) {
+        return false;
       }
       return true;
     });
-  }, [nodes, expandedPrimaryConcepts]);
+  }, [scaledNodes, expandedPrimaryConcepts, revealedNodeIds]);
 
   // Filter links based on expansion
   const visibleLinks = useMemo(() => {
+    if (!revealLinks) return [];
     return links.filter(link => {
       const sourceId = typeof link.source === "string" ? link.source : link.source.id;
       const targetId = typeof link.target === "string" ? link.target : link.target.id;
@@ -347,7 +612,7 @@ function SceneContent({
       
       return true;
     });
-  }, [links, nodeMap, expandedPrimaryConcepts]);
+  }, [links, nodeMap, expandedPrimaryConcepts, revealLinks]);
 
   const linksByNode = useMemo(() => {
     const map = new Map<string, GraphLink[]>();
@@ -398,6 +663,9 @@ function SceneContent({
           // Only deselect if clicking directly on the backdrop (not through other objects)
           e.stopPropagation();
           onDeselect();
+          if (onAutoRotateDisabled && !autoRotateDisabled) {
+            onAutoRotateDisabled();
+          }
         }}
       >
         <planeGeometry args={[1000, 1000]} />
@@ -458,13 +726,19 @@ function SceneContent({
       )}
       
       {/* Axes */}
-      <MultiAxisHelper visible={showAxes} numDimensions={numDimensions} axisDirections={axisDirections} />
+      <MultiAxisHelper
+        visible={showAxes}
+        numDimensions={numDimensions}
+        axisDirections={axisDirections}
+        revealedAxisCount={revealedAxisCount}
+      />
       <MultiAxisLabels 
         visible={showAxes} 
         axisLabels={axisLabels} 
         enableAI={enableAxisLabelAI} 
         numDimensions={numDimensions}
         axisDirections={axisDirections}
+        revealedAxisCount={revealedAxisCount}
       />
       
       {/* Links */}
@@ -536,9 +810,23 @@ export function GraphCanvas3D({
   anchorAxisScores,
   selectedAnchorAxisId = null,
   alignmentLinks,
+  onLoadSample,
+  loadingSample = false,
+  loadingProgress = 0,
+  loadingStep = "Preparing sample...",
+  samplePhase = "idle",
+  focusScale: focusScaleProp,
+  autoRotateDisabled = false,
+  onAutoRotateDisabled,
+  onOpenUploadSidebar,
 }: GraphCanvas3DProps) {
   const controlsRef = useRef<OrbitControlsType>(null);
   const [showGrid, setShowGrid] = useState(false);
+  const [revealedAxisCount, setRevealedAxisCount] = useState(numDimensions);
+  const [revealedNodeIds, setRevealedNodeIds] = useState<Set<string>>(new Set());
+  const [revealLinks, setRevealLinks] = useState(false);
+  const focusScale = typeof focusScaleProp === "number" ? focusScaleProp : samplePhase === "ready" ? 0.55 : samplePhase === "loading" ? 0.8 : 1;
+  const autoRotateSpeed = samplePhase === "ready" ? 1.6 : samplePhase === "loading" ? 1.1 : 0.35;
   const projectionKey = useMemo(() => {
     const stats = analysis?.varianceStats;
     const lastCumulative = stats?.cumulativeVariances?.length ? stats.cumulativeVariances[stats.cumulativeVariances.length - 1] : "";
@@ -596,70 +884,241 @@ export function GraphCanvas3D({
     }
   }, []);
 
+  useEffect(() => {
+    if (!analysis || empty) {
+      setRevealedAxisCount(numDimensions);
+      setRevealedNodeIds(new Set());
+      setRevealLinks(false);
+      return;
+    }
+
+    const allNodes = analysis.nodes ?? [];
+    const importance = (node: GraphNode) => {
+      const weight = (node.meta as any)?.weight;
+      if (typeof weight === "number") return weight;
+      const dx = node.x ?? 0;
+      const dy = node.y ?? 0;
+      const dz = node.z ?? 0;
+      const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      return 1 / (distance + 0.001);
+    };
+
+    const conceptNodes = allNodes
+      .filter((n) => n.type === "concept")
+      .sort((a, b) => importance(b) - importance(a));
+    const jurorNodes = allNodes
+      .filter((n) => n.type === "juror" || n.type === "designer")
+      .sort((a, b) => importance(b) - importance(a));
+    const otherNodes = allNodes
+      .filter((n) => n.type !== "concept" && n.type !== "juror" && n.type !== "designer")
+      .sort((a, b) => importance(b) - importance(a));
+
+    const revealIds = new Set<string>();
+    let axisTimer: ReturnType<typeof setInterval> | null = null;
+    let conceptTimer: ReturnType<typeof setInterval> | null = null;
+    let jurorTimer: ReturnType<typeof setInterval> | null = null;
+
+    setRevealLinks(false);
+    setRevealedNodeIds(new Set());
+    setRevealedAxisCount(0);
+
+    const finishReveal = () => {
+      setRevealLinks(true);
+      setRevealedAxisCount(numDimensions);
+      const all = new Set(allNodes.map((n) => n.id));
+      setRevealedNodeIds(all);
+    };
+
+    const startJurorReveal = () => {
+      const ordered = [...jurorNodes, ...otherNodes];
+      if (ordered.length === 0) {
+        finishReveal();
+        return;
+      }
+      let index = 0;
+      jurorTimer = setInterval(() => {
+        if (index >= ordered.length) {
+          if (jurorTimer) clearInterval(jurorTimer);
+          finishReveal();
+          return;
+        }
+        revealIds.add(ordered[index].id);
+        setRevealedNodeIds(new Set(revealIds));
+        index += 1;
+      }, 70);
+    };
+
+    const startConceptReveal = () => {
+      if (conceptNodes.length === 0) {
+        startJurorReveal();
+        return;
+      }
+      let index = 0;
+      conceptTimer = setInterval(() => {
+        if (index >= conceptNodes.length) {
+          if (conceptTimer) clearInterval(conceptTimer);
+          startJurorReveal();
+          return;
+        }
+        revealIds.add(conceptNodes[index].id);
+        setRevealedNodeIds(new Set(revealIds));
+        index += 1;
+      }, 70);
+    };
+
+    let axisIndex = 0;
+    axisTimer = setInterval(() => {
+      axisIndex += 1;
+      setRevealedAxisCount(Math.min(numDimensions, axisIndex));
+      if (axisIndex >= numDimensions) {
+        if (axisTimer) clearInterval(axisTimer);
+        startConceptReveal();
+      }
+    }, 500);
+
+    return () => {
+      if (axisTimer) clearInterval(axisTimer);
+      if (conceptTimer) clearInterval(conceptTimer);
+      if (jurorTimer) clearInterval(jurorTimer);
+    };
+  }, [analysis, empty, numDimensions]);
+
   return (
     <>
       <div className="relative h-full w-full overflow-hidden bg-gradient-to-br from-slate-50 to-slate-100">
-        {empty ? (
-          <div className="flex h-full items-center justify-center p-10 text-center">
-            <div className="max-w-md">
-              <FileText className="mx-auto h-7 w-7 text-slate-400" />
-              <div className="mt-3 text-sm text-slate-600">
-                Paste your juror comments (or upload a file) to build the 3D juror↔concept graph.
+        <Canvas
+          gl={{ antialias: true, alpha: true }}
+          dpr={[1, 2]}
+          style={{ background: "transparent" }}
+        >
+          <Suspense fallback={null}>
+            <CameraController
+              controlsRef={controlsRef}
+              autoRotate
+              autoRotateSpeed={autoRotateSpeed}
+              autoRotateDisabled={autoRotateDisabled}
+            />
+            {empty ? (
+              <NeuronLoader
+                scale={samplePhase === "idle" ? 4.5 : 2.5}
+                pointColor={samplePhase === "idle" ? "#38bdf8" : "#fbbf24"}
+                lineColor={samplePhase === "idle" ? "#60a5fa" : "#fcd34d"}
+                coreColor={samplePhase === "idle" ? "#1d4ed8" : "#c026d3"}
+                disableRotation={autoRotateDisabled}
+                animateClustering={samplePhase === "loading"}
+              />
+            ) : (
+              <SceneContent
+                key={projectionKey}
+                nodes={activeNodes}
+                links={activeLinks}
+                nodeVisibility={nodeVisibility}
+                linkVisibility={linkVisibility}
+                selectedNodeId={selectedNodeId}
+                selectedLinkId={selectedLinkId}
+                onNodeClick={onNodeClick}
+                onLinkClick={onLinkClick}
+                onNodeDoubleClick={onNodeDoubleClick}
+                onDeselect={onDeselect}
+                expandedPrimaryConcepts={expandedConcepts}
+                onPrimaryConceptExpand={onPrimaryConceptExpand}
+                showGrid={showGrid}
+                showAxes={showAxes}
+                insights={insights}
+                axisLabels={axisLabels}
+                enableAxisLabelAI={enableAxisLabelAI}
+                numDimensions={numDimensions}
+                showGraph={showGraph}
+                revealedNodeIds={revealedNodeIds}
+                revealLinks={revealLinks}
+                revealedAxisCount={revealedAxisCount}
+                focusScale={focusScale}
+                autoRotateDisabled={autoRotateDisabled}
+                onAutoRotateDisabled={onAutoRotateDisabled}
+              />
+            )}
+          </Suspense>
+        </Canvas>
+
+        {empty && samplePhase === "idle" && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+            <div className="max-w-3xl rounded-3xl border border-white/60 bg-white/85 p-8 shadow-2xl shadow-slate-200 backdrop-blur">
+              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-slate-900 to-slate-700 text-white shadow-lg">
+                <BrainCircuit className="h-10 w-10" />
+              </div>
+              <h2 className="mt-6 text-2xl font-bold text-slate-900">
+                Explore juror sentiment in real time.
+              </h2>
+              <p className="mt-3 text-sm text-slate-500">
+                The neural canvas keeps spinning while you prepare your inputs.
+                Jumpstart the workflow with a curated sample dataset or upload yours.
+              </p>
+              <div className="mt-6 flex items-center justify-center gap-3">
+                <Button
+                  onClick={onLoadSample}
+                  className="group relative inline-flex h-14 items-center justify-center rounded-2xl bg-slate-900 px-8 text-sm font-semibold text-white shadow-lg shadow-slate-300/60 transition-all hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-xl"
+                  disabled={!onLoadSample}
+                >
+                  <span className="absolute inset-0 -z-10 rounded-2xl bg-gradient-to-r from-slate-800/0 via-slate-700/40 to-slate-800/0 opacity-0 blur-md transition-opacity duration-500 group-hover:opacity-100" />
+                  Load Sample Dataset
+                </Button>
+                {onOpenUploadSidebar ? (
+                  <Button
+                    onClick={onOpenUploadSidebar}
+                    className="group relative inline-flex h-14 items-center justify-center rounded-2xl bg-slate-900 px-8 text-sm font-semibold text-white shadow-lg shadow-slate-300/60 transition-all hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-xl"
+                  >
+                    <span className="absolute inset-0 -z-10 rounded-2xl bg-gradient-to-r from-slate-800/0 via-slate-700/40 to-slate-800/0 opacity-0 blur-md transition-opacity duration-500 group-hover:opacity-100" />
+                    Upload Your Data
+                  </Button>
+                ) : (
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                    Or upload via sidebar
+                  </span>
+                )}
               </div>
             </div>
           </div>
-        ) : (
-          <>
-            <Canvas
-              gl={{ antialias: true, alpha: true }}
-              dpr={[1, 2]}
-              style={{ background: "transparent" }}
-            >
-              <Suspense fallback={null}>
-                <CameraController controlsRef={controlsRef} />
-        <SceneContent
-          key={projectionKey}
-          nodes={activeNodes}
-          links={activeLinks}
-          nodeVisibility={nodeVisibility}
-          linkVisibility={linkVisibility}
-          selectedNodeId={selectedNodeId}
-          selectedLinkId={selectedLinkId}
-          onNodeClick={onNodeClick}
-          onLinkClick={onLinkClick}
-          onNodeDoubleClick={onNodeDoubleClick}
-          onDeselect={onDeselect}
-          expandedPrimaryConcepts={expandedConcepts}
-          onPrimaryConceptExpand={onPrimaryConceptExpand}
-          showGrid={showGrid}
-          showAxes={showAxes}
-          insights={insights}
-          axisLabels={axisLabels}
-                  enableAxisLabelAI={enableAxisLabelAI}
-                  numDimensions={numDimensions}
-                  showGraph={showGraph}
+        )}
+
+        {loadingSample && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-full max-w-md rounded-3xl border border-slate-200/60 bg-white/90 px-6 py-5 text-center shadow-xl shadow-slate-200/60 backdrop-blur">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.35em] text-slate-400">
+                Neural Pipeline
+              </div>
+              <div className="mt-3 text-3xl font-bold text-slate-900">
+                {Math.round(loadingProgress)}
+              </div>
+              <div className="mt-1 text-sm font-medium text-slate-600">
+                {loadingStep}
+              </div>
+              <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 transition-all duration-500"
+                  style={{ width: `${Math.min(100, Math.max(0, loadingProgress))}%` }}
                 />
-              </Suspense>
-            </Canvas>
-            
-            {/* Controls overlay */}
-              <Graph3DControls
-                showGrid={showGrid}
-                onToggleGrid={() => setShowGrid(!showGrid)}
-                showAxes={showAxes}
-                onToggleAxes={onToggleAxes ? () => onToggleAxes(!showAxes) : () => {}}
-                showGraph={showGraph}
-                onToggleGraph={onToggleGraph ? () => onToggleGraph(!showGraph) : () => {}}
-                onResetCamera={handleResetCamera}
-                axisLabels={axisLabels}
-                enableAxisLabelAI={enableAxisLabelAI}
-                onToggleAxisLabelAI={onToggleAxisLabelAI}
-                onRefreshAxisLabels={onRefreshAxisLabels}
-                isRefreshingAxisLabels={isRefreshingAxisLabels}
-                numDimensions={numDimensions}
-              />
-            
-            {/* Instructions */}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!empty && (
+          <>
+            <Graph3DControls
+              showGrid={showGrid}
+              onToggleGrid={() => setShowGrid(!showGrid)}
+              showAxes={showAxes}
+              onToggleAxes={onToggleAxes ? () => onToggleAxes(!showAxes) : () => {}}
+              showGraph={showGraph}
+              onToggleGraph={onToggleGraph ? () => onToggleGraph(!showGraph) : () => {}}
+              onResetCamera={handleResetCamera}
+              axisLabels={axisLabels}
+              enableAxisLabelAI={enableAxisLabelAI}
+              onToggleAxisLabelAI={onToggleAxisLabelAI}
+              onRefreshAxisLabels={onRefreshAxisLabels}
+              isRefreshingAxisLabels={isRefreshingAxisLabels}
+              numDimensions={numDimensions}
+            />
             <div className="absolute bottom-3 right-3 rounded-xl border bg-white/95 px-3 py-2 text-xs text-slate-700 shadow-sm">
               <div className="flex items-center gap-2">
                 <Badge variant="outline" className="font-normal">

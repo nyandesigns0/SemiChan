@@ -1,7 +1,12 @@
 import { kmeansCosine } from "./kmeans";
 import { cosine } from "./tfidf";
 import { evaluateCutQuality, CutQualityParams } from "./cut-constraints";
+import { computeCentroids } from "./concept-centroids";
+import { embedSentences } from "./sentence-embeddings";
+import { createSentenceWindows } from "./contextual-units";
+import { rankEvidenceForConcept } from "./evidence-ranker";
 import { SentenceRecord } from "../../types/analysis";
+import type { JurorBlock, BM25Model } from "../../types/nlp";
 
 export type KRangeMetric = {
   k: number;
@@ -145,6 +150,139 @@ export function computeLabelability(clusterSizes: number[], total: number): numb
 
   const labelability = 0.5 * balanceScore + 0.3 * diversityScore + 0.2 * (1 - microRatio);
   return Math.max(0, Math.min(1, labelability));
+}
+
+function normalizeAssignments(assignments: number[]): number[] {
+  const map = new Map<number, number>();
+  let nextId = 0;
+  return assignments.map((a) => {
+    if (a < 0) return a;
+    if (!map.has(a)) map.set(a, nextId++);
+    return map.get(a)!;
+  });
+}
+
+export function mergeSmallClusters(
+  assignments: number[],
+  vectors: Float64Array[],
+  minSize: number
+): { assignments: number[]; mergedCount: number; details: Array<{ from: number; to: number; size: number }> } {
+  if (assignments.length === 0 || vectors.length === 0) {
+    return { assignments: assignments.slice(), mergedCount: 0, details: [] };
+  }
+
+  const workingAssignments = assignments.slice();
+  const clusterMembers = new Map<number, number[]>();
+  for (let i = 0; i < workingAssignments.length; i++) {
+    const id = workingAssignments[i];
+    if (id === undefined || id < 0) continue;
+    const list = clusterMembers.get(id) || [];
+    list.push(i);
+    clusterMembers.set(id, list);
+  }
+
+  const clusterIds = Array.from(clusterMembers.keys()).sort((a, b) => a - b);
+  if (clusterIds.length <= 1) {
+    return { assignments: workingAssignments, mergedCount: 0, details: [] };
+  }
+
+  const maxClusterId = Math.max(...clusterIds);
+  const centroids = computeCentroids(vectors, workingAssignments, maxClusterId + 1);
+  const sizes = new Map<number, number>();
+  clusterIds.forEach((id) => sizes.set(id, clusterMembers.get(id)?.length ?? 0));
+
+  const details: Array<{ from: number; to: number; size: number }> = [];
+  let mergedCount = 0;
+
+  for (const clusterId of clusterIds) {
+    const clusterSize = sizes.get(clusterId) ?? 0;
+    if (clusterSize >= minSize) continue;
+    if (clusterSize === 0) continue;
+
+    const eligible = clusterIds.filter((id) => id !== clusterId && (sizes.get(id) ?? 0) >= minSize);
+    let targetId: number | undefined;
+    let bestSim = -Infinity;
+
+    if (eligible.length === 0) {
+      const fallback = clusterIds
+        .filter((id) => id !== clusterId)
+        .sort((a, b) => (sizes.get(b) ?? 0) - (sizes.get(a) ?? 0))[0];
+      targetId = fallback;
+    } else {
+      const sourceCentroid = centroids[clusterId];
+      for (const candidate of eligible) {
+        const sim = cosine(sourceCentroid, centroids[candidate]);
+        if (sim > bestSim) {
+          bestSim = sim;
+          targetId = candidate;
+        }
+      }
+    }
+
+    if (targetId === undefined) continue;
+    const members = clusterMembers.get(clusterId) || [];
+    for (const idx of members) {
+      workingAssignments[idx] = targetId;
+    }
+    sizes.set(targetId, (sizes.get(targetId) ?? 0) + members.length);
+    sizes.set(clusterId, 0);
+    mergedCount++;
+    details.push({ from: clusterId, to: targetId, size: clusterSize });
+  }
+
+  return { assignments: normalizeAssignments(workingAssignments), mergedCount, details };
+}
+
+export function selectOptimalMinClusterSize(
+  vectors: Float64Array[],
+  candidates: number[],
+  assignments?: number[]
+): number {
+  if (vectors.length === 0) return candidates[0] ?? 2;
+  const resolvedCandidates = Array.from(new Set(candidates))
+    .map((c) => Math.max(2, Math.round(c)))
+    .sort((a, b) => a - b);
+  if (resolvedCandidates.length === 0) return 2;
+
+  const baseAssignments =
+    assignments && assignments.length === vectors.length
+      ? assignments
+      : kmeansCosine(
+          vectors,
+          Math.max(2, Math.min(20, Math.round(Math.sqrt(vectors.length)))),
+          20,
+          42
+        ).assignments;
+
+  let bestCandidate = resolvedCandidates[0];
+  let bestScore = -Infinity;
+
+  for (const minSize of resolvedCandidates) {
+    const mergeResult = mergeSmallClusters(baseAssignments, vectors, minSize);
+    const mergedAssignments = mergeResult.assignments;
+    const k = new Set(mergedAssignments).size;
+    if (k <= 0) continue;
+
+    const centroids = computeCentroids(vectors, mergedAssignments, k);
+    const clusterSizes = new Array(k).fill(0);
+    for (const a of mergedAssignments) {
+      if (a >= 0 && a < k) clusterSizes[a] += 1;
+    }
+    const maxClusterShare =
+      clusterSizes.length > 0 ? Math.max(...clusterSizes) / Math.max(1, vectors.length) : 0;
+    const coherence = computeCoherence(vectors, mergedAssignments, centroids);
+    const separation = computeSeparation(centroids);
+    const labelability = computeLabelability(clusterSizes, vectors.length);
+    const balancePenalty = maxClusterShare > 0.35 ? Math.pow(maxClusterShare - 0.35, 2) : 0;
+
+    const score = coherence * 0.45 + separation * 0.35 + labelability * 0.2 - balancePenalty * 0.25;
+    if (score > bestScore) {
+      bestScore = score;
+      bestCandidate = minSize;
+    }
+  }
+
+  return bestCandidate;
 }
 
 function computeStability(
@@ -681,6 +819,317 @@ export function evaluateKRange(
   }
 
   return { recommendedK: bestK, metrics, reason };
+}
+
+export async function evaluateUnitMode(
+  jurorBlocks: JurorBlock[],
+  sentences: SentenceRecord[],
+  docs: string[],
+  kRange: { min: number; max: number },
+  seed: number,
+  options: {
+    unitModes?: Array<{ windowSize: number; label: string }>;
+    onProgress?: (mode: string, progress: number, total: number) => void;
+    onLog?: (message: string) => void;
+  } = {}
+): Promise<{
+  recommendedMode: { windowSize: number; label: string };
+  unitSearchMetrics: Array<{
+    mode: { windowSize: number; label: string };
+    score: number;
+    coherence?: number;
+    separation?: number;
+    dominance?: number;
+    kUsed?: number;
+    reasoning?: string;
+  }>;
+  reasoning: string;
+}> {
+  const unitModes = options.unitModes ?? [
+    { windowSize: 1, label: "sentence-only" },
+    { windowSize: 3, label: "window-3 (A1)" },
+    { windowSize: 5, label: "window-5 (A2)" },
+  ];
+
+  const embeddingCache = new Map<number, { vectors: Float64Array[] }>();
+  const unitSearchMetrics: Array<{
+    mode: { windowSize: number; label: string };
+    score: number;
+    coherence?: number;
+    separation?: number;
+    dominance?: number;
+    kUsed?: number;
+    reasoning?: string;
+  }> = [];
+
+  const jurorCount = jurorBlocks.length;
+  const sentenceCount = sentences.length;
+
+  let bestMode = unitModes[0];
+  let bestScore = -Infinity;
+  let bestDominance = 1;
+
+  for (const mode of unitModes) {
+    const windowSize = Math.max(1, Math.round(mode.windowSize));
+    const units = createSentenceWindows(docs, windowSize, 1);
+    const unitTexts = units.length > 0 ? units.map((u) => u.text) : docs.slice();
+
+    let cached = embeddingCache.get(windowSize);
+    if (!cached) {
+      const embeddingResult = await embedSentences(unitTexts);
+      cached = { vectors: embeddingResult.vectors };
+      embeddingCache.set(windowSize, cached);
+    }
+
+    const vectors = cached.vectors;
+    if (vectors.length < 2) {
+      const dominance = vectors.length === 0 ? 0 : 1;
+      unitSearchMetrics.push({
+        mode,
+        score: 0,
+        coherence: 0,
+        separation: 0,
+        dominance,
+        kUsed: vectors.length,
+        reasoning: "Insufficient vectors for clustering",
+      });
+      continue;
+    }
+
+    const maxK = Math.max(2, Math.min(kRange.max, vectors.length - 1));
+    const minK = Math.max(2, Math.min(kRange.min, maxK));
+    const totalK = Math.max(0, maxK - minK + 1);
+
+    let modeBestScore = -Infinity;
+    let modeBestK = minK;
+    let modeBestCoherence = 0;
+    let modeBestSeparation = 0;
+    let modeBestDominance = 1;
+
+    for (let k = minK; k <= maxK; k++) {
+      const km = kmeansCosine(vectors, k, 25, seed);
+      const assignments = km.assignments;
+      const centroids = km.centroids;
+      const effectiveK = Math.max(1, km.k || k);
+      const clusterSizes: number[] = Array.from({ length: effectiveK }, () => 0);
+      for (const a of assignments) {
+        clusterSizes[a] = (clusterSizes[a] ?? 0) + 1;
+      }
+      const maxClusterShare =
+        clusterSizes.length > 0 ? Math.max(...clusterSizes) / Math.max(1, vectors.length) : 0;
+      const microClusters = clusterSizes.filter((s) => s < 3).length;
+      const coherence = computeCoherence(vectors, assignments, centroids);
+      const separation = computeSeparation(centroids);
+      const labelability = computeLabelability(clusterSizes, vectors.length);
+      const score = scoreClusteringOutcome(
+        {
+          coherence,
+          separation,
+          labelability,
+          maxClusterShare,
+          microClusters,
+          k: effectiveK,
+        },
+        {
+          dominanceThreshold: 0.35,
+        }
+      );
+
+      options.onProgress?.(mode.label, k - minK + 1, totalK);
+
+      if (
+        score > modeBestScore + 1e-6 ||
+        (Math.abs(score - modeBestScore) <= 1e-6 &&
+          (maxClusterShare < modeBestDominance ||
+            (maxClusterShare === modeBestDominance && k < modeBestK)))
+      ) {
+        modeBestScore = score;
+        modeBestK = k;
+        modeBestCoherence = coherence;
+        modeBestSeparation = separation;
+        modeBestDominance = maxClusterShare;
+      }
+    }
+
+    unitSearchMetrics.push({
+      mode,
+      score: modeBestScore,
+      coherence: modeBestCoherence,
+      separation: modeBestSeparation,
+      dominance: modeBestDominance,
+      kUsed: modeBestK,
+      reasoning: `Best K=${modeBestK} (score=${modeBestScore.toFixed(4)})`,
+    });
+
+    if (
+      modeBestScore > bestScore + 1e-6 ||
+      (Math.abs(modeBestScore - bestScore) <= 1e-6 && modeBestDominance < bestDominance)
+    ) {
+      bestScore = modeBestScore;
+      bestMode = mode;
+      bestDominance = modeBestDominance;
+    }
+  }
+
+  const reasoning = `Evaluated ${unitSearchMetrics.length} modes across ${sentenceCount} sentences and ${jurorCount} jurors; selected ${bestMode.label}.`;
+  options.onLog?.(reasoning);
+
+  return {
+    recommendedMode: bestMode,
+    unitSearchMetrics,
+    reasoning,
+  };
+}
+
+export function evaluateWeightRange(
+  sentences: SentenceRecord[],
+  semanticVectors: Float64Array[],
+  chunkRecords: SentenceRecord[],
+  centroids: Float64Array[],
+  assignments: number[],
+  bm25Model: BM25Model,
+  conceptTopTerms: Record<number, string[]>,
+  k: number,
+  options: {
+    weightCandidates?: Array<{ semanticWeight: number; frequencyWeight: number }>;
+    onProgress?: (evaluated: number, total: number) => void;
+    clusterSentenceIndicesByConcept?: Record<number, number[]>;
+  } = {}
+): {
+  recommendedWeights: { semanticWeight: number; frequencyWeight: number };
+  weightSearchMetrics: Array<{
+    weights: { semanticWeight: number; frequencyWeight: number };
+    score: number;
+    evidenceCoherence?: number;
+    evidenceSeparation?: number;
+    dominance?: number;
+    reasoning?: string;
+  }>;
+  reasoning: string;
+} {
+  const weightCandidates = options.weightCandidates ?? [
+    { semanticWeight: 0.9, frequencyWeight: 0.1 },
+    { semanticWeight: 0.8, frequencyWeight: 0.2 },
+    { semanticWeight: 0.7, frequencyWeight: 0.3 },
+    { semanticWeight: 0.6, frequencyWeight: 0.4 },
+  ];
+
+  const sentenceTexts = sentences.map((s) => s.sentence);
+  const clusterSizes: number[] = Array.from({ length: k }, () => 0);
+  for (const a of assignments) {
+    if (a >= 0 && a < k) clusterSizes[a] += 1;
+  }
+  const maxClusterShare =
+    clusterSizes.length > 0 ? Math.max(...clusterSizes) / Math.max(1, assignments.length) : 0;
+  const microClusters = clusterSizes.filter((s) => s < 3).length;
+  const labelability = computeLabelability(clusterSizes, Math.max(1, assignments.length));
+
+  const weightSearchMetrics: Array<{
+    weights: { semanticWeight: number; frequencyWeight: number };
+    score: number;
+    evidenceCoherence?: number;
+    evidenceSeparation?: number;
+    dominance?: number;
+    reasoning?: string;
+  }> = [];
+
+  let bestWeights = weightCandidates[0];
+  let bestScore = -Infinity;
+  let bestCoherence = 0;
+
+  const resolveClusterIndices = (conceptIndex: number): number[] => {
+    if (options.clusterSentenceIndicesByConcept?.[conceptIndex]) {
+      return options.clusterSentenceIndicesByConcept[conceptIndex];
+    }
+    if (assignments.length === sentences.length) {
+      return assignments
+        .map((a, idx) => (a === conceptIndex ? idx : -1))
+        .filter((idx) => idx >= 0);
+    }
+    if (assignments.length === chunkRecords.length) {
+      return [];
+    }
+    return [];
+  };
+
+  weightCandidates.forEach((weights, idx) => {
+    const evidenceIndices = new Set<number>();
+    let evidenceTotal = 0;
+    let evidenceCoherenceSum = 0;
+    let evidenceCoherenceCount = 0;
+
+    for (let c = 0; c < k; c++) {
+      const clusterSentenceIndices = resolveClusterIndices(c);
+      if (clusterSentenceIndices.length === 0) continue;
+
+      const rankedEvidence = rankEvidenceForConcept(
+        sentenceTexts,
+        clusterSentenceIndices,
+        centroids[c],
+        semanticVectors,
+        bm25Model,
+        conceptTopTerms[c] ?? [],
+        weights,
+        3
+      );
+
+      rankedEvidence.forEach((entry) => {
+        const vec = semanticVectors[entry.index];
+        if (vec) {
+          evidenceCoherenceSum += Math.max(0, cosine(vec, centroids[c]));
+          evidenceCoherenceCount += 1;
+        }
+        evidenceIndices.add(entry.index);
+      });
+      evidenceTotal += rankedEvidence.length;
+    }
+
+    const evidenceCoherence =
+      evidenceCoherenceCount > 0 ? evidenceCoherenceSum / evidenceCoherenceCount : 0;
+    const evidenceSeparation = evidenceTotal > 0 ? evidenceIndices.size / evidenceTotal : 0;
+
+    const score = scoreClusteringOutcome(
+      {
+        coherence: evidenceCoherence,
+        separation: evidenceSeparation,
+        labelability,
+        maxClusterShare,
+        microClusters,
+        k,
+      },
+      {
+        dominanceThreshold: 0.35,
+      }
+    );
+
+    weightSearchMetrics.push({
+      weights,
+      score,
+      evidenceCoherence,
+      evidenceSeparation,
+      dominance: maxClusterShare,
+      reasoning: `score=${score.toFixed(4)}, evidence=${evidenceCoherence.toFixed(3)}`,
+    });
+
+    options.onProgress?.(idx + 1, weightCandidates.length);
+
+    if (
+      score > bestScore + 1e-6 ||
+      (Math.abs(score - bestScore) <= 1e-6 && evidenceCoherence > bestCoherence)
+    ) {
+      bestScore = score;
+      bestWeights = weights;
+      bestCoherence = evidenceCoherence;
+    }
+  });
+
+  const reasoning = `Evaluated ${weightCandidates.length} weight pairs; selected ${bestWeights.semanticWeight}/${bestWeights.frequencyWeight}.`;
+
+  return {
+    recommendedWeights: bestWeights,
+    weightSearchMetrics,
+    reasoning,
+  };
 }
 
 /**

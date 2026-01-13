@@ -42,6 +42,16 @@ export default function HomePage() {
   const [jurorBlocks, setJurorBlocks] = useState<JurorBlock[]>([]);
   const [ingestModalOpen, setIngestModalOpen] = useState(false);
   const [designerModalOpen, setDesignerModalOpen] = useState(false);
+  const [sampleLoadPending, setSampleLoadPending] = useState(false);
+  const [sampleLoading, setSampleLoading] = useState(false);
+  const [sampleProgress, setSampleProgress] = useState(0);
+  const [sampleStep, setSampleStep] = useState("");
+  const [sampleProgressId, setSampleProgressId] = useState<string | null>(null);
+  const [samplePhase, setSamplePhase] = useState<"idle" | "loading" | "ready">("idle");
+  const [autoRotateDisabled, setAutoRotateDisabled] = useState(false);
+  const sampleEventSourceRef = useRef<EventSource | null>(null);
+  const sampleLoadPendingRef = useRef(false);
+  const sampleProgressIdRef = useRef<string | null>(null);
   const [ingestError, setIngestError] = useState<string | null>(null);
 
   // Analysis params
@@ -76,7 +86,13 @@ export default function HomePage() {
   const [autoKDominanceThreshold, setAutoKDominanceThreshold] = useState(0.35);
   const [autoKKPenalty, setAutoKKPenalty] = useState(0.001);
   const [autoKEpsilon, setAutoKEpsilon] = useState(0.02);
+  const [autoMinClusterSize, setAutoMinClusterSize] = useState(false);
+  const [minClusterSize, setMinClusterSize] = useState<number | undefined>(undefined);
+  const [autoDominanceCap, setAutoDominanceCap] = useState(true);
+  const [autoDominanceCapThreshold, setAutoDominanceCapThreshold] = useState<number | undefined>(undefined);
   const [autoSeed, setAutoSeed] = useState(true);
+  const [autoUnit, setAutoUnit] = useState(false);
+  const [autoWeights, setAutoWeights] = useState(false);
   const [seedCandidates, setSeedCandidates] = useState(32);
   const [seedPerturbations, setSeedPerturbations] = useState(3);
   const [seedCoherenceWeight, setSeedCoherenceWeight] = useState(0.3);
@@ -151,6 +167,7 @@ export default function HomePage() {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportTimestamp, setExportTimestamp] = useState<string | null>(null);
   const lastVarianceLogSignature = useRef<string | null>(null);
+  const dataInputPanelRef = useRef<HTMLDivElement>(null);
   const addLog = useCallback((type: LogEntry["type"], message: string, data?: any) => {
     let finalMessage = message;
     let incrementalCost = 0;
@@ -217,6 +234,20 @@ export default function HomePage() {
       );
       addLog("analysis", `Analysis complete: ${analysis.stats.totalSentences} sentences, ${analysis.stats.totalConcepts} concepts`);
       
+      if (analysis.minClusterSizeMerged && analysis.minClusterSizeMerged > 0) {
+        addLog(
+          "quality",
+          `Cluster hygiene: merged ${analysis.minClusterSizeMerged} small clusters (minSize=${analysis.minClusterSize})`
+        );
+      }
+      if (analysis.dominanceSplitApplied) {
+        const primarySplits = analysis.dominanceSplitDetails?.primary?.splitCount ?? 0;
+        const detailSplits = analysis.dominanceSplitDetails?.detail?.splitCount ?? 0;
+        if (primarySplits > 0 || detailSplits > 0) {
+          addLog("quality", `Cluster hygiene: applied dominance splits (primary: ${primarySplits}, detail: ${detailSplits})`);
+        }
+      }
+
       if (analysis.varianceStats) {
         const cumulative = analysis.varianceStats.cumulativeVariances;
         const total = analysis.varianceStats.totalVariance;
@@ -300,11 +331,17 @@ export default function HomePage() {
         evidenceRankingParams,
         clusteringMode,
         autoK,
+        autoUnit,
+        autoWeights,
         autoSeed,
         autoKStability,
         autoKDominanceThreshold,
         autoKKPenalty,
         autoKEpsilon,
+        autoMinClusterSize,
+        minClusterSize,
+        autoDominanceCap,
+        autoDominanceCapThreshold,
         seedCandidates,
         seedPerturbations,
         seedCoherenceWeight,
@@ -328,6 +365,8 @@ export default function HomePage() {
         showGraph,
         enableAxisLabelAI,
         autoSynthesize,
+        recommendedUnitMode: analysis?.recommendedUnitMode,
+        recommendedWeights: analysis?.recommendedWeights,
       },
       logs: logs.map(log => ({
         id: log.id,
@@ -353,11 +392,17 @@ export default function HomePage() {
     evidenceRankingParams,
     clusteringMode,
     autoK,
+    autoUnit,
+    autoWeights,
     autoSeed,
     autoKStability,
     autoKDominanceThreshold,
     autoKKPenalty,
     autoKEpsilon,
+    autoMinClusterSize,
+    minClusterSize,
+    autoDominanceCap,
+    autoDominanceCapThreshold,
     seedCandidates,
     seedPerturbations,
     seedCoherenceWeight,
@@ -393,6 +438,11 @@ export default function HomePage() {
     const segmentText = async () => {
       // Set initial blocks immediately for quick feedback
       setJurorBlocks(segmentByJuror(rawText));
+
+      if (sampleLoadPendingRef.current) {
+        setSampleProgress((prev) => Math.max(prev, 20));
+        setSampleStep("Chunking feedback");
+      }
       
       addLog("api_request", "Segmenting input text...");
       try {
@@ -405,12 +455,29 @@ export default function HomePage() {
           const data = await response.json();
           addLog("api_response", `Text segmented into ${data.blocks.length} juror blocks`);
           setJurorBlocks(data.blocks);
+          if (sampleLoadPendingRef.current) {
+            setSampleProgress((prev) => Math.max(prev, 35));
+            setSampleStep("Preparing analysis");
+          }
         } else {
           addLog("api_error", "Segmentation failed");
+          if (sampleLoadPendingRef.current) {
+            setSampleLoading(false);
+            setSampleLoadPending(false);
+            sampleLoadPendingRef.current = false;
+            setSampleStep("Segmentation failed");
+            setSamplePhase("idle");
+          }
         }
       } catch (error) {
         console.error("Error segmenting text:", error);
         addLog("api_error", "Network error during segmentation");
+        if (sampleLoadPendingRef.current) {
+          setSampleLoading(false);
+          setSampleLoadPending(false);
+          sampleLoadPendingRef.current = false;
+          setSampleStep("Segmentation failed");
+        }
       }
     };
     segmentText();
@@ -422,6 +489,11 @@ export default function HomePage() {
       if (jurorBlocks.length === 0) {
         setAnalysis(null);
         return;
+      }
+
+      if (sampleLoadPendingRef.current) {
+        setSampleProgress((prev) => Math.max(prev, 55));
+        setSampleStep("Processing embeddings");
       }
 
       setLoadingAnalysis(true);
@@ -437,11 +509,18 @@ export default function HomePage() {
             similarityThreshold,
             evidenceRankingParams,
             clusteringMode,
+            progressId: sampleLoadPendingRef.current ? sampleProgressIdRef.current ?? undefined : undefined,
             autoK,
+            autoUnit,
+            autoWeights,
             autoKStability,
             autoKDominanceThreshold,
             autoKKPenalty,
             autoKEpsilon,
+            autoMinClusterSize,
+            minClusterSize,
+            autoDominanceCap,
+            autoDominanceCapThreshold,
             autoSeed,
             seedCandidates,
             seedPerturbations,
@@ -469,6 +548,10 @@ export default function HomePage() {
           const data = await response.json();
           console.log(`[Analysis] Analysis successful`, data);
           addLog("api_response", `Analysis complete`, data);
+          if (sampleLoadPendingRef.current) {
+            setSampleProgress((prev) => Math.max(prev, 80));
+            setSampleStep("Clustering concepts");
+          }
           
           // Add any server-side logs to the console
           if (data.logs && Array.isArray(data.logs)) {
@@ -482,18 +565,97 @@ export default function HomePage() {
           const errorData = await response.json();
           console.error(`[Analysis] Analysis failed`, errorData);
           addLog("api_error", `Analysis failed: ${errorData.error || response.statusText}`);
+          if (sampleLoadPendingRef.current) {
+            setSampleLoading(false);
+            setSampleLoadPending(false);
+            sampleLoadPendingRef.current = false;
+            setSampleStep("Analysis failed");
+            setSamplePhase("idle");
+          }
         }
       } catch (error) {
         console.error("[Analysis] Network error:", error);
         addLog("api_error", `Network error during analysis`);
         setAnalysis(null);
+        if (sampleLoadPendingRef.current) {
+          setSampleLoading(false);
+          setSampleLoadPending(false);
+          sampleLoadPendingRef.current = false;
+          setSampleStep("Analysis failed");
+          setSamplePhase("idle");
+        }
       } finally {
         setLoadingAnalysis(false);
       }
     };
 
     analyze();
-  }, [jurorBlocks, kConcepts, similarityThreshold, evidenceRankingParams, clusteringMode, autoK, autoKStability, autoKDominanceThreshold, autoKKPenalty, autoKEpsilon, autoSeed, seedCandidates, seedPerturbations, seedCoherenceWeight, seedSeparationWeight, seedStabilityWeight, seedDominancePenaltyWeight, seedMicroClusterPenaltyWeight, seedLabelPenaltyWeight, seedDominanceThreshold, kMinOverride, kMaxOverride, clusterSeed, softMembership, cutType, granularityPercent, numDimensions, selectedModel, dimensionMode, varianceThreshold, anchorAxes, addLog]);
+  }, [jurorBlocks, kConcepts, similarityThreshold, evidenceRankingParams, clusteringMode, autoK, autoUnit, autoWeights, autoKStability, autoKDominanceThreshold, autoKKPenalty, autoKEpsilon, autoMinClusterSize, minClusterSize, autoDominanceCap, autoDominanceCapThreshold, autoSeed, seedCandidates, seedPerturbations, seedCoherenceWeight, seedSeparationWeight, seedStabilityWeight, seedDominancePenaltyWeight, seedMicroClusterPenaltyWeight, seedLabelPenaltyWeight, seedDominanceThreshold, kMinOverride, kMaxOverride, clusterSeed, softMembership, cutType, granularityPercent, numDimensions, selectedModel, dimensionMode, varianceThreshold, anchorAxes, addLog]);
+
+  useEffect(() => {
+    if (!sampleProgressId || !sampleLoadPending) return;
+    if (sampleEventSourceRef.current) {
+      sampleEventSourceRef.current.close();
+      sampleEventSourceRef.current = null;
+    }
+    const source = new EventSource(`/api/analyze/progress?id=${encodeURIComponent(sampleProgressId)}`);
+    sampleEventSourceRef.current = source;
+
+    source.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (typeof payload.progress === "number") {
+          setSampleProgress((prev) => Math.max(prev, payload.progress));
+        }
+        if (typeof payload.step === "string") {
+          setSampleStep(payload.step);
+        }
+        if (payload.error) {
+          setSampleStep("Analysis failed");
+          setSampleLoading(false);
+          setSampleLoadPending(false);
+          sampleLoadPendingRef.current = false;
+          setSampleProgressId(null);
+          sampleProgressIdRef.current = null;
+          setSamplePhase("idle");
+          source.close();
+          sampleEventSourceRef.current = null;
+        }
+        if (payload.done) {
+          setSampleProgress(100);
+          setSampleStep("Rendering 3D map");
+          setTimeout(() => {
+            setSampleLoading(false);
+            setSampleLoadPending(false);
+            sampleLoadPendingRef.current = false;
+            setSamplePhase("ready");
+            setSampleProgressId(null);
+            sampleProgressIdRef.current = null;
+          }, 600);
+          setTimeout(() => {
+            source.close();
+            sampleEventSourceRef.current = null;
+          }, 650);
+        }
+      } catch (err) {
+        console.error("[SampleProgress] Failed to parse SSE payload", err);
+      }
+    };
+
+    source.onerror = () => {
+      setSampleStep("Progress stream disconnected");
+      setSamplePhase("idle");
+      source.close();
+      sampleEventSourceRef.current = null;
+    };
+
+    return () => {
+      source.close();
+      if (sampleEventSourceRef.current === source) {
+        sampleEventSourceRef.current = null;
+      }
+    };
+  }, [sampleProgressId, sampleLoadPending]);
 
   // Helper function to get node network (node + connected links + connected nodes)
   const getNodeNetwork = useCallback((nodeId: string, nodes: GraphNode[], links: GraphLink[]) => {
@@ -753,6 +915,18 @@ export default function HomePage() {
     setSearch("");
     setSelectedNodeId(null);
     setSelectedLinkId(null);
+    setSamplePhase("idle");
+    setSampleProgress(0);
+    setSampleStep("");
+    setSampleLoading(false);
+    setSampleLoadPending(false);
+    sampleLoadPendingRef.current = false;
+    setSampleProgressId(null);
+    sampleProgressIdRef.current = null;
+    if (sampleEventSourceRef.current) {
+      sampleEventSourceRef.current.close();
+      sampleEventSourceRef.current = null;
+    }
   }
 
   // Graph interactivity
@@ -925,6 +1099,44 @@ export default function HomePage() {
     setDesignerBlocks((prev) => [...prev, block]);
   }, []);
 
+  const handleLoadSample = useCallback(() => {
+    const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    setSampleLoadPending(true);
+    sampleLoadPendingRef.current = true;
+    setSampleLoading(true);
+    setSampleProgress(5);
+    setSampleStep("Cleaning text");
+    setSampleProgressId(id);
+    sampleProgressIdRef.current = id;
+    setRawText(DEFAULT_SAMPLE);
+    setIngestError(null);
+    setSamplePhase("loading");
+  }, []);
+
+  const handleAutoRotateDisabled = useCallback(() => {
+    setAutoRotateDisabled(true);
+    addLog("interaction", "User clicked 3D canvas - auto-rotation disabled");
+  }, [addLog]);
+
+  const handleOpenUploadSidebar = useCallback(() => {
+    // Open the left sidebar
+    setLeftSidebarOpen(true);
+    
+    // Scroll to DataInputPanel after sidebar animation
+    setTimeout(() => {
+      if (dataInputPanelRef.current) {
+        dataInputPanelRef.current.scrollIntoView({ 
+          behavior: "smooth", 
+          block: "start" 
+        });
+      }
+    }, 550); // Wait for sidebar animation (500ms) + small buffer
+    
+    addLog("interaction", "User opened upload sidebar from welcome screen");
+  }, [addLog]);
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-slate-50 text-slate-900">
       {/* Left Sidebar */}
@@ -935,13 +1147,12 @@ export default function HomePage() {
         width={400}
         disableOutsideClick={ingestModalOpen || designerModalOpen}
       >
-        <div className="space-y-4">
+        <div className="space-y-4" ref={dataInputPanelRef}>
           <DataInputPanel
             jurorBlocks={jurorBlocks}
             onOpenJurorModal={() => setIngestModalOpen(true)}
             ingestError={ingestError}
             onOpenDesignerModal={() => setDesignerModalOpen(true)}
-            onLoadSample={() => setRawText(DEFAULT_SAMPLE)}
             designerBlocks={designerBlocks}
             onDesignerBlocksChange={setDesignerBlocks}
             designerKConcepts={designerKConcepts}
@@ -972,6 +1183,10 @@ export default function HomePage() {
             onClusteringModeChange={setClusteringMode}
             autoK={autoK}
             onAutoKChange={setAutoK}
+            autoUnit={autoUnit}
+            onAutoUnitChange={setAutoUnit}
+            autoWeights={autoWeights}
+            onAutoWeightsChange={setAutoWeights}
             autoSeed={autoSeed}
             onAutoSeedChange={setAutoSeed}
             seedCandidates={seedCandidates}
@@ -1000,6 +1215,14 @@ export default function HomePage() {
             onAutoKKPenaltyChange={setAutoKKPenalty}
             autoKEpsilon={autoKEpsilon}
             onAutoKEpsilonChange={setAutoKEpsilon}
+            autoMinClusterSize={autoMinClusterSize}
+            onAutoMinClusterSizeChange={setAutoMinClusterSize}
+            minClusterSize={minClusterSize}
+            onMinClusterSizeChange={setMinClusterSize}
+            autoDominanceCap={autoDominanceCap}
+            onAutoDominanceCapChange={setAutoDominanceCap}
+            autoDominanceCapThreshold={autoDominanceCapThreshold}
+            onAutoDominanceCapThresholdChange={setAutoDominanceCapThreshold}
             kMinOverride={kMinOverride}
             kMaxOverride={kMaxOverride}
             onKMinOverrideChange={setKMinOverride}
@@ -1143,27 +1366,35 @@ export default function HomePage() {
                   checkpoints={analysis?.checkpoints}
                   insights={insights}
                   axisLabels={displayAxisLabels}
-                  enableAxisLabelAI={enableAxisLabelAI}
-                  onToggleAxisLabelAI={setEnableAxisLabelAI}
-                  onRefreshAxisLabels={enableAxisLabelAI ? refreshAxisLabels : undefined}
-                  isRefreshingAxisLabels={isRefreshingAxisLabels}
-                  analysis={analysis}
-                  filteredNodesCount={combinedNodes.length}
-                  filteredLinksCount={combinedLinks.length}
-                  checkpointIndex={checkpointIndex}
-                  onCheckpointIndexChange={setCheckpointIndex}
-                  showAxes={showAxes}
-                  onToggleAxes={setShowAxes}
-                  showGraph={showGraph}
-                  onToggleGraph={setShowGraph}
-                  numDimensions={appliedNumDimensions}
-                  apiCallCount={apiCallCount}
-                  apiCostTotal={apiCostTotal}
-                  anchorAxes={analysis?.anchorAxes}
-                  anchorAxisScores={analysis?.anchorAxisScores}
-                  selectedAnchorAxisId={selectedAnchorAxisId}
-                  alignmentLinks={alignmentLinks}
-                />
+                enableAxisLabelAI={enableAxisLabelAI}
+                onToggleAxisLabelAI={setEnableAxisLabelAI}
+                onRefreshAxisLabels={enableAxisLabelAI ? refreshAxisLabels : undefined}
+                isRefreshingAxisLabels={isRefreshingAxisLabels}
+                analysis={analysis}
+                filteredNodesCount={combinedNodes.length}
+                filteredLinksCount={combinedLinks.length}
+                checkpointIndex={checkpointIndex}
+                onCheckpointIndexChange={setCheckpointIndex}
+                showAxes={showAxes}
+                onToggleAxes={setShowAxes}
+                showGraph={showGraph}
+                onToggleGraph={setShowGraph}
+                numDimensions={appliedNumDimensions}
+                apiCallCount={apiCallCount}
+                apiCostTotal={apiCostTotal}
+                anchorAxes={analysis?.anchorAxes}
+                anchorAxisScores={analysis?.anchorAxisScores}
+                selectedAnchorAxisId={selectedAnchorAxisId}
+                alignmentLinks={alignmentLinks}
+                  onLoadSample={handleLoadSample}
+                  loadingSample={sampleLoading}
+                  loadingProgress={sampleProgress}
+                  loadingStep={sampleStep}
+                  samplePhase={samplePhase}
+                  autoRotateDisabled={autoRotateDisabled}
+                  onAutoRotateDisabled={handleAutoRotateDisabled}
+                  onOpenUploadSidebar={handleOpenUploadSidebar}
+              />
               </div>
 
               {/* Floating Details Panel */}

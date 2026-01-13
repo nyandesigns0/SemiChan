@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { buildAnalysis } from "@/lib/graph/graph-builder";
 import type { AnalyzeRequest, AnalyzeResponse } from "@/types/api";
 import { DEFAULT_EVIDENCE_RANKING_PARAMS } from "@/lib/analysis/evidence-ranker";
+import { clearProgress, emitProgress } from "./progress-store";
 
 export async function POST(request: NextRequest) {
+  let progressId: string | undefined;
   try {
     const rawBody = await request.text();
     if (!rawBody.trim()) {
@@ -24,12 +26,19 @@ export async function POST(request: NextRequest) {
       evidenceRankingParams,
       clusteringMode,
       autoK,
+      autoUnit,
+      autoWeights,
+      progressId: requestedProgressId,
       kMin,
       kMax,
       autoKStability,
       autoKDominanceThreshold,
       autoKKPenalty,
       autoKEpsilon,
+      autoMinClusterSize,
+      minClusterSize,
+      autoDominanceCap,
+      autoDominanceCapThreshold,
       autoSeed,
       seedCandidates,
       seedPerturbations,
@@ -53,6 +62,7 @@ export async function POST(request: NextRequest) {
       model,
       anchorAxes,
     } = body;
+    progressId = requestedProgressId;
 
     if (!blocks || !Array.isArray(blocks)) {
       return NextResponse.json({ error: "Invalid request: blocks array is required" }, { status: 400 });
@@ -106,11 +116,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (autoUnit !== undefined && typeof autoUnit !== "boolean") {
+      return NextResponse.json(
+        { error: "Invalid request: autoUnit must be a boolean" },
+        { status: 400 }
+      );
+    }
+
+    if (autoWeights !== undefined && typeof autoWeights !== "boolean") {
+      return NextResponse.json(
+        { error: "Invalid request: autoWeights must be a boolean" },
+        { status: 400 }
+      );
+    }
+
     // buildAnalysis is now async
     const logs: Array<{ type: any; message: string; data?: any }> = [];
     if (autoSeed && clusteringMode === "hierarchical") {
       logs.push({ type: "analysis", message: "Auto-Seed only supports k-means; proceeding without automatic seed selection." });
     }
+    if (progressId) {
+      emitProgress(progressId, { progress: 10, step: "Validating input" });
+    }
+
     const analysis = await buildAnalysis(
       blocks, 
       kConcepts, 
@@ -119,12 +147,18 @@ export async function POST(request: NextRequest) {
         evidenceRankingParams,
         clusteringMode,
         autoK,
+        autoUnit,
+        autoWeights,
         kMin,
         kMax,
         autoKStability,
         autoKDominanceThreshold,
         autoKKPenalty,
         autoKEpsilon,
+        autoMinClusterSize,
+        minClusterSize,
+        autoDominanceCap,
+        autoDominanceCapThreshold,
         autoSeed,
         seedCandidates,
         seedPerturbations,
@@ -145,6 +179,9 @@ export async function POST(request: NextRequest) {
         varianceThreshold,
         softMembershipParams,
         cutQualityParams,
+        onProgress: (payload) => {
+          if (progressId) emitProgress(progressId, payload);
+        },
         onLog: (type, message, data) => {
           logs.push({ type, message, data });
         },
@@ -157,9 +194,23 @@ export async function POST(request: NextRequest) {
       logs,
     };
 
+    if (progressId) {
+      emitProgress(progressId, { progress: 100, step: "Analysis complete", done: true });
+      clearProgress(progressId);
+    }
+
     return NextResponse.json(response);
   } catch (error) {
     console.error("Error in analyze API:", error);
+    if (progressId) {
+      emitProgress(progressId, {
+        progress: 100,
+        step: "Analysis failed",
+        error: error instanceof Error ? error.message : "Internal server error",
+        done: true,
+      });
+      clearProgress(progressId);
+    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }

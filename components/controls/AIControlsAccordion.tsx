@@ -43,7 +43,7 @@ export function AIControlsAccordion({
       </button>
 
       {isExpanded && (
-        <div className="border-t border-slate-100 p-4">
+        <div className="border-t border-slate-100 p-3 pt-2">
           <AIControls
             enableAxisLabelAI={enableAxisLabelAI}
             onToggleAxisLabelAI={onToggleAxisLabelAI}

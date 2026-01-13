@@ -21,6 +21,10 @@ interface AnalysisControlsAccordionProps {
   onClusteringModeChange: (mode: "kmeans" | "hierarchical") => void;
   autoK: boolean;
   onAutoKChange: (value: boolean) => void;
+  autoUnit: boolean;
+  onAutoUnitChange: (value: boolean) => void;
+  autoWeights: boolean;
+  onAutoWeightsChange: (value: boolean) => void;
   autoSeed: boolean;
   onAutoSeedChange: (value: boolean) => void;
   seedCandidates: number;
@@ -57,6 +61,14 @@ interface AnalysisControlsAccordionProps {
   onAutoKKPenaltyChange: (value: number) => void;
   autoKEpsilon: number;
   onAutoKEpsilonChange: (value: number) => void;
+  autoMinClusterSize: boolean;
+  onAutoMinClusterSizeChange: (value: boolean) => void;
+  minClusterSize?: number;
+  onMinClusterSizeChange: (value?: number) => void;
+  autoDominanceCap: boolean;
+  onAutoDominanceCapChange: (value: boolean) => void;
+  autoDominanceCapThreshold?: number;
+  onAutoDominanceCapThresholdChange: (value?: number) => void;
   kMinOverride?: number;
   kMaxOverride?: number;
   onKMinOverrideChange: (value?: number) => void;
@@ -87,6 +99,10 @@ export function AnalysisControlsAccordion({
   onClusteringModeChange,
   autoK,
   onAutoKChange,
+  autoUnit,
+  onAutoUnitChange,
+  autoWeights,
+  onAutoWeightsChange,
   autoSeed,
   onAutoSeedChange,
   seedCandidates,
@@ -123,6 +139,14 @@ export function AnalysisControlsAccordion({
   onAutoKKPenaltyChange,
   autoKEpsilon,
   onAutoKEpsilonChange,
+  autoMinClusterSize,
+  onAutoMinClusterSizeChange,
+  minClusterSize,
+  onMinClusterSizeChange,
+  autoDominanceCap,
+  onAutoDominanceCapChange,
+  autoDominanceCapThreshold,
+  onAutoDominanceCapThresholdChange,
   kMinOverride,
   kMaxOverride,
   onKMinOverrideChange,
@@ -173,6 +197,10 @@ export function AnalysisControlsAccordion({
             onClusteringModeChange={onClusteringModeChange}
             autoK={autoK}
             onAutoKChange={onAutoKChange}
+            autoUnit={autoUnit}
+            onAutoUnitChange={onAutoUnitChange}
+            autoWeights={autoWeights}
+            onAutoWeightsChange={onAutoWeightsChange}
             autoSeed={autoSeed}
             onAutoSeedChange={onAutoSeedChange}
             seedCandidates={seedCandidates}
@@ -209,6 +237,14 @@ export function AnalysisControlsAccordion({
             onAutoKKPenaltyChange={onAutoKKPenaltyChange}
             autoKEpsilon={autoKEpsilon}
             onAutoKEpsilonChange={onAutoKEpsilonChange}
+            autoMinClusterSize={autoMinClusterSize}
+            onAutoMinClusterSizeChange={onAutoMinClusterSizeChange}
+            minClusterSize={minClusterSize}
+            onMinClusterSizeChange={onMinClusterSizeChange}
+            autoDominanceCap={autoDominanceCap}
+            onAutoDominanceCapChange={onAutoDominanceCapChange}
+            autoDominanceCapThreshold={autoDominanceCapThreshold}
+            onAutoDominanceCapThresholdChange={onAutoDominanceCapThresholdChange}
             kMinOverride={kMinOverride}
             kMaxOverride={kMaxOverride}
             onKMinOverrideChange={onKMinOverrideChange}

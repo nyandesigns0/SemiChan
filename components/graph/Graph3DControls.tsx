@@ -41,7 +41,7 @@ export function Graph3DControls({
   numDimensions = 3,
 }: Graph3DControlsProps) {
   const axisColors = getAxisColors(numDimensions);
-  const [axisPanelOpen, setAxisPanelOpen] = useState(true);
+  const [axisPanelOpen, setAxisPanelOpen] = useState(false);
   const axisLabelsMap = axisLabels ?? {};
   const showAxisPanel = Boolean(axisLabels);
 
@@ -98,45 +98,43 @@ export function Graph3DControls({
       {/* Axis Labels Info Panel - shown when axes are visible */}
       {showAxisPanel && (
         <div className="absolute top-4 left-4 z-10">
-          {axisPanelOpen ? (
-            <div className="rounded-xl border bg-white/95 px-4 py-3 shadow-lg backdrop-blur-sm max-w-xs overflow-hidden">
-              <div className="mb-2 flex items-center gap-2">
+          <div className="rounded-xl border bg-white/95 px-4 py-3 shadow-lg backdrop-blur-sm max-w-xs min-w-[350px] overflow-hidden">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                Axis Dimensions
+              </div>
+              <div className="flex items-center gap-2">
+                {onRefreshAxisLabels && (
+                  <Button
+                    variant="ghost"
+                    className="h-7 w-7 rounded-full p-0 text-slate-500 shadow-sm hover:text-slate-900 bg-white/90"
+                    onClick={onRefreshAxisLabels}
+                    disabled={isRefreshingAxisLabels}
+                    title="Refresh AI axis labels"
+                  >
+                    <RefreshCw
+                      className={`h-4 w-4 ${isRefreshingAxisLabels ? "animate-spin" : ""}`}
+                    />
+                  </Button>
+                )}
+                <label className="text-[9px] font-bold uppercase text-slate-400">AI Labels</label>
+                <Switch
+                  checked={enableAxisLabelAI}
+                  onCheckedChange={onToggleAxisLabelAI}
+                  className="scale-75"
+                />
                 <button
                   type="button"
-                  aria-label="Collapse axis dimensions panel"
-                  onClick={() => setAxisPanelOpen(false)}
+                  aria-label={axisPanelOpen ? "Collapse axis dimensions panel" : "Expand axis dimensions panel"}
+                  onClick={() => setAxisPanelOpen((prev) => !prev)}
                   className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
                 >
-                  <ChevronUp className="h-4 w-4" />
+                  {axisPanelOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </button>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                  Axis Dimensions
-                </div>
               </div>
-              <div className="mb-3 flex items-center gap-2">
-                <div className="flex items-center gap-2">
-                  {onRefreshAxisLabels && (
-                    <Button
-                      variant="ghost"
-                      className="h-7 w-7 rounded-full p-0 text-slate-500 shadow-sm hover:text-slate-900 bg-white/90"
-                      onClick={onRefreshAxisLabels}
-                      disabled={isRefreshingAxisLabels}
-                      title="Refresh AI axis labels"
-                    >
-                      <RefreshCw
-                        className={`h-4 w-4 ${isRefreshingAxisLabels ? "animate-spin" : ""}`}
-                      />
-                    </Button>
-                  )}
-                  <label className="text-[9px] font-bold uppercase text-slate-400">AI Labels</label>
-                  <Switch
-                    checked={enableAxisLabelAI}
-                    onCheckedChange={onToggleAxisLabelAI}
-                    className="scale-75"
-                  />
-                </div>
-              </div>
+            </div>
 
+            {axisPanelOpen && (
               <ScrollArea className={cn("pr-2", numDimensions > 4 ? "h-[480px]" : "h-auto")}>
                 <div className="space-y-3 text-xs">
                   {Array.from({ length: numDimensions }).map((_, i) => {
@@ -171,17 +169,8 @@ export function Graph3DControls({
                   })}
                 </div>
               </ScrollArea>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setAxisPanelOpen(true)}
-              className="flex items-center gap-1 rounded-full border border-slate-200 bg-white/90 px-3 py-2 text-[10px] font-bold uppercase tracking-tight text-slate-600 shadow-sm hover:bg-white"
-            >
-              <ChevronDown className="h-4 w-4" />
-              Axis Dimensions
-            </button>
-          )}
+            )}
+          </div>
         </div>
       )}
     </>

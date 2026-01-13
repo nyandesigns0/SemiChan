@@ -432,6 +432,13 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
     [analysis?.appliedNumDimensions]
   );
 
+  const dominanceThresholdValue = rawExportContext?.analysisParams?.autoDominanceCapThreshold ?? 0.35;
+  const dominanceThresholdLabel =
+    rawExportContext?.analysisParams?.autoDominanceCapThreshold !== undefined
+      ? dominanceThresholdValue.toFixed(2)
+      : `default (${dominanceThresholdValue.toFixed(2)})`;
+  const autoDominanceCapEnabled = rawExportContext?.analysisParams?.autoDominanceCap ?? true;
+
   const nodeById = useMemo(() => {
     if (!analysis) return new Map<string, AnalysisResult["nodes"][number]>();
     return new Map(analysis.nodes.map((n) => [n.id, n]));
@@ -484,9 +491,13 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
 ${separator}
 kConcepts: ${p.kConcepts} | minEdgeWeight: ${p.minEdgeWeight} | similarityThreshold: ${p.similarityThreshold}
 clusteringMode: ${p.clusteringMode} | autoK: ${p.autoK} | autoSeed: ${p.autoSeed ?? false} | clusterSeed: ${p.clusterSeed} | softMembership: ${p.softMembership}
+autoMinClusterSize: ${p.autoMinClusterSize ?? false} | minClusterSize: ${p.minClusterSize ?? "auto"}
+autoDominanceCap: ${p.autoDominanceCap ?? true} | dominanceCapThreshold: ${p.autoDominanceCapThreshold ?? "default"}
 autoSeed params: candidates=${p.seedCandidates ?? "-"}, perturbations=${p.seedPerturbations ?? "-"}, weights(coh=${p.seedCoherenceWeight ?? "-"}, sep=${p.seedSeparationWeight ?? "-"}, stab=${p.seedStabilityWeight ?? "-"}, domPen=${p.seedDominancePenaltyWeight ?? "-"}, microPen=${p.seedMicroClusterPenaltyWeight ?? "-"}, labelPen=${p.seedLabelPenaltyWeight ?? "-"}), domThresh=${p.seedDominanceThreshold ?? "-"}
 evidenceRanking: sem=${e.semanticWeight}, freq=${e.frequencyWeight} | dimensionMode: ${p.dimensionMode}
 appliedDimensions: ${p.appliedNumDimensions} | varianceThreshold: ${p.varianceThreshold}
+autoUnit: ${p.autoUnit ?? false} | recommendedUnitMode: ${p.recommendedUnitMode?.label ?? "-"}
+autoWeights: ${p.autoWeights ?? false} | recommendedWeights: sem=${p.recommendedWeights?.semanticWeight ?? "-"}, freq=${p.recommendedWeights?.frequencyWeight ?? "-"}
 Model: ${rawExportContext.selectedModel} | Export: ${rawExportContext.exportTimestamp || new Date().toISOString()}`;
     };
 
@@ -763,6 +774,208 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {analysis.unitSearchMetrics && analysis.unitSearchMetrics.length > 0 && (
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="bg-indigo-50 text-indigo-700">
+                Auto-Unit Selection
+              </Badge>
+              <span className="text-sm font-semibold text-slate-600">
+                Tested {analysis.unitSearchMetrics.length} modes
+              </span>
+            </div>
+            {analysis.recommendedUnitMode && (
+              <Badge variant="outline" className="border-indigo-200 bg-indigo-50 px-2 py-0 text-[11px] font-black text-indigo-700">
+                Selected: {analysis.recommendedUnitMode.label}
+              </Badge>
+            )}
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            {analysis.autoUnitReasoning && (
+              <p className="text-[12px] text-slate-600">
+                Reasoning: {analysis.autoUnitReasoning}
+              </p>
+            )}
+            <div className="overflow-hidden rounded-lg border border-slate-100">
+              <table className="min-w-full divide-y divide-slate-100 text-[12px]">
+                <thead className="bg-slate-50 text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold">Mode</th>
+                    <th className="px-3 py-2 text-left font-semibold">Score</th>
+                    <th className="px-3 py-2 text-left font-semibold">Coherence</th>
+                    <th className="px-3 py-2 text-left font-semibold">Separation</th>
+                    <th className="px-3 py-2 text-left font-semibold">Dominance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {analysis.unitSearchMetrics.map((m) => {
+                    const isSelected = analysis.recommendedUnitMode?.windowSize === m.mode.windowSize;
+                    return (
+                      <tr key={`unit-${m.mode.windowSize}`} className={isSelected ? "bg-indigo-50/50" : ""}>
+                        <td className="px-3 py-2 font-semibold text-slate-800">{m.mode.label}</td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {Number.isFinite(m.score) ? m.score.toFixed(3) : "-"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">{(m.coherence ?? 0).toFixed(3)}</td>
+                        <td className="px-3 py-2 text-slate-700">{(m.separation ?? 0).toFixed(3)}</td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {m.dominance !== undefined ? `${(m.dominance * 100).toFixed(1)}%` : "-"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {analysis.weightSearchMetrics && analysis.weightSearchMetrics.length > 0 && (
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="bg-indigo-50 text-indigo-700">
+                Auto-Weights Selection
+              </Badge>
+              <span className="text-sm font-semibold text-slate-600">
+                Tested {analysis.weightSearchMetrics.length} combinations
+              </span>
+            </div>
+            {analysis.recommendedWeights && (
+              <Badge variant="outline" className="border-indigo-200 bg-indigo-50 px-2 py-0 text-[11px] font-black text-indigo-700">
+                Selected: {analysis.recommendedWeights.semanticWeight}/{analysis.recommendedWeights.frequencyWeight}
+              </Badge>
+            )}
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            {analysis.autoWeightsReasoning && (
+              <p className="text-[12px] text-slate-600">
+                Reasoning: {analysis.autoWeightsReasoning}
+              </p>
+            )}
+            <div className="overflow-hidden rounded-lg border border-slate-100">
+              <table className="min-w-full divide-y divide-slate-100 text-[12px]">
+                <thead className="bg-slate-50 text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold">Weights</th>
+                    <th className="px-3 py-2 text-left font-semibold">Score</th>
+                    <th className="px-3 py-2 text-left font-semibold">Evidence Coherence</th>
+                    <th className="px-3 py-2 text-left font-semibold">Evidence Separation</th>
+                    <th className="px-3 py-2 text-left font-semibold">Dominance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {analysis.weightSearchMetrics.map((m, idx) => {
+                    const isSelected =
+                      analysis.recommendedWeights?.semanticWeight === m.weights.semanticWeight &&
+                      analysis.recommendedWeights?.frequencyWeight === m.weights.frequencyWeight;
+                    return (
+                      <tr key={`weights-${m.weights.semanticWeight}-${m.weights.frequencyWeight}-${idx}`} className={isSelected ? "bg-indigo-50/50" : ""}>
+                        <td className="px-3 py-2 font-semibold text-slate-800">
+                          {m.weights.semanticWeight}/{m.weights.frequencyWeight}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {Number.isFinite(m.score) ? m.score.toFixed(3) : "-"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">{(m.evidenceCoherence ?? 0).toFixed(3)}</td>
+                        <td className="px-3 py-2 text-slate-700">{(m.evidenceSeparation ?? 0).toFixed(3)}</td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {m.dominance !== undefined ? `${(m.dominance * 100).toFixed(1)}%` : "-"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(analysis.minClusterSize !== undefined || analysis.dominanceSplitApplied) && (
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="bg-emerald-50 text-emerald-700">
+                Cluster Hygiene Results
+              </Badge>
+              <span className="text-sm font-semibold text-slate-600">Merge and split diagnostics</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {analysis.minClusterSize !== undefined && (
+                <Badge variant="outline" className="border-emerald-200 bg-emerald-50 px-2 py-0 text-[11px] font-black text-emerald-700">
+                  Min Size = {analysis.minClusterSize} {analysis.minClusterSizeAuto ? "(auto)" : "(manual)"}
+                </Badge>
+              )}
+              <Badge variant="outline" className="border-slate-200 bg-white px-2 py-0 text-[11px] font-semibold text-slate-600">
+                Dominance Cap: {autoDominanceCapEnabled ? "on" : "off"}
+              </Badge>
+            </div>
+          </div>
+          <div className="space-y-3 px-5 py-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3">
+                <div className="mb-1 text-[11px] font-bold uppercase text-slate-500">Min Cluster Size</div>
+                <div className="text-sm font-semibold text-slate-700">
+                  {analysis.minClusterSize !== undefined ? `Applied: ${analysis.minClusterSize}` : "Not enabled"}
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  Merged clusters: {analysis.minClusterSizeMerged ?? 0}
+                </div>
+                {analysis.minClusterSizeDetails && (
+                  <div className="text-[11px] text-slate-500">
+                    Clusters: {analysis.minClusterSizeDetails.beforeSize} -> {analysis.minClusterSizeDetails.afterSize}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3">
+                <div className="mb-1 text-[11px] font-bold uppercase text-slate-500">Dominance Cap</div>
+                <div className="text-sm font-semibold text-slate-700">
+                  Threshold: {dominanceThresholdLabel}
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  Splits applied: {analysis.dominanceSplitApplied ? "Yes" : "No"}
+                </div>
+              </div>
+            </div>
+
+            {(analysis.dominanceSplitDetails?.primary || analysis.dominanceSplitDetails?.detail) && (
+              <div className="overflow-hidden rounded-lg border border-slate-100">
+                <table className="min-w-full divide-y divide-slate-100 text-[12px]">
+                  <thead className="bg-slate-50 text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold">Layer</th>
+                      <th className="px-3 py-2 text-left font-semibold">Splits</th>
+                      <th className="px-3 py-2 text-left font-semibold">Original Sizes</th>
+                      <th className="px-3 py-2 text-left font-semibold">New Sizes</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {[{ label: "Primary", data: analysis.dominanceSplitDetails?.primary }, { label: "Detail", data: analysis.dominanceSplitDetails?.detail }]
+                      .filter((row) => row.data)
+                      .map((row) => (
+                        <tr key={row.label}>
+                          <td className="px-3 py-2 font-semibold text-slate-800">{row.label}</td>
+                          <td className="px-3 py-2 text-slate-700">{row.data?.splitCount ?? 0}</td>
+                          <td className="px-3 py-2 text-slate-700">
+                            {(row.data?.originalSizes ?? []).length > 0 ? row.data?.originalSizes.join(", ") : "-"}
+                          </td>
+                          <td className="px-3 py-2 text-slate-700">
+                            {(row.data?.newSizes ?? []).length > 0 ? row.data?.newSizes.join(", ") : "-"}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}

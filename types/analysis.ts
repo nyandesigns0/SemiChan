@@ -122,6 +122,29 @@ export interface AnalysisResult {
   seedCandidatesEvaluated?: number;
   seedLeaderboard?: SeedLeaderboardEntry[];
   autoSeedReasoning?: string;
+  autoUnit?: boolean;
+  recommendedUnitMode?: { windowSize: number; label: string };
+  unitSearchMetrics?: Array<{
+    mode: { windowSize: number; label: string };
+    score: number;
+    coherence?: number;
+    separation?: number;
+    dominance?: number;
+    kUsed?: number;
+    reasoning?: string;
+  }>;
+  autoUnitReasoning?: string;
+  autoWeights?: boolean;
+  recommendedWeights?: { semanticWeight: number; frequencyWeight: number };
+  weightSearchMetrics?: Array<{
+    weights: { semanticWeight: number; frequencyWeight: number };
+    score: number;
+    evidenceCoherence?: number;
+    evidenceSeparation?: number;
+    dominance?: number;
+    reasoning?: string;
+  }>;
+  autoWeightsReasoning?: string;
   minClusterSize?: number;
   minClusterSizeAuto?: boolean;
   minClusterSizeMerged?: number;

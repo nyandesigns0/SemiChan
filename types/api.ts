@@ -14,6 +14,7 @@ export interface AnalyzeRequest {
   blocks: JurorBlock[];
   kConcepts: number;
   similarityThreshold: number;
+  progressId?: string;
   /** Evidence ranking parameters (semantic vs frequency salience) */
   evidenceRankingParams?: { semanticWeight: number; frequencyWeight: number };
   /** Number of dimensions for visualization (2-10, default 3) */
@@ -26,12 +27,18 @@ export interface AnalyzeRequest {
   // New clustering options
   clusteringMode?: "kmeans" | "hierarchical";
   autoK?: boolean;
+  autoUnit?: boolean;
+  autoWeights?: boolean;
   kMin?: number;
   kMax?: number;
   autoKStability?: boolean;
   autoKDominanceThreshold?: number;
   autoKKPenalty?: number;
   autoKEpsilon?: number;
+  autoMinClusterSize?: boolean;
+  minClusterSize?: number;
+  autoDominanceCap?: boolean;
+  autoDominanceCapThreshold?: number;
   softMembership?: boolean;
   softTopN?: number;
   cutType?: "count" | "granularity";

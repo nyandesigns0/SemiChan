@@ -2,7 +2,8 @@
 
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Sparkles, type LucideIcon, Axis3d } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { Sparkles, type LucideIcon, Axis3d, ToggleLeft } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
 interface AIControlsProps {
@@ -56,20 +57,26 @@ export function AIControls({
     },
   ];
 
+  const allEnabled = enableAxisLabelAI && autoSynthesize;
+  const toggleAll = (enabled: boolean) => {
+    onToggleAxisLabelAI(enabled);
+    onToggleAutoSynthesize(enabled);
+  };
+
   return (
-    <div className="grid grid-cols-1 gap-3">
-      <div className="space-y-2 rounded-2xl border-2 border-transparent bg-slate-50/50 px-4 py-3 shadow-sm">
+    <div className="space-y-4">
+      <div className="space-y-2">
         <Label className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-900">
           <Axis3d className="h-3 w-3" />
           Language Model
         </Label>
         <div className="relative group">
-          <select 
+          <select
             value={selectedModel}
             onChange={(e) => onModelChange(e.target.value)}
             className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-1.5 text-xs font-bold uppercase tracking-tight text-slate-700 outline-none transition-all hover:border-slate-300 focus:ring-2 focus:ring-indigo-500/20"
           >
-            {models.map(m => (
+            {models.map((m) => (
               <option key={m} value={m}>{m}</option>
             ))}
           </select>
@@ -79,35 +86,59 @@ export function AIControls({
         </div>
       </div>
 
-      {controls.map((control) => (
-        <div
-          key={control.label}
-          className={cn(
-            "flex items-center justify-between rounded-2xl border-2 px-4 py-3 transition-all",
-            control.checked
-              ? "border-indigo-500/30 bg-white shadow-md ring-1 ring-indigo-500/10"
-              : "border-transparent bg-slate-50/50 opacity-60 hover:opacity-100 hover:bg-slate-50"
-          )}
-        >
-          <div className="flex items-center gap-3">
-            <div
-              className={cn(
-                "rounded-lg p-2",
-                control.checked ? "bg-indigo-50 text-indigo-600" : "bg-slate-100 text-slate-400"
-              )}
-            >
-              <control.icon className="h-4 w-4" />
+      <Separator className="bg-slate-100/80" />
+
+      <div className="space-y-2">
+        <Label className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-900">
+          <Sparkles className="h-3 w-3" />
+          API Actions
+        </Label>
+
+        <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <div className="rounded-lg bg-indigo-50 p-1.5 text-indigo-600">
+              <ToggleLeft className="h-3.5 w-3.5" />
             </div>
             <div className="flex flex-col">
-              <Label className="cursor-pointer text-sm font-bold text-slate-700">
-                {control.label}
-              </Label>
-              <span className="text-[10px] font-medium text-slate-400">{control.description}</span>
+              <Label className="text-[11px] font-bold text-slate-700">Enable all AI actions</Label>
+              <span className="text-[10px] font-medium text-slate-400">Turns on/off every API-driven toggle below.</span>
             </div>
           </div>
-          <Switch checked={control.checked} onCheckedChange={control.onChange} />
+          <Switch checked={allEnabled} onCheckedChange={toggleAll} />
         </div>
-      ))}
+
+        <div className="space-y-2">
+          {controls.map((control) => (
+            <div
+              key={control.label}
+              className={cn(
+                "flex items-center justify-between rounded-xl border px-3 py-2 transition-all",
+                control.checked
+                  ? "border-indigo-500/30 bg-white shadow-sm ring-1 ring-indigo-500/10"
+                  : "border-slate-200/70 bg-slate-50/40"
+              )}
+            >
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={cn(
+                    "rounded-lg p-1.5",
+                    control.checked ? "bg-indigo-50 text-indigo-600" : "bg-slate-100 text-slate-400"
+                  )}
+                >
+                  <control.icon className="h-3.5 w-3.5" />
+                </div>
+                <div className="flex flex-col">
+                  <Label className="cursor-pointer text-[11px] font-bold text-slate-700">
+                    {control.label}
+                  </Label>
+                  <span className="text-[10px] font-medium text-slate-400">{control.description}</span>
+                </div>
+              </div>
+              <Switch checked={control.checked} onCheckedChange={control.onChange} />
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
