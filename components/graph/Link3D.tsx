@@ -147,7 +147,7 @@ export function Link3D({ link, nodes, isSelected, opacity, onClick, allLinks = [
 
   useFrame(() => {
     if (link.structuralRole !== "bridge" || !glowRef.current) return;
-    const material = glowRef.current.material as (THREE.LineBasicMaterial & { linewidth?: number }) | undefined;
+    const material = glowRef.current.material as unknown as (THREE.LineBasicMaterial & { linewidth?: number }) | undefined;
     if (!material) return;
 
     const distance = camera.position.length();
