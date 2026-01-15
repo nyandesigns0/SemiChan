@@ -10,6 +10,7 @@ import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
 import type { GraphNode } from "@/types/graph";
 import { getPCColor, lightenColor, getAxisColors } from "@/lib/utils/graph-color-utils";
 import { extractKeyphrases } from "@/lib/nlp/keyphrase-extractor";
+import { resolveInsightLabel } from "@/lib/utils/label-utils";
 import type { RawDataExportContext } from "./export-types";
 
 type AxisPlotDatum = {
@@ -282,9 +283,10 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
     return new Map(
       analysis.concepts.map((c) => {
         const insight = insights?.[c.id];
+        const resolvedLabel = resolveInsightLabel(insight?.shortLabel);
         return [
           c.id,
-          { label: insight?.shortLabel || c.label, ai: Boolean(insight?.shortLabel), loading: insight?.isLoadingLabel },
+          { label: resolvedLabel ?? c.label, ai: Boolean(resolvedLabel), loading: insight?.isLoadingLabel },
         ];
       })
     );
@@ -355,7 +357,7 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
     const base = [...(analysis.primaryConcepts || analysis.concepts)];
     const byWeight = (id: string) => conceptWeights.get(id) ?? 0;
     const jurorCounts = (id: string) => (conceptJurorDistribution.get(id) || []).length;
-    const hasAi = (id: string) => Boolean(insights?.[id]?.shortLabel);
+    const hasAi = (id: string) => Boolean(resolveInsightLabel(insights?.[id]?.shortLabel));
 
     return base.sort((a, b) => {
       switch (conceptSort) {
@@ -1685,7 +1687,7 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
               const visibleDistribution = showAll ? distribution : distribution.slice(0, 3);
               const topSentence = concept.representativeSentences?.[0];
               const conceptInsight = insights?.[concept.id];
-              const aiLabel = conceptInsight?.shortLabel;
+              const aiLabel = resolveInsightLabel(conceptInsight?.shortLabel);
               const isLoadingLabel = conceptInsight?.isLoadingLabel;
               const topTerms = Array.isArray(concept.topTerms) ? concept.topTerms : [];
               

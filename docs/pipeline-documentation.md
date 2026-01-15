@@ -313,12 +313,12 @@ Unlike standard TF-IDF, this implementation prioritizes n-grams that appear acro
 ## Step 9: Contrastive Concept Labeling
 **Plain Language:** The system gives each concept a name by finding words that are unique to that group compared to the rest of the text.
 
-**Technical Detail:** Once semantic clusters are formed, the system uses a **contrastive BM25 scoring** method to generate labels. For each cluster, it calculates the BM25 scores for all n-grams in the cluster's sentences and subtracts their average BM25 scores across all *other* clusters. This highlights "distinctive" terms that characterize the cluster's unique contribution to the corpus rather than just common words. The top 2 to 4 distinctive n-grams are joined using a bullet separator (" · ").
+**Technical Detail:** Once semantic clusters are formed, the system uses a **contrastive BM25 scoring** method to generate labels. For each cluster, it calculates the BM25 scores for all n-grams in the cluster's sentences and subtracts their average BM25 scores across all *other* clusters. This highlights "distinctive" terms that characterize the cluster's unique contribution to the corpus rather than just common words. The top 2 to 4 distinctive n-grams are joined using a bullet separator (" · "). If fewer than 3 unique candidates remain after deduplication (tiny clusters or overlapping phrases), the system triggers a semantic fallback: it grabs the three sentences closest to the cluster centroid (by cosine similarity of sentence embeddings), re-extracts keyphrases from those sentences, and merges them to avoid the generic `"Concept"` placeholder.
 
-**Location:** `lib/analysis/concept-labeler.ts` (`contrastiveLabelCluster`, `getClusterTopTerms`)
+**Location:** `lib/analysis/concept-labeler.ts` (`contrastiveLabelCluster`, `getClusterTopTerms`); `lib/graph/graph-builder.ts` (centroid-nearest sentence fallback)
 
 ### Explanation
-The labeler compares "what is said here" vs "what is said everywhere else." This ensures that if every juror mentions "the building," it doesn't become a label for every concept. Instead, labels reflect the specific architectural sub-themes discovered in each cluster.
+The labeler compares "what is said here" vs "what is said everywhere else." This ensures that if every juror mentions "the building," it doesn't become a label for every concept. A centroid-nearest fallback keeps even very small or sparse clusters labeled with meaningful phrases instead of the `"Concept"` default.
 
 ---
 
@@ -404,6 +404,26 @@ Links are created if the weight exceeds a threshold. "Juror-Juror" links are cre
 *   **Link 2 (Sandra ↔ Concept 2):** A stronger connection is drawn representing her praise for light conditions, with a weight of 0.666.
 *   **Link 3 (Sarah ↔ Sandra):** A similarity link is drawn between the two jurors because they both prioritized the "Daylight" concept in their critiques.
 *   **State:** A flat array of `GraphLink` objects ready for the 3D force simulation engine.
+
+### Link Structural Roles & Evidence Caching
+After all link types are built, a cluster-aware pass tags each link with a structural role:
+- **Bridge** if the endpoints land in different concept clusters (detail concepts roll up to their parent for this test).
+- **Cluster-Internal** otherwise (additional roles like hub/peripheral can be added later).
+
+Non-concept endpoints (jurors/designers) inherit the cluster of their strongest concept neighbor, allowing similarity links to be marked as bridges when they span clusters. Evidence counts are cached on the link (`evidenceCount`) for percentile-based opacity without recomputing `evidenceIds.length`.
+
+**Location:** `lib/graph/structural-analysis.ts` (`computeStructuralRoles`), invoked in `lib/graph/graph-builder.ts` right after link creation.
+
+### Layered Link Encoding (Link3D)
+The 3D renderer maps multiple link attributes to distinct channels:
+- **Width = Weight:** Per-kind normalization with a power curve into a 2–8 px range.
+- **Opacity = Evidence:** Percentile of `evidenceCount` across the current link set; zero-evidence links fall back to a faint baseline.
+- **Color = Stance/Kind:** Stance-first for jurorConcept links, otherwise kind color, with saturation boosted by normalized weight.
+- **Pattern = Structural Role:** Bridge links show a zoom-gated pulse glow; non-bridges render as a single line.
+
+GraphCanvas3D passes the full visible link set to each Link3D so normalization respects filters/expansion state.
+
+**Location:** `components/graph/Link3D.tsx`, `components/graph/GraphCanvas3D.tsx`, constants in `lib/utils/link-visualization-constants.ts`, normalization helpers in `lib/utils/link-normalization.ts`.
 
 ---
 

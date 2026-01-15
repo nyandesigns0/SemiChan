@@ -6,6 +6,7 @@ import { Text, Billboard, Line, Html } from "@react-three/drei";
 import * as THREE from "three";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { getPCColor, lightenColor, mixColors, offsetColorByIdentity } from "@/lib/utils/graph-color-utils";
+import { resolveConceptLabel } from "@/lib/utils/label-utils";
 import { stanceColor } from "@/lib/utils/stance-utils";
 import type { GraphLink, GraphNode, NodeType } from "@/types/graph";
 import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
@@ -217,7 +218,7 @@ export function Node3D({
   const meshOpacity = opacity === 1.0 ? 1.0 : 0.3;
   const isGhost = meshOpacity < 1.0;
   const radius = (node.size / 16) * 0.3; // Scale down for 3D space
-  const labelText = insight?.shortLabel || node.label;
+  const labelText = resolveConceptLabel(insight?.shortLabel, node.label);
   const shouldShowLabel = isSelected || hovered || isVisible;
   
   // Procedural root structure generation

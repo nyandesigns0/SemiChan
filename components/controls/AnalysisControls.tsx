@@ -585,6 +585,80 @@ export function AnalysisControls({
 
                 <div className="h-px bg-slate-100" />
 
+                <div className="space-y-2.5 rounded-xl border border-slate-100 bg-slate-50/30 p-2.5">
+                  {/* Auto-Unit Toggle */}
+                  <div className="flex items-center justify-between group">
+                    <div className="space-y-0.5">
+                      <Label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                        <Target className="h-3 w-3 text-indigo-500" />
+                        Auto-Unit Discovery
+                      </Label>
+                      <p className="text-[9px] text-slate-500">Optimize contextual window size</p>
+                    </div>
+                    <Switch checked={autoUnit} onCheckedChange={onAutoUnitChange} className="scale-75" />
+                  </div>
+
+                  {autoUnit && (
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => setShowAutoUnitSettings(!showAutoUnitSettings)}
+                        className="flex w-full items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-indigo-500 transition-colors py-0.5 px-1"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Gauge className="h-3 w-3" />
+                          Auto-Unit Settings
+                        </div>
+                        {showAutoUnitSettings ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                      </button>
+                      {showAutoUnitSettings && (
+                        <div className="space-y-2 rounded-lg border border-slate-100 bg-white/60 p-2">
+                          <p className="text-[10px] text-slate-500">
+                            Tests sentence-only, window-3 (A1), and window-5 (A2) modes against the Auto-K range.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="h-px bg-slate-100" />
+
+                  {/* Auto-Weights Toggle */}
+                  <div className="flex items-center justify-between group">
+                    <div className="space-y-0.5">
+                      <Label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                        <Scale className="h-3 w-3 text-indigo-500" />
+                        Auto-Weights Discovery
+                      </Label>
+                      <p className="text-[9px] text-slate-500">Optimize semantic/frequency balance</p>
+                    </div>
+                    <Switch checked={autoWeights} onCheckedChange={onAutoWeightsChange} className="scale-75" />
+                  </div>
+
+                  {autoWeights && (
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => setShowAutoWeightsSettings(!showAutoWeightsSettings)}
+                        className="flex w-full items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-indigo-500 transition-colors py-0.5 px-1"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Gauge className="h-3 w-3" />
+                          Auto-Weights Settings
+                        </div>
+                        {showAutoWeightsSettings ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                      </button>
+                      {showAutoWeightsSettings && (
+                        <div className="space-y-2 rounded-lg border border-slate-100 bg-white/60 p-2">
+                          <p className="text-[10px] text-slate-500">
+                            Evaluates 0.9/0.1, 0.8/0.2, 0.7/0.3, and 0.6/0.4 weight pairs for evidence ranking.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="h-px bg-slate-100" />
+
                 {/* Cluster Hygiene */}
                 <div className="space-y-1">
                   <button
@@ -741,88 +815,6 @@ export function AnalysisControls({
                   </>
                 )}
               </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <Separator className="bg-slate-100/80" />
-
-      {/* Category: Model Tuning */}
-      <div className="space-y-2">
-        <Label className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-900">
-          <Sparkles className="h-3 w-3" />
-          Model Tuning
-        </Label>
-
-        <div className="space-y-2.5 rounded-xl border border-slate-100 bg-slate-50/30 p-2.5">
-          {/* Auto-Unit Toggle */}
-          <div className="flex items-center justify-between group">
-            <div className="space-y-0.5">
-              <Label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
-                <Target className="h-3 w-3 text-indigo-500" />
-                Auto-Unit Discovery
-              </Label>
-              <p className="text-[9px] text-slate-500">Optimize contextual window size</p>
-            </div>
-            <Switch checked={autoUnit} onCheckedChange={onAutoUnitChange} className="scale-75" />
-          </div>
-
-          {autoUnit && (
-            <div className="space-y-1">
-              <button
-                onClick={() => setShowAutoUnitSettings(!showAutoUnitSettings)}
-                className="flex w-full items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-indigo-500 transition-colors py-0.5 px-1"
-              >
-                <div className="flex items-center gap-1.5">
-                  <Gauge className="h-3 w-3" />
-                  Auto-Unit Settings
-                </div>
-                {showAutoUnitSettings ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              </button>
-              {showAutoUnitSettings && (
-                <div className="space-y-2 rounded-lg border border-slate-100 bg-white/60 p-2">
-                  <p className="text-[10px] text-slate-500">
-                    Tests sentence-only, window-3 (A1), and window-5 (A2) modes against the Auto-K range.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="h-px bg-slate-100" />
-
-          {/* Auto-Weights Toggle */}
-          <div className="flex items-center justify-between group">
-            <div className="space-y-0.5">
-              <Label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
-                <Scale className="h-3 w-3 text-indigo-500" />
-                Auto-Weights Discovery
-              </Label>
-              <p className="text-[9px] text-slate-500">Optimize semantic/frequency balance</p>
-            </div>
-            <Switch checked={autoWeights} onCheckedChange={onAutoWeightsChange} className="scale-75" />
-          </div>
-
-          {autoWeights && (
-            <div className="space-y-1">
-              <button
-                onClick={() => setShowAutoWeightsSettings(!showAutoWeightsSettings)}
-                className="flex w-full items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-indigo-500 transition-colors py-0.5 px-1"
-              >
-                <div className="flex items-center gap-1.5">
-                  <Gauge className="h-3 w-3" />
-                  Auto-Weights Settings
-                </div>
-                {showAutoWeightsSettings ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              </button>
-              {showAutoWeightsSettings && (
-                <div className="space-y-2 rounded-lg border border-slate-100 bg-white/60 p-2">
-                  <p className="text-[10px] text-slate-500">
-                    Evaluates 0.9/0.1, 0.8/0.2, 0.7/0.3, and 0.6/0.4 weight pairs for evidence ranking.
-                  </p>
-                </div>
-              )}
             </div>
           )}
         </div>

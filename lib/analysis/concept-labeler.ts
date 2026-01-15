@@ -1,7 +1,9 @@
 import type { BM25Model } from "@/types/nlp";
+import { STOPWORDS } from "@/constants/nlp-constants";
 import { extractClusterKeyphrases } from "@/lib/nlp/keyphrase-extractor";
 
 const STEM_SUFFIXES = ["ation", "ition", "tion", "sion", "ingly", "edly", "ing", "ed", "est", "er", "ly", "es", "s"];
+const SNIPPET_MAX_WORDS = 6;
 
 function stemTerm(term: string): string {
   const cleaned = term.toLowerCase().trim();
@@ -15,6 +17,56 @@ function stemTerm(term: string): string {
   return token;
 }
 
+function normalizePhrase(phrase: string): string {
+  return phrase.trim().replace(/\s+/g, " ");
+}
+
+function cleanToken(token: string): string {
+  return token.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "");
+}
+
+function isMeaningfulToken(token: string): boolean {
+  const lower = token.toLowerCase();
+  if (lower.length < 2) return false;
+  return !STOPWORDS.has(lower);
+}
+
+function extractSentenceSnippet(sentence: string, maxWords: number): string {
+  if (!sentence) return "";
+  const tokens = sentence
+    .replace(/[^A-Za-z0-9\s'-]/g, " ")
+    .split(/\s+/)
+    .map((t) => cleanToken(t))
+    .filter(Boolean);
+
+  const meaningful = tokens.filter((t) => isMeaningfulToken(t));
+  if (meaningful.length === 0) return "";
+  return meaningful.slice(0, maxWords).join(" ");
+}
+
+function extractSentenceSnippets(sentences: string[], maxWords: number): string[] {
+  return sentences
+    .map((sentence) => extractSentenceSnippet(sentence, maxWords))
+    .filter(Boolean);
+}
+
+function extractEmergencySnippet(sentence: string, maxWords: number): string {
+  if (!sentence) return "";
+  const tokens = sentence
+    .replace(/[^A-Za-z0-9\s'-]/g, " ")
+    .split(/\s+/)
+    .map((t) => cleanToken(t))
+    .filter(Boolean);
+  if (tokens.length === 0) return "";
+  return tokens.slice(0, maxWords).join(" ");
+}
+
+function extractEmergencySnippets(sentences: string[], maxWords: number): string[] {
+  return sentences
+    .map((sentence) => extractEmergencySnippet(sentence, maxWords))
+    .filter(Boolean);
+}
+
 /**
  * Generate concept labels prioritizing cluster-specific keyphrases and contrastive terms.
  * Finds phrases that are prevalent within the cluster and distinctive relative to the corpus.
@@ -24,7 +76,9 @@ export function contrastiveLabelCluster(
   bm25Model: BM25Model,
   sentencesInCluster: string[],
   allSentences: string[],
-  topNCount: number = 4
+  topNCount: number = 4,
+  nearestSentences?: string[],
+  fallbackId?: string
 ): { label: string; keyphrases: string[]; terms: string[] } {
   const keyphrases = extractClusterKeyphrases(
     sentencesInCluster,
@@ -41,37 +95,90 @@ export function contrastiveLabelCluster(
   );
 
   const seenStems = new Set<string>();
+  const seenNormalized = new Set<string>();
   const deduped: string[] = [];
 
-  const addCandidate = (phrase: string) => {
-    const stem = stemTerm(phrase);
-    if (!stem) return;
-    if (seenStems.has(stem)) return;
-    const normalized = phrase.toLowerCase();
-    const isSubstringDuplicate = deduped.some((t) => {
-      const tNorm = t.toLowerCase();
-      return tNorm.includes(normalized) || normalized.includes(tNorm);
-    });
-    if (isSubstringDuplicate) return;
-    seenStems.add(stem);
-    deduped.push(phrase);
+  const addCandidate = (phrase: string, mode: "strict" | "relaxed") => {
+    const normalized = normalizePhrase(phrase).toLowerCase();
+    if (!normalized) return;
+    if (seenNormalized.has(normalized)) return;
+    const hasContent = normalized.replace(/[^a-z0-9]/g, "").length >= 2;
+    if (!hasContent) return;
+    if (mode === "strict") {
+      const stem = stemTerm(normalized);
+      if (!stem) return;
+      if (seenStems.has(stem)) return;
+      const isSubstringDuplicate = deduped.some((t) => {
+        const tNorm = t.toLowerCase();
+        return tNorm.includes(normalized) || normalized.includes(tNorm);
+      });
+      if (isSubstringDuplicate) return;
+      seenStems.add(stem);
+    }
+    seenNormalized.add(normalized);
+    deduped.push(normalizePhrase(phrase));
   };
 
   for (const phrase of keyphrases) {
-    addCandidate(phrase);
+    addCandidate(phrase, "strict");
     if (deduped.length >= topNCount) break;
   }
 
   if (deduped.length < topNCount) {
     for (const term of terms) {
-      addCandidate(term);
+      addCandidate(term, "strict");
       if (deduped.length >= topNCount) break;
     }
   }
 
-  const label = deduped.length > 0 ? deduped.slice(0, topNCount).join(" · ") : "Concept";
+  const cleanedClusterSentences = sentencesInCluster.filter((s) => s && s.trim().length > 0);
+  const cleanedNearestSentences = (nearestSentences ?? []).filter((s) => s && s.trim().length > 0);
 
-  return { label, keyphrases, terms };
+  let fallbackKeyphrases: string[] = [];
+  if (deduped.length < topNCount) {
+    if (cleanedNearestSentences.length > 0) {
+      fallbackKeyphrases = extractClusterKeyphrases(
+        cleanedNearestSentences,
+        allSentences,
+        Math.max(topNCount * 2, 8)
+      );
+      for (const phrase of fallbackKeyphrases) {
+        addCandidate(phrase, "relaxed");
+        if (deduped.length >= topNCount) break;
+      }
+    }
+
+    if (deduped.length < topNCount && cleanedNearestSentences.length > 0) {
+      const sentenceSnippets = extractSentenceSnippets(cleanedNearestSentences, SNIPPET_MAX_WORDS);
+      for (const snippet of sentenceSnippets) {
+        addCandidate(snippet, "relaxed");
+        if (deduped.length >= topNCount) break;
+      }
+    }
+
+    if (deduped.length < topNCount && cleanedClusterSentences.length > 0) {
+      const clusterSnippets = extractSentenceSnippets(cleanedClusterSentences, SNIPPET_MAX_WORDS);
+      for (const snippet of clusterSnippets) {
+        addCandidate(snippet, "relaxed");
+        if (deduped.length >= topNCount) break;
+      }
+    }
+
+    if (deduped.length < topNCount) {
+      const emergencySource =
+        cleanedClusterSentences.length > 0 ? cleanedClusterSentences : cleanedNearestSentences;
+      const emergencySnippets = extractEmergencySnippets(emergencySource, SNIPPET_MAX_WORDS);
+      for (const snippet of emergencySnippets) {
+        addCandidate(snippet, "relaxed");
+        if (deduped.length >= topNCount) break;
+      }
+    }
+  }
+
+  const labelParts = deduped.slice(0, topNCount);
+  const label = labelParts.length > 0 ? labelParts.join(" Aú ") : (fallbackId ?? "concept:unknown");
+
+  return { label, keyphrases: keyphrases.length > 0 ? keyphrases : fallbackKeyphrases, terms };
 }
 
 /**

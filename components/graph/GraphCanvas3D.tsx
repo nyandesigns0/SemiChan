@@ -279,6 +279,11 @@ interface NeuronLoaderProps {
   samplePhase?: "idle" | "loading" | "ready";
 }
 
+interface PointerPosition {
+  x: number;
+  y: number;
+}
+
 function NeuronLoader({
   scale = 1,
   pointColor = "#7dd3fc",
@@ -293,6 +298,8 @@ function NeuronLoader({
   const pointsRef = useRef<THREE.Points>(null);
   const linesRef = useRef<THREE.LineSegments>(null);
   const phase2StartTime = useRef<number | null>(null);
+  const pointerTarget = useRef<PointerPosition>({ x: 0, y: 0 });
+  const pointerCurrent = useRef<PointerPosition>({ x: 0, y: 0 });
 
   // Store initial positions, colors, sizes, and create color array
   const { initialPositions, initialColors, initialSizes, initialLinePositions } = useMemo(() => {
@@ -410,13 +417,42 @@ function NeuronLoader({
     return 1 - Math.pow(1 - t, 3);
   };
 
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => {
+      if (window.innerWidth === 0 || window.innerHeight === 0) return;
+      const normalizedX = (event.clientX / window.innerWidth - 0.5) * 2;
+      const normalizedY = (event.clientY / window.innerHeight - 0.5) * 2;
+      pointerTarget.current.x = Math.max(-0.9, Math.min(0.9, normalizedX));
+      pointerTarget.current.y = Math.max(-0.6, Math.min(0.6, -normalizedY));
+    };
+
+    const handlePointerLeave = () => {
+      pointerTarget.current.x = 0;
+      pointerTarget.current.y = 0;
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerleave", handlePointerLeave);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerleave", handlePointerLeave);
+    };
+  }, []);
+
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
     
-    // Rotation speed
-    if (!disableRotation && groupRef.current) {
-      groupRef.current.rotation.y = t * 0.08;
-      groupRef.current.rotation.x = t * 0.05;
+    pointerCurrent.current.x += (pointerTarget.current.x - pointerCurrent.current.x) * 0.08;
+    pointerCurrent.current.y += (pointerTarget.current.y - pointerCurrent.current.y) * 0.08;
+
+    const autoRotateY = disableRotation ? 0 : t * 0.08;
+    const autoRotateX = disableRotation ? 0 : t * 0.05;
+    const pointerRotationY = pointerCurrent.current.x * 0.6;
+    const pointerRotationX = pointerCurrent.current.y * 0.45;
+
+    if (groupRef.current) {
+      groupRef.current.rotation.y = autoRotateY + pointerRotationY;
+      groupRef.current.rotation.x = autoRotateX + pointerRotationX;
     }
 
     // Handle two-phase shrinking animation
@@ -835,6 +871,7 @@ function SceneContent({
           nodes={nodeMap}
           isSelected={selectedLinkId === link.id}
           opacity={linkVisibility.get(link.id) ?? 0}
+          allLinks={visibleLinks}
           onClick={onLinkClick}
         />
       ))}
@@ -973,6 +1010,11 @@ export function GraphCanvas3D({
     }
   }, []);
 
+  const handleCanvasInteraction = useCallback(() => {
+    if (!turntableEnabled || autoRotateDisabled || !onAutoRotateDisabled) return;
+    onAutoRotateDisabled();
+  }, [autoRotateDisabled, onAutoRotateDisabled, turntableEnabled]);
+
   // Mark model as ready after a short delay to allow 3D scene to initialize
   useEffect(() => {
     if (empty && samplePhase === "idle") {
@@ -1091,6 +1133,7 @@ export function GraphCanvas3D({
           gl={{ antialias: true, alpha: true }}
           dpr={[1, 2]}
           style={{ background: "transparent" }}
+          onPointerDown={handleCanvasInteraction}
         >
           <Suspense fallback={null}>
             <CameraController

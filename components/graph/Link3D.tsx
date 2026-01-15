@@ -1,26 +1,15 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Line } from "@react-three/drei";
+import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
+import type { Line2 } from "three-stdlib";
 import type { GraphLink, GraphNode } from "@/types/graph";
 import type { Stance } from "@/types/nlp";
-
-// Helper function to lighten a hex color by mixing with white
-function lightenColor(hex: string, amount: number): string {
-  // Remove # if present
-  const hexClean = hex.replace("#", "");
-  // Convert to RGB
-  const r = parseInt(hexClean.substring(0, 2), 16);
-  const g = parseInt(hexClean.substring(2, 4), 16);
-  const b = parseInt(hexClean.substring(4, 6), 16);
-  // Mix with white (255, 255, 255)
-  const newR = Math.round(r + (255 - r) * amount);
-  const newG = Math.round(g + (255 - g) * amount);
-  const newB = Math.round(b + (255 - b) * amount);
-  // Convert back to hex
-  return `#${newR.toString(16).padStart(2, "0")}${newG.toString(16).padStart(2, "0")}${newB.toString(16).padStart(2, "0")}`;
-}
+import { LINK_VISUALIZATION } from "@/lib/utils/link-visualization-constants";
+import { applyPowerCurve, buildEvidenceCountCache, computeEvidenceCountPercentile, computeWeightBounds, normalizeWeightByType } from "@/lib/utils/link-normalization";
+import { lightenColor } from "@/lib/utils/graph-color-utils";
 
 interface Link3DProps {
   link: GraphLink;
@@ -28,105 +17,189 @@ interface Link3DProps {
   isSelected: boolean;
   opacity: number; // 0 = grayed out, 0.7 = connected, 1.0 = selected/visible
   onClick: (link: GraphLink, event?: MouseEvent) => void;
+  allLinks?: GraphLink[];
 }
 
 // Color scheme for stance types
 const stanceColors: Record<Stance, string> = {
-  praise: "#22c55e", // green-500
-  critique: "#ef4444", // red-500
-  suggestion: "#f59e0b", // amber-500
-  neutral: "#94a3b8", // slate-400
+  praise: "#22c55e",
+  critique: "#ef4444",
+  suggestion: "#f59e0b",
+  neutral: "#94a3b8",
 };
 
 // Link kind colors
-const kindColors = {
-  jurorConcept: "#64748b", // slate-500
-  jurorJuror: "#3b82f6", // blue-500
-  conceptConcept: "#8b5cf6", // violet-500
-  jurorDesignerConcept: "#0ea5e9", // cyan for alignment
+const kindColors: Record<GraphLink["kind"], string> = {
+  jurorConcept: "#64748b",
+  jurorJuror: "#3b82f6",
+  conceptConcept: "#8b5cf6",
+  jurorDesignerConcept: "#0ea5e9",
 };
 
-export function Link3D({ link, nodes, isSelected, opacity, onClick }: Link3DProps) {
+function adjustColorSaturation(hex: string, saturation: number): string {
+  const color = new THREE.Color(hex);
+  const hsl = { h: 0, s: 0, l: 0 };
+  color.getHSL(hsl);
+  const adjusted = new THREE.Color().setHSL(
+    hsl.h,
+    Math.min(1, Math.max(0, hsl.s * saturation)),
+    hsl.l
+  );
+  return `#${adjusted.getHexString()}`;
+}
+
+export function Link3D({ link, nodes, isSelected, opacity, onClick, allLinks = [] }: Link3DProps) {
+  const { camera } = useThree();
   const [hovered, setHovered] = useState(false);
-  
-  // Get source and target nodes
+  const glowRef = useRef<Line2>(null);
+  const linkOpacityRef = useRef(0);
+  const lineWidthRef = useRef(0);
+
   const sourceId = typeof link.source === "string" ? link.source : link.source.id;
   const targetId = typeof link.target === "string" ? link.target : link.target.id;
-  
+
   const sourceNode = nodes.get(sourceId);
   const targetNode = nodes.get(targetId);
-  
-  // Calculate positions
+
+  const weightBounds = useMemo(() => computeWeightBounds(allLinks), [allLinks]);
+  const evidenceCache = useMemo(() => buildEvidenceCountCache(allLinks), [allLinks]);
+
   const points = useMemo(() => {
     if (!sourceNode || !targetNode) return null;
-    
+
     const start = new THREE.Vector3(
       sourceNode.x ?? 0,
       sourceNode.y ?? 0,
       sourceNode.z ?? 0
     );
-    
+
     const end = new THREE.Vector3(
       targetNode.x ?? 0,
       targetNode.y ?? 0,
       targetNode.z ?? 0
     );
-    
+
     return [start, end];
   }, [sourceNode, targetNode]);
-  
+
   if (!points || !sourceNode || !targetNode) return null;
-  
-  // Determine color based on link kind and stance
+
   const baseColor = link.kind === "jurorConcept" && link.stance
     ? stanceColors[link.stance]
-    : kindColors[link.kind];
-  
-  const isVisible = opacity > 0;
-  let color = baseColor;
-  if (opacity === 0) {
-    color = hovered ? "#64748b" : "#94a3b8"; // Neutral slate to keep ghosting visible
-  } else if (isSelected) {
-    color = "#fbbf24";
-  } else if (hovered) {
-    color = "#94a3b8";
-  } else if (opacity === 0.7) {
-    // Lighten the color for connected links (70% opacity means connected)
-    color = lightenColor(baseColor, 0.5);
-  }
-  
-  // Link opacity: 1.0 for selected/primary, 0.2-0.3 for x-ray effect
-  const linkOpacity = opacity === 1.0 
-    ? 1.0 
-    : (opacity === 0.7 ? 0.4 : 0.2); 
-  const isGhost = linkOpacity < 1.0;
+    : kindColors[link.kind] ?? "#64748b";
 
-  // Line width based on weight
-  const lineWidth = Math.max(2, Math.min(5, link.weight * 12));
-  
-  // Apply hover/select width increase
-  // Note: For grayed out elements, we follow the node behavior of not changing size on hover
-  const finalLineWidth = isVisible && (isSelected || hovered) ? lineWidth * 1.5 : lineWidth;
-  
+  const normalizedWeight = useMemo(
+    () => normalizeWeightByType(link.weight, link.kind, allLinks, weightBounds),
+    [link.weight, link.kind, allLinks, weightBounds]
+  );
+  const weightedCurve = useMemo(
+    () => applyPowerCurve(normalizedWeight, LINK_VISUALIZATION.WIDTH.POWER_EXPONENT),
+    [normalizedWeight]
+  );
+  const baseLineWidth = useMemo(
+    () => LINK_VISUALIZATION.WIDTH.MIN + weightedCurve * (LINK_VISUALIZATION.WIDTH.MAX - LINK_VISUALIZATION.WIDTH.MIN),
+    [weightedCurve]
+  );
+  lineWidthRef.current = baseLineWidth;
+
+  const evidencePercentile = useMemo(
+    () => computeEvidenceCountPercentile(link, allLinks, evidenceCache),
+    [link, allLinks, evidenceCache]
+  );
+  const evidenceCount = link.evidenceCount ?? link.evidenceIds?.length ?? 0;
+  const baseOpacity = evidenceCount === 0
+    ? LINK_VISUALIZATION.OPACITY.NO_EVIDENCE
+    : LINK_VISUALIZATION.OPACITY.MIN +
+      evidencePercentile * (LINK_VISUALIZATION.OPACITY.MAX - LINK_VISUALIZATION.OPACITY.MIN);
+
+  const visibilityMultiplier = Math.max(0, Math.min(1, opacity));
+  const saturationMultiplier = 0.5 + normalizedWeight * 0.5;
+  const saturatedColor = adjustColorSaturation(baseColor, saturationMultiplier);
+
+  let displayColor = saturatedColor;
+  if (visibilityMultiplier === 0) {
+    displayColor = hovered ? "#64748b" : "#94a3b8";
+  } else if (isSelected) {
+    displayColor = "#fbbf24";
+  } else if (hovered) {
+    displayColor = lightenColor(saturatedColor, 0.35);
+  } else if (visibilityMultiplier < 1) {
+    displayColor = lightenColor(saturatedColor, 0.45);
+  }
+
+  const computedOpacity = isSelected
+    ? LINK_VISUALIZATION.OPACITY.SELECTED_OVERRIDE
+    : Math.min(LINK_VISUALIZATION.OPACITY.MAX, baseOpacity * visibilityMultiplier);
+  linkOpacityRef.current = computedOpacity;
+  const isGhost = !isSelected && visibilityMultiplier < 1;
+
+  const finalLineWidth = visibilityMultiplier > 0 && (isSelected || hovered)
+    ? baseLineWidth * LINK_VISUALIZATION.WIDTH.HOVER_SCALE
+    : baseLineWidth;
+
+  useEffect(() => {
+    linkOpacityRef.current = computedOpacity;
+  }, [computedOpacity]);
+
+  useEffect(() => {
+    lineWidthRef.current = finalLineWidth;
+  }, [finalLineWidth]);
+
+  useFrame(() => {
+    if (link.structuralRole !== "bridge" || !glowRef.current) return;
+    const material = glowRef.current.material as (THREE.LineBasicMaterial & { linewidth?: number }) | undefined;
+    if (!material) return;
+
+    const distance = camera.position.length();
+    const normalizedZoom = 1 - Math.min(1, distance / LINK_VISUALIZATION.PATTERN.MAX_CAMERA_DISTANCE);
+    if (normalizedZoom < LINK_VISUALIZATION.PATTERN.MIN_ZOOM_FOR_BRIDGE || linkOpacityRef.current <= 0) {
+      if (material.opacity !== 0) {
+        material.opacity = 0;
+        material.needsUpdate = true;
+      }
+      return;
+    }
+
+    const targetOpacity = Math.min(
+      LINK_VISUALIZATION.PATTERN.MAX_GLOW_OPACITY,
+      linkOpacityRef.current * LINK_VISUALIZATION.ANIMATION.GLOW_INTENSITY_MIN
+    );
+    material.opacity = targetOpacity;
+    material.linewidth = lineWidthRef.current * LINK_VISUALIZATION.WIDTH.BRIDGE_GLOW_SCALE;
+    material.needsUpdate = true;
+  });
+
   return (
     <group
       onPointerOver={() => setHovered(true)}
       onPointerOut={() => setHovered(false)}
     >
+      {link.structuralRole === "bridge" && (
+        <Line
+          ref={glowRef}
+          points={points}
+          color={displayColor}
+          lineWidth={baseLineWidth * LINK_VISUALIZATION.WIDTH.BRIDGE_GLOW_SCALE}
+          opacity={0}
+          transparent
+          depthWrite={false}
+          renderOrder={-1}
+        />
+      )}
+
       <Line
         points={points}
-        color={color}
+        color={displayColor}
         lineWidth={finalLineWidth}
-        opacity={linkOpacity}
-        transparent={true}
+        opacity={computedOpacity}
+        transparent
         depthWrite={!isGhost}
         onClick={(e) => {
           e.stopPropagation();
           onClick(link, e.nativeEvent as MouseEvent);
         }}
       />
-      
-      {/* Invisible wider line for easier clicking */}
+
       <Line
         points={points}
         color="#000000"
@@ -141,4 +214,3 @@ export function Link3D({ link, nodes, isSelected, opacity, onClick }: Link3DProp
     </group>
   );
 }
-

@@ -28,5 +28,7 @@ export interface GraphLink extends SimulationLinkDatum<GraphNode> {
   weight: number;
   stance?: Stance;
   evidenceIds?: string[];
+  evidenceCount?: number;
   kind: "jurorConcept" | "jurorJuror" | "conceptConcept" | "jurorDesignerConcept";
+  structuralRole?: "bridge" | "cluster-internal" | "hub" | "peripheral";
 }

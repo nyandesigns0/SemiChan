@@ -42,7 +42,8 @@ export function useConceptSummarizer(
       try {
         const shortLabel = await generateShortLabel(
           concept.topTerms,
-          concept.representativeSentences || []
+          concept.representativeSentences || [],
+          concept.label
         );
         setInsights((prev) => ({
           ...prev,
@@ -124,11 +125,15 @@ export function useConceptSummarizer(
       console.log(`[Synthesis] Received response for ${conceptId}:`, data);
       if (onAddLog) onAddLog("api_response", `Synthesis complete: ${data.concept_title}`, { ...data, model: selectedModel });
       
+      const trimmedTitle = data.concept_title?.trim();
+      const fallbackTitle = insights[conceptId]?.shortLabel || concept.label;
+      const resolvedTitle = trimmedTitle && trimmedTitle.toLowerCase() !== "concept" ? trimmedTitle : fallbackTitle;
+
       setInsights((prev) => ({
         ...prev,
         [conceptId]: {
           ...prev[conceptId],
-          shortLabel: data.concept_title,
+          shortLabel: resolvedTitle,
           summary: data.concept_one_liner,
           isLoadingSummary: false,
         },

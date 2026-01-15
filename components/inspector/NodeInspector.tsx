@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils/cn";
 import { extractKeyphrases } from "@/lib/nlp/keyphrase-extractor";
 import { stanceColor } from "@/lib/utils/stance-utils";
 import { getPCColor, lightenColor } from "@/lib/utils/graph-color-utils";
+import { resolveConceptLabel } from "@/lib/utils/label-utils";
 import type { GraphNode } from "@/types/graph";
 import type { AnalysisResult, SentenceRecord } from "@/types/analysis";
 import type { JurorBlock } from "@/types/nlp";
@@ -96,6 +97,7 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
   const nodeColor = node.pcValues ? getPCColor(node.pcValues, baseColor) : baseColor;
   const lightNodeColor = lightenColor(nodeColor, 0.9);
   const mediumNodeColor = lightenColor(nodeColor, 0.5);
+  const resolvedLabel = resolveConceptLabel(insight?.shortLabel, node.label);
 
   const getEntityColor = (id: string, type: "juror" | "concept") => {
     const targetNode = analysis.nodes.find(n => n.id === id || (type === "juror" && n.id === `juror:${id}`));
@@ -505,7 +507,7 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
                   <div className="h-6 w-full animate-pulse rounded-lg bg-slate-200" />
                 ) : (
                   <div className="text-base font-black text-slate-900 tracking-tight leading-tight">
-                    {insight?.shortLabel || node.label}
+                    {resolvedLabel}
                   </div>
                 )}
               </div>

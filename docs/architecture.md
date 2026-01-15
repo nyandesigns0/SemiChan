@@ -189,6 +189,13 @@ The 3D graph visualization uses:
 - **Procedural Rendering**: Programmatically generated root systems for concept nodes
 - **Camera Controls**: Orbit controls for interactive navigation
 
+**Link Rendering (Link3D)**
+- Width encodes weight per link type (jurorConcept, jurorJuror, conceptConcept, jurorDesignerConcept) using a power curve into a 2–8 px band.
+- Opacity encodes evidence via percentile of cached `evidenceCount`, with a faint baseline for zero evidence.
+- Color stays stance-first for jurorConcept links, otherwise kind-based, with saturation boosted by normalized weight.
+- Bridge links (computed server-side via cluster-aware structural analysis) get a zoom-gated pulse glow; non-bridges render as single strokes.
+- Constants live in `lib/utils/link-visualization-constants.ts`; normalization helpers in `lib/utils/link-normalization.ts`; structural roles assigned in `lib/graph/structural-analysis.ts` and consumed in `components/graph/Link3D.tsx`.
+
 ---
 
 ## Backend Architecture
@@ -253,7 +260,7 @@ lib/
 │   ├── cluster-eval.ts            # K evaluation metrics
 │   ├── soft-membership.ts         # Soft assignment logic
 │   ├── concept-centroids.ts       # Centroid computation
-│   ├── concept-labeler.ts         # Contrastive concept labeling
+│   ├── concept-labeler.ts         # Contrastive concept labeling with centroid-nearest fallback
 │   └── evidence-ranker.ts         # Evidence ranking logic
 ├── graph/                # Graph construction
 │   ├── graph-builder.ts           # Main graph assembly
@@ -290,7 +297,7 @@ The analysis pipeline follows a staged approach:
 3. **Clustering** → Semantic concept discovery (hierarchical or K-Means)
 4. **Graph Construction** → Node and link generation
 5. **Dimensionality Reduction** → 3D position calculation (PCA)
-6. **Labeling & Ranking** → Contrastive labeling and evidence ranking
+6. **Labeling & Ranking** → Contrastive labeling with centroid-nearest fallback + evidence ranking
 7. **Assembly** → Final graph structure assembly
 
 Each stage is modular and can be configured independently.
@@ -321,7 +328,7 @@ User Input (Text/PDF)
     ├── Semantic Embeddings (@xenova/transformers)
     ├── BM25 Frequency Vectors
     ├── Clustering (Hierarchical/K-Means on Semantic Vectors)
-    ├── Contrastive Concept Labeling
+    ├── Contrastive Concept Labeling (BM25 + centroid-nearest fallback)
     ├── Evidence Ranking (Semantic + BM25)
     ├── Juror-Concept Mapping
     ├── 3D Position Calculation (PCA on Semantic Centroids)
@@ -333,6 +340,8 @@ User Input (Text/PDF)
     ↓
 3D Visualization
 ```
+
+Contrastive concept labeling now receives the top three centroid-nearest sentences (computed in `graph-builder.ts`) so `contrastiveLabelCluster` can backfill keyphrases for tiny or heavily deduped clusters instead of falling back to the generic `"Concept"` label.
 
 ### State Synchronization
 
@@ -600,4 +609,3 @@ The architecture supports extension through:
 ## Conclusion
 
 SemiChan's architecture balances flexibility, performance, and maintainability. The clear separation of concerns, strong typing, and modular design make it easy to understand, extend, and modify. The hybrid analysis approach and 3D visualization provide powerful tools for understanding complex textual relationships.
-

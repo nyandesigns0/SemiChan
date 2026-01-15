@@ -17,10 +17,12 @@ import {
 import { labelAxes } from "./axis-labeler";
 import { embedAnchorAxes, projectConceptCentroids, projectJurorVectors } from "@/lib/analysis/anchor-axes";
 import type { Dendrogram } from "@/lib/analysis/hierarchical-clustering";
+import { computeStructuralRoles } from "./structural-analysis";
 
 // Core analysis imports
 import { embedSentences } from "@/lib/analysis/sentence-embeddings";
 import { buildBM25 } from "@/lib/analysis/bm25";
+import { cosine } from "@/lib/analysis/tfidf";
 import { contrastiveLabelCluster, getClusterTopTerms, computeContrastiveTermScores } from "@/lib/analysis/concept-labeler";
 import { rankEvidenceForConcept, DEFAULT_EVIDENCE_RANKING_PARAMS } from "@/lib/analysis/evidence-ranker";
 import { createSentenceWindows } from "@/lib/analysis/contextual-units";
@@ -921,6 +923,75 @@ export async function buildAnalysis(
     );
   }
 
+  const computeNearestSentences = (
+    centroid: Float64Array,
+    sentenceIndices: number[],
+    limit: number = 3
+  ): string[] => {
+    const diagnostics = {
+      total: docs.length,
+      missingVectors: 0,
+      emptySentences: 0,
+      invalidScores: 0,
+    };
+    const candidates: Array<{ idx: number; score: number; sentence: string }> = [];
+
+    for (let idx = 0; idx < docs.length; idx++) {
+      const sentence = docs[idx];
+      if (!sentence || sentence.trim().length === 0) {
+        diagnostics.emptySentences++;
+        continue;
+      }
+      const vec = sentenceVectors[idx];
+      if (!vec) {
+        diagnostics.missingVectors++;
+        continue;
+      }
+      const score = cosine(centroid, vec);
+      if (!Number.isFinite(score)) {
+        diagnostics.invalidScores++;
+        continue;
+      }
+      candidates.push({ idx, score, sentence });
+    }
+
+    candidates.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.idx - b.idx;
+    });
+
+    const selected = candidates.slice(0, limit);
+    let sentences = selected.map((entry) => entry.sentence);
+
+    if (sentences.length < limit && sentenceIndices.length > 0) {
+      const seen = new Set(sentences);
+      for (const idx of sentenceIndices) {
+        const sentence = docs[idx];
+        if (!sentence || sentence.trim().length === 0) continue;
+        if (seen.has(sentence)) continue;
+        sentences.push(sentence);
+        seen.add(sentence);
+        if (sentences.length >= limit) break;
+      }
+    }
+
+    if (sentences.length === 0) {
+      log("analysis", "Nearest sentence search returned no results; using fallback sentences.", diagnostics);
+      const clusterFallback = sentenceIndices
+        .map((idx) => docs[idx])
+        .filter((s) => s && s.trim().length > 0);
+      if (clusterFallback.length > 0) {
+        return clusterFallback.slice(0, Math.min(limit, clusterFallback.length));
+      }
+      const corpusFallback = docs.filter((s) => s && s.trim().length > 0);
+      if (corpusFallback.length > 0) {
+        return corpusFallback.slice(0, Math.min(limit, corpusFallback.length));
+      }
+    }
+
+    return sentences;
+  };
+
   if (autoWeights && centroids.length > 0 && assignments.length > 0) {
     log(
       "analysis",
@@ -973,8 +1044,22 @@ export async function buildAnalysis(
     const id = primaryConceptIds[c];
     const clusterSentenceIndices = Array.from(clusterSentenceMap.get(c) ?? []).sort((a, b) => a - b);
     const clusterSentences = clusterSentenceIndices.map(i => docs[i]);
+    const nearestSentences = computeNearestSentences(centroids[c], clusterSentenceIndices, 3);
+    if (nearestSentences.length === 0) {
+      log("analysis", `Nearest sentences empty for concept ${id}.`, {
+        clusterSize: clusterSentenceIndices.length,
+      });
+    }
     
-    const { label, keyphrases } = contrastiveLabelCluster(centroids[c], bm25Discriminative, clusterSentences, docs, 4);
+    const { label, keyphrases } = contrastiveLabelCluster(
+      centroids[c],
+      bm25Discriminative,
+      clusterSentences,
+      docs,
+      4,
+      nearestSentences,
+      id
+    );
     const topTerms = conceptTopTermsMap[c] ?? getClusterTopTerms(centroids[c], bm25Discriminative, clusterSentences, docs, 12);
     
     const rankedEvidence = rankEvidenceForConcept(
@@ -1011,8 +1096,22 @@ export async function buildAnalysis(
       const id = detailConceptIds[d];
       const clusterSentenceIndices = Array.from(detailClusterSentenceMap.get(d) ?? []).sort((a, b) => a - b);
       const clusterSentences = clusterSentenceIndices.map(i => docs[i]);
+      const nearestSentences = computeNearestSentences(detailCentroids[d], clusterSentenceIndices, 3);
+      if (nearestSentences.length === 0) {
+        log("analysis", `Nearest sentences empty for concept ${id}.`, {
+          clusterSize: clusterSentenceIndices.length,
+        });
+      }
       
-      const { label, keyphrases } = contrastiveLabelCluster(detailCentroids[d], bm25Discriminative, clusterSentences, docs, 4);
+      const { label, keyphrases } = contrastiveLabelCluster(
+        detailCentroids[d],
+        bm25Discriminative,
+        clusterSentences,
+        docs,
+        4,
+        nearestSentences,
+        id
+      );
       const topTerms = getClusterTopTerms(detailCentroids[d], bm25Discriminative, clusterSentences, docs, 12);
       
       const rankedEvidence = rankEvidenceForConcept(
@@ -1432,6 +1531,13 @@ export async function buildAnalysis(
     conceptConceptThreshold
   );
   links.push(...conceptSimilarityLinks);
+
+  const structuralRoles = computeStructuralRoles(links, nodes);
+  links.forEach((link) => {
+    const evidenceCount = link.evidenceCount ?? link.evidenceIds?.length ?? 0;
+    link.evidenceCount = evidenceCount;
+    link.structuralRole = structuralRoles.get(link.id) ?? link.structuralRole ?? "cluster-internal";
+  });
 
   // Anchored axis projections (optional, measurement only)
   let resolvedAnchorAxes = anchorAxes;
