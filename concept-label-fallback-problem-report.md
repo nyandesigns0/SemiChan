@@ -218,3 +218,4 @@ The semantic fallback mechanism for concept labeling is not working correctly. C
 - Consider that "Concept" should be the absolute last resort, only when no text content exists at all
 - The user reported seeing text in the inspector but "Concept" in the label, suggesting the data exists but extraction/assembly is failing
 
+

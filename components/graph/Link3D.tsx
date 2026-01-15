@@ -183,6 +183,7 @@ export function Link3D({ link, nodes, isSelected, opacity, onClick, allLinks = [
           opacity={0}
           transparent
           depthWrite={false}
+          depthTest={true}
           renderOrder={-1}
         />
       )}
@@ -193,7 +194,9 @@ export function Link3D({ link, nodes, isSelected, opacity, onClick, allLinks = [
         lineWidth={finalLineWidth}
         opacity={computedOpacity}
         transparent
-        depthWrite={!isGhost}
+        depthWrite={false}
+        depthTest={true}
+        renderOrder={0}
         onClick={(e) => {
           e.stopPropagation();
           onClick(link, e.nativeEvent as MouseEvent);
@@ -206,6 +209,9 @@ export function Link3D({ link, nodes, isSelected, opacity, onClick, allLinks = [
         lineWidth={10}
         transparent
         opacity={0}
+        depthWrite={false}
+        depthTest={false}
+        renderOrder={1}
         onClick={(e) => {
           e.stopPropagation();
           onClick(link, e.nativeEvent as MouseEvent);
