@@ -39,6 +39,8 @@ interface GraphCanvas3DProps {
   axisLabels?: AnalysisResult["axisLabels"];
   enableAxisLabelAI?: boolean;
   onToggleAxisLabelAI?: (enabled: boolean) => void;
+  autoSynthesize?: boolean;
+  onToggleAutoSynthesize?: (enabled: boolean) => void;
   onRefreshAxisLabels?: () => void;
   isRefreshingAxisLabels?: boolean;
   analysis?: AnalysisResult | null;
@@ -914,6 +916,8 @@ export function GraphCanvas3D({
   axisLabels,
   enableAxisLabelAI = false,
   onToggleAxisLabelAI,
+  autoSynthesize = false,
+  onToggleAutoSynthesize,
   onRefreshAxisLabels,
   isRefreshingAxisLabels = false,
   analysis = null,
@@ -1318,6 +1322,8 @@ export function GraphCanvas3D({
               axisLabels={axisLabels}
               enableAxisLabelAI={enableAxisLabelAI}
               onToggleAxisLabelAI={onToggleAxisLabelAI}
+              autoSynthesize={autoSynthesize}
+              onToggleAutoSynthesize={onToggleAutoSynthesize}
               onRefreshAxisLabels={onRefreshAxisLabels}
               isRefreshingAxisLabels={isRefreshingAxisLabels}
               numDimensions={numDimensions}
