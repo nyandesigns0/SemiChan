@@ -420,6 +420,30 @@ export function AnalysisControls({
 
                   {clusteringMode === "kmeans" && (
                     <div className="space-y-1">
+                      {!autoSeed && (
+                        <>
+                          <div className="h-px bg-slate-100" />
+                          {/* Clustering Seed Slider */}
+                          <div className="space-y-1 group">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                                <Dices className="h-3 w-3 text-indigo-500" />
+                                Solution Seed
+                              </Label>
+                              <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                                {clusterSeed}
+                              </Badge>
+                            </div>
+                            <Slider 
+                              value={[clusterSeed]} 
+                              min={1} 
+                              max={100} 
+                              step={1} 
+                              onValueChange={(v) => onClusterSeedChange(v[0])} 
+                            />
+                          </div>
+                        </>
+                      )}
                       <button
                         onClick={() => setShowAutoSeedSettings(!showAutoSeedSettings)}
                         className="flex w-full items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-indigo-500 transition-colors py-0.5 px-1"
@@ -585,7 +609,7 @@ export function AnalysisControls({
 
                 <div className="h-px bg-slate-100" />
 
-                <div className="space-y-2.5 rounded-xl border border-slate-100 bg-slate-50/30 p-2.5">
+                <div className="space-y-2.5">
                   {/* Auto-Unit Toggle */}
                   <div className="flex items-center justify-between group">
                     <div className="space-y-0.5">
@@ -735,32 +759,6 @@ export function AnalysisControls({
                     </Label>
                   </div>
                   <Switch checked={softMembership} onCheckedChange={onSoftMembershipChange} className="scale-75" />
-                </div>
-
-                <div className="h-px bg-slate-100" />
-
-                {/* Clustering Seed Slider */}
-                <div className="space-y-1 group">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
-                      <Dices className="h-3 w-3 text-indigo-500" />
-                      Solution Seed
-                    </Label>
-                    <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
-                      {clusterSeed}
-                    </Badge>
-                  </div>
-                  <Slider 
-                    value={[clusterSeed]} 
-                    min={1} 
-                    max={100} 
-                    step={1} 
-                    onValueChange={(v) => onClusterSeedChange(v[0])} 
-                    disabled={autoSeed && clusteringMode === "kmeans"}
-                  />
-                  {autoSeed && clusteringMode === "kmeans" && (
-                    <p className="text-[10px] text-slate-400">Auto-Seed will override the manual seed.</p>
-                  )}
                 </div>
 
                 {/* Manual Concept / Granularity when Auto-K is off */}

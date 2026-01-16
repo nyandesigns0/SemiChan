@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { RotateCcw, RotateCw, Grid3X3, Box, Eye, EyeOff, RefreshCw, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { getAxisColors } from "@/lib/utils/graph-color-utils";
 import type { AnalysisResult } from "@/types/analysis";
 import { cn } from "@/lib/utils/cn";
@@ -182,7 +181,7 @@ export function Graph3DControls({
             </div>
 
             {axisPanelOpen && (
-              <ScrollArea className={cn("pr-2", numDimensions > 4 ? "h-[480px]" : "h-auto")}>
+              <div className="pr-2">
                 <div className="space-y-4 text-xs">
                   {Array.from({ length: numDimensions }).map((_, i) => {
                     const axisIdx = i.toString();
@@ -246,7 +245,7 @@ export function Graph3DControls({
                     );
                   })}
                 </div>
-              </ScrollArea>
+              </div>
             )}
           </div>
         </div>
