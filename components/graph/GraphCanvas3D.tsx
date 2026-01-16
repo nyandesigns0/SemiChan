@@ -1000,10 +1000,15 @@ export function GraphCanvas3D({
     () => Math.min(100, Math.max(0, loadingProgress)),
     [loadingProgress]
   );
+  const [loadingDismissed, setLoadingDismissed] = useState(false);
+  const [allowLoadingClose, setAllowLoadingClose] = useState(false);
+  const [forceComplete, setForceComplete] = useState(false);
+
+  const progressForGradient = forceComplete ? 100 : clampedLoadingProgress;
 
   const loadingGradient = useMemo(() => {
     const stops = ["#ef4444", "#f59e0b", "#fbbf24", "#34d399"];
-    const ratio = clampedLoadingProgress / 100;
+    const ratio = progressForGradient / 100;
     const segments = stops.length - 1;
     const idx = Math.min(segments - 1, Math.floor(ratio * segments));
     const localT = ratio * segments - idx;
@@ -1027,7 +1032,23 @@ export function GraphCanvas3D({
     };
 
     return `linear-gradient(90deg, ${stops[idx]} 0%, rgb(${mix.r}, ${mix.g}, ${mix.b}) 50%, ${stops[idx + 1]} 100%)`;
-  }, [clampedLoadingProgress]);
+  }, [progressForGradient]);
+
+  const effectiveProgress = forceComplete ? 100 : clampedLoadingProgress;
+
+  useEffect(() => {
+    if (!loadingSample) {
+      setLoadingDismissed(false);
+      setForceComplete(false);
+      setAllowLoadingClose(false);
+      return;
+    }
+    setLoadingDismissed(false);
+    setForceComplete(false);
+    setAllowLoadingClose(false);
+    const timer = setTimeout(() => setAllowLoadingClose(true), 5000);
+    return () => clearTimeout(timer);
+  }, [loadingSample, loadingStep]);
 
   // Ensure we always have a Set to avoid runtime reference errors
   const expandedConcepts = useMemo(
@@ -1245,24 +1266,36 @@ export function GraphCanvas3D({
           </div>
         )}
 
-        {loadingSample && (
+        {loadingSample && !loadingDismissed && (
           <div className="absolute inset-0 flex items-center justify-center px-6 pointer-events-none">
-            <div className="w-full max-w-2xl rounded-3xl border border-slate-200 bg-white/95 p-6 shadow-xl">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.32em] text-slate-500">
-                Processing Sample
+            <div className="w-full max-w-2xl rounded-3xl border border-slate-200 bg-white/95 p-6 shadow-xl pointer-events-auto">
+              <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.32em] text-slate-500">
+                <span>Processing Sample</span>
+                {allowLoadingClose && (
+                  <button
+                    type="button"
+                    className="group rounded-full p-1.5 text-slate-400 transition-all hover:scale-105 hover:bg-slate-100 hover:text-slate-700"
+                    onClick={() => {
+                      setForceComplete(true);
+                      setTimeout(() => setLoadingDismissed(true), 350);
+                    }}
+                  >
+                    <span className="block text-base leading-none">×</span>
+                  </button>
+                )}
               </div>
               <div className="mt-3 relative h-16 overflow-hidden rounded-2xl bg-slate-100">
                 <div
                   className="absolute inset-0 rounded-2xl transition-all duration-500"
                   style={{
-                    width: `${clampedLoadingProgress}%`,
+                    width: `${effectiveProgress}%`,
                     backgroundImage: loadingGradient,
                   }}
                 />
                 <div className="absolute inset-0 flex items-center justify-between px-5 text-sm font-semibold text-slate-900">
                   <span className="text-sm font-semibold text-slate-900">{loadingStep}</span>
                   <span className="text-base font-bold">
-                    {Math.round(clampedLoadingProgress)}%
+                    {Math.round(effectiveProgress)}%
                   </span>
                 </div>
               </div>
