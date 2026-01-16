@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { AxisLabelsRequest, AxisLabelsResponse } from "@/types/api";
+import type { AnalysisResult } from "@/types/analysis";
 
 import { DEFAULT_MODEL } from "@/constants/nlp-constants";
+import { loadPrompts, processPrompt } from "@/lib/prompts/prompt-processor";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
+type AxisLabelsPayload = AxisLabelsRequest & {
+  analysis?: AnalysisResult;
+  corpus_domain?: string;
+  style_preset?: string;
+};
 
 export async function POST(request: NextRequest) {
   if (!OPENAI_API_KEY) {
@@ -11,23 +19,16 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body: AxisLabelsRequest = await request.json();
+    const body = (await request.json()) as AxisLabelsPayload;
     const { axisLabels, model = DEFAULT_MODEL } = body;
+    const analysis = body.analysis;
+    const corpusDomain = body.corpus_domain ?? "architecture jury comments";
+    const stylePreset = body.style_preset ?? "jury-facing, rigorous, concise";
 
-    const systemPrompt = `You are an expert at analyzing semantic relationships and dimensions of variation in textual data.
-
-Your task is to identify two distinct, opposite keywords or short phrases (n-grams) that represent the two poles of a semantic dimension based on the provided evidence. Also provide a concise axis name that describes the overall dimension or spectrum, not just one pole.
-
-RULES:
-1. OUTPUT JSON ONLY.
-2. For each dimension, generate exactly two contrasting keywords or short phrases (max 3 words each).
-3. Also generate one short axis name (max 5 words) that summarizes the overall spectrum.
-4. The keywords must be derived from the specific concepts, keywords, and evidence sentences provided for each end of the axis.
-5. The two keywords should define a coherent "spectrum of variation" or "thematic tension."
-6. Compare and contrast the "Negative End" context with the "Positive End" context to find the most meaningful conceptual difference.
-7. Use professional, architectural, and conceptually meaningful language.
-8. DO NOT just repeat the input concept titles if a more descriptive keyword pair can be found in the evidence.
-9. The axis name should describe the dimension as a whole (e.g., "Formal vs Playful Tone" -> "Tone Formality"), not restate a single pole.`;
+    const prompts = await loadPrompts();
+    const axisPrompts = prompts.axis;
+    const varianceStats = analysis?.varianceStats;
+    const totalVariance = varianceStats?.totalVariance ?? 0;
 
     // Build prompts for each axis
     const synthesizeAxis = async (
@@ -38,28 +39,34 @@ RULES:
       posContext: { keywords: string[], sentences: string[] },
       modelName: string
     ): Promise<{ negative: string; positive: string; name?: string; usage: any }> => {
-      const userPrompt = `Axis ${axisIdx} represents a spectrum of variation.
+      const axisIndex = Number.parseInt(axisIdx, 10);
+      const explainedVariance = Number.isFinite(axisIndex)
+        ? varianceStats?.explainedVariances?.[axisIndex]
+        : undefined;
+      const varianceRatio =
+        typeof explainedVariance === "number" && totalVariance > 0
+          ? explainedVariance / totalVariance
+          : undefined;
+      const negativeSentences = negContext.sentences.slice(0, 4);
+      const positiveSentences = posContext.sentences.slice(0, 4);
 
-NEGATIVE END POLE:
-Title: "${negative}"
-Keywords: ${negContext.keywords.join(", ")}
-Evidence Excerpts:
-${negContext.sentences.slice(0, 5).map((s, i) => `- ${s}`).join("\n")}
+      const variables = {
+        AXIS_ID: axisIdx,
+        AXIS_VARIANCE_PCT: { value: varianceRatio, format: "percentage", fallback: "N/A" },
+        NEG_POLE_TITLE: negative,
+        POS_POLE_TITLE: positive,
+        NEG_POLE_KEYWORDS: { value: negContext.keywords, format: "list", fallback: "None" },
+        POS_POLE_KEYWORDS: { value: posContext.keywords, format: "list", fallback: "None" },
+        NEG_POLE_ANCHOR_SENTENCES: { value: negativeSentences, format: "lines", fallback: "None" },
+        POS_POLE_ANCHOR_SENTENCES: { value: positiveSentences, format: "lines", fallback: "None" },
+        NEG_TOP_CONCEPTS: { value: [], format: "list", fallback: "None" },
+        POS_TOP_CONCEPTS: { value: [], format: "list", fallback: "None" },
+        CORPUS_DOMAIN: corpusDomain,
+        STYLE_PRESET: stylePreset
+      };
 
-POSITIVE END POLE:
-Title: "${positive}"
-Keywords: ${posContext.keywords.join(", ")}
-Evidence Excerpts:
-${posContext.sentences.slice(0, 5).map((s, i) => `- ${s}`).join("\n")}
-
-Based on the evidence above, identify two specific, contrasting keywords or short phrases that define the "poles" of this dimension. Consider what makes these two sets of feedback fundamentally different.
-
-Respond with JSON:
-{
-  "negative_keyword": "Keyword for negative end",
-  "positive_keyword": "Keyword for positive end",
-  "axis_name": "Name describing the overall dimension/spectrum"
-}`;
+      const systemPrompt = processPrompt(axisPrompts.system, variables);
+      const userPrompt = processPrompt(axisPrompts.user, variables);
 
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",

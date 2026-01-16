@@ -1,9 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SynthesizeRequest, SynthesisResponse } from "@/types/api";
+import type { AnalysisResult } from "@/types/analysis";
 
 import { DEFAULT_MODEL } from "@/constants/nlp-constants";
+import { loadPrompts, processPrompt } from "@/lib/prompts/prompt-processor";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
+type SynthesizePayload = SynthesizeRequest & {
+  analysis?: AnalysisResult;
+  centroid_semantic_terms?: string[];
+  related_axes_scores?: Record<string, number>;
+  juror_contribution?: Record<string, number> | string;
+  constraints?: string[];
+};
+
+const formatStanceMix = (stanceMix: SynthesizeRequest["stance_mix"]) => {
+  const toPercent = (value?: number) => `${Math.round((value ?? 0) * 100)}%`;
+  return `Praise: ${toPercent(stanceMix.praise)}, Critique: ${toPercent(stanceMix.critique)}, Suggestion: ${toPercent(stanceMix.suggestion)}, Neutral: ${toPercent(stanceMix.neutral)}`;
+};
+
+const defaultConstraints = [
+  "Title length 6-12 words",
+  "One-liner length 18-30 words",
+  "Avoid boilerplate or meta phrases",
+  "No repeated words in the title"
+];
 
 export async function POST(request: NextRequest) {
   if (!OPENAI_API_KEY) {
@@ -11,32 +33,53 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body: SynthesizeRequest = await request.json();
-    const { label_seed, top_ngrams, evidence_sentences, stance_mix, model = DEFAULT_MODEL } = body;
+    const body = (await request.json()) as SynthesizePayload;
+    const { id, label_seed, top_ngrams, evidence_sentences, stance_mix, model = DEFAULT_MODEL } = body;
+    const analysis = body.analysis;
+    const totalSentences = analysis?.stats?.totalSentences;
+    const conceptSize = evidence_sentences.length;
+    const conceptShare = totalSentences ? conceptSize / totalSentences : undefined;
+    const centroidSemanticTerms = body.centroid_semantic_terms ?? top_ngrams;
+    const representativeSentences = evidence_sentences.slice(0, 8);
+    const constraints = body.constraints?.length ? body.constraints : defaultConstraints;
+    const stanceMixLabel = formatStanceMix(stance_mix);
+    const jurorContribution = body.juror_contribution ?? "N/A";
+    const relatedAxesScores = body.related_axes_scores ?? "None";
 
-    const systemPrompt = `You are an expert architectural critic and theorist. 
-Your task is to synthesize juror feedback into a professional architectural concept.
+    const prompts = await loadPrompts();
+    const conceptPrompts = prompts.concept;
+    const variables = {
+      CONCEPT_ID: id ?? "N/A",
+      CONCEPT_SEED: label_seed,
+      CONCEPT_SIZE_SENTENCES: conceptSize,
+      CONCEPT_SHARE_PCT: { value: conceptShare, format: "percentage", fallback: "N/A" },
+      CENTROID_SEMANTIC_TERMS: { value: centroidSemanticTerms, format: "list", fallback: "None" },
+      TOP_NGRAMS: { value: top_ngrams, format: "list", fallback: "None" },
+      REPRESENTATIVE_SENTENCES: { value: representativeSentences, format: "lines", fallback: "None" },
+      JUROR_CONTRIBUTION: {
+        value: jurorContribution,
+        format: Array.isArray(jurorContribution)
+          ? "list"
+          : typeof jurorContribution === "object"
+            ? "json"
+            : "string",
+        fallback: "N/A"
+      },
+      STANCE_MIX: stanceMixLabel,
+      RELATED_AXES_SCORES: {
+        value: relatedAxesScores,
+        format: Array.isArray(relatedAxesScores)
+          ? "list"
+          : typeof relatedAxesScores === "object"
+            ? "json"
+            : "string",
+        fallback: "None"
+      },
+      CONSTRAINTS: { value: constraints, format: "lines", fallback: "None" }
+    };
 
-RULES:
-1. OUTPUT JSON ONLY.
-2. DO NOT ECHO input phrases exactly.
-3. Use abstractive synthesis (interpretive).
-4. Title must be 6-12 words, professional architectural voice.
-5. One-liner must be 18-30 words, synthesizing the core theme.
-6. ABSOLUTELY NO boilerplate like "The keywords are..." or "Based on...".
-7. REJECT repetition of words in the title.`;
-
-    const userPrompt = `Concept Seed: ${label_seed}
-Top Keywords: ${top_ngrams.join(", ")}
-Juror Evidence:
-${evidence_sentences.map((s, i) => `${i + 1}. ${s}`).join("\n")}
-Stance Distribution: Praise: ${Math.round(stance_mix.praise * 100)}%, Critique: ${Math.round(stance_mix.critique * 100)}%
-
-Respond in this JSON format:
-{
-  "concept_title": "Professional Title Here",
-  "concept_one_liner": "Synthesized description here"
-}`;
+    const systemPrompt = processPrompt(conceptPrompts.system, variables);
+    const userPrompt = processPrompt(conceptPrompts.user, variables);
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -103,5 +146,4 @@ Respond in this JSON format:
     return NextResponse.json({ error: "Internal server error during synthesis" }, { status: 500 });
   }
 }
-
 

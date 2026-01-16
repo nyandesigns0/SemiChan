@@ -176,7 +176,7 @@ export function contrastiveLabelCluster(
   }
 
   const labelParts = deduped.slice(0, topNCount);
-  const label = labelParts.length > 0 ? labelParts.join(" Aú ") : (fallbackId ?? "concept:unknown");
+  const label = labelParts.length > 0 ? labelParts.join(" ") : (fallbackId ?? "concept:unknown");
 
   return { label, keyphrases: keyphrases.length > 0 ? keyphrases : fallbackKeyphrases, terms };
 }

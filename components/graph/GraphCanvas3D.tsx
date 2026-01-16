@@ -4,7 +4,6 @@ import { useRef, useState, useMemo, useCallback, useEffect, Suspense, memo } fro
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, Environment, PerspectiveCamera, Grid, Html } from "@react-three/drei";
 import * as THREE from "three";
-import { BrainCircuit, Play, FastForward, SkipBack, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils/cn";
@@ -791,7 +790,7 @@ function SceneContent({
         }}
       >
         <planeGeometry args={[1000, 1000]} />
-        <meshBasicMaterial transparent opacity={0} visible={false} />
+        <meshBasicMaterial transparent opacity={0} side={THREE.DoubleSide} />
       </mesh>
       
       {/* Grids */}
@@ -950,7 +949,6 @@ export function GraphCanvas3D({
   const [revealedAxisCount, setRevealedAxisCount] = useState(numDimensions);
   const [revealedNodeIds, setRevealedNodeIds] = useState<Set<string>>(new Set());
   const [revealLinks, setRevealLinks] = useState(false);
-  const [modelReady, setModelReady] = useState(false);
   const focusScale = typeof focusScaleProp === "number" ? focusScaleProp : samplePhase === "ready" ? 0.55 : samplePhase === "loading" ? 0.8 : 1;
   const autoRotateSpeed = samplePhase === "ready" ? 1.6 : samplePhase === "loading" ? 1.1 : 0.35;
   const projectionKey = useMemo(() => {
@@ -998,6 +996,39 @@ export function GraphCanvas3D({
     return mergedLinks;
   }, [mergedLinks, checkpoints, checkpointIndex]);
 
+  const clampedLoadingProgress = useMemo(
+    () => Math.min(100, Math.max(0, loadingProgress)),
+    [loadingProgress]
+  );
+
+  const loadingGradient = useMemo(() => {
+    const stops = ["#ef4444", "#f59e0b", "#fbbf24", "#34d399"];
+    const ratio = clampedLoadingProgress / 100;
+    const segments = stops.length - 1;
+    const idx = Math.min(segments - 1, Math.floor(ratio * segments));
+    const localT = ratio * segments - idx;
+
+    const hexToRgb = (hex: string) => {
+      const n = hex.replace("#", "");
+      return {
+        r: parseInt(n.slice(0, 2), 16),
+        g: parseInt(n.slice(2, 4), 16),
+        b: parseInt(n.slice(4, 6), 16),
+      };
+    };
+    const lerp = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
+
+    const start = hexToRgb(stops[idx]);
+    const end = hexToRgb(stops[idx + 1]);
+    const mix = {
+      r: lerp(start.r, end.r, localT),
+      g: lerp(start.g, end.g, localT),
+      b: lerp(start.b, end.b, localT),
+    };
+
+    return `linear-gradient(90deg, ${stops[idx]} 0%, rgb(${mix.r}, ${mix.g}, ${mix.b}) 50%, ${stops[idx + 1]} 100%)`;
+  }, [clampedLoadingProgress]);
+
   // Ensure we always have a Set to avoid runtime reference errors
   const expandedConcepts = useMemo(
     () => expandedPrimaryConcepts ?? new Set<string>(),
@@ -1014,18 +1045,6 @@ export function GraphCanvas3D({
     if (!turntableEnabled || autoRotateDisabled || !onAutoRotateDisabled) return;
     onAutoRotateDisabled();
   }, [autoRotateDisabled, onAutoRotateDisabled, turntableEnabled]);
-
-  // Mark model as ready after a short delay to allow 3D scene to initialize
-  useEffect(() => {
-    if (empty && samplePhase === "idle") {
-      const timer = setTimeout(() => {
-        setModelReady(true);
-      }, 800); // Give the 3D scene time to initialize
-      return () => clearTimeout(timer);
-    } else {
-      setModelReady(false);
-    }
-  }, [empty, samplePhase]);
 
   useEffect(() => {
     if (!analysis || empty) {
@@ -1188,70 +1207,64 @@ export function GraphCanvas3D({
         </Canvas>
 
         {empty && samplePhase === "idle" && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
-            <div className="max-w-3xl min-w-[32rem] min-h-[28rem] rounded-3xl border border-white/60 bg-white/85 p-8 shadow-2xl shadow-slate-200 backdrop-blur flex flex-col items-center justify-center">
-              {!modelReady ? (
-                <div className="flex flex-col items-center gap-6">
-                  <Loader2 className="h-16 w-16 animate-spin text-slate-400" />
-                  <p className="text-base font-medium text-slate-600">Loading 3D model...</p>
-                </div>
-              ) : (
-                <>
-                  <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-slate-900 to-slate-700 text-white shadow-lg">
-                    <BrainCircuit className="h-10 w-10" />
-                  </div>
-                  <h2 className="mt-6 text-2xl font-bold text-slate-900">
-                    Explore juror sentiment in real time.
-                  </h2>
-                  <p className="mt-3 text-sm text-slate-500">
-                    Interactive juror sentiment visualization in real time.
+          <div className="absolute inset-0 flex items-center justify-center px-6">
+            <div className="relative w-full max-w-3xl overflow-hidden rounded-3xl border border-slate-200 bg-white p-10 shadow-xl">
+              <div className="relative flex flex-col items-center gap-6 text-center text-slate-800">
+                <div className="flex flex-col items-center gap-3">
+                  <h2 className="text-4xl font-semibold tracking-tight">Explore juror sentiment in real time.</h2>
+                  <div className="h-px w-20 rounded-full bg-gradient-to-r from-sky-500/60 via-emerald-400/60 to-transparent" />
+                  <p className="max-w-2xl text-sm leading-relaxed text-slate-600">
+                    Upload a transcript or load our sample dataset to see the 3D graph come alive. Rotate, zoom, and inspect
+                    nodes or links to understand the story behind each sentiment.
                   </p>
-                  <div className="mt-6 flex items-center justify-center gap-3">
+                </div>
+
+                <div className="flex w-full flex-wrap items-center justify-center gap-4">
+                  <Button
+                    onClick={onLoadSample}
+                    className="group relative inline-flex h-14 flex-1 min-w-[200px] max-w-sm items-center justify-center rounded-2xl bg-sky-600 px-8 text-lg font-semibold text-white shadow-lg shadow-sky-200/60 transition-all hover:-translate-y-0.5 hover:bg-sky-100 hover:text-sky-800"
+                    disabled={!onLoadSample}
+                  >
+                    Load Sample Dataset
+                  </Button>
+                  {onOpenUploadSidebar ? (
                     <Button
-                      onClick={onLoadSample}
-                      className="group relative inline-flex h-14 items-center justify-center rounded-2xl bg-slate-900 px-8 text-sm font-semibold text-white shadow-lg shadow-slate-300/60 transition-all hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-xl"
-                      disabled={!onLoadSample}
+                      onClick={onOpenUploadSidebar}
+                      className="group relative inline-flex h-14 flex-1 min-w-[200px] max-w-sm items-center justify-center rounded-2xl border border-transparent bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 px-8 text-lg font-semibold text-white shadow-md shadow-orange-200/60 transition-all hover:-translate-y-0.5 hover:from-rose-500 hover:via-orange-500 hover:to-amber-400"
                     >
-                      <span className="absolute inset-0 -z-10 rounded-2xl bg-gradient-to-r from-slate-800/0 via-slate-700/40 to-slate-800/0 opacity-0 blur-md transition-opacity duration-500 group-hover:opacity-100" />
-                      Load Sample Dataset
+                      Upload Your Data
                     </Button>
-                    {onOpenUploadSidebar ? (
-                      <Button
-                        onClick={onOpenUploadSidebar}
-                        className="group relative inline-flex h-14 items-center justify-center rounded-2xl bg-slate-900 px-8 text-sm font-semibold text-white shadow-lg shadow-slate-300/60 transition-all hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-xl"
-                      >
-                        <span className="absolute inset-0 -z-10 rounded-2xl bg-gradient-to-r from-slate-800/0 via-slate-700/40 to-slate-800/0 opacity-0 blur-md transition-opacity duration-500 group-hover:opacity-100" />
-                        Upload Your Data
-                      </Button>
-                    ) : (
-                      <span className="text-[10px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                        Or upload via sidebar
-                      </span>
-                    )}
-                  </div>
-                </>
-              )}
+                  ) : (
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
+                      Or upload via sidebar
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}
 
         {loadingSample && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-full max-w-md rounded-3xl border border-slate-200/60 bg-white/90 px-6 py-5 text-center shadow-xl shadow-slate-200/60 backdrop-blur">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.35em] text-slate-400">
-                Neural Pipeline
+          <div className="absolute inset-0 flex items-center justify-center px-6 pointer-events-none">
+            <div className="w-full max-w-2xl rounded-3xl border border-slate-200 bg-white/95 p-6 shadow-xl">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.32em] text-slate-500">
+                Processing Sample
               </div>
-              <div className="mt-3 text-3xl font-bold text-slate-900">
-                {Math.round(loadingProgress)}
-              </div>
-              <div className="mt-1 text-sm font-medium text-slate-600">
-                {loadingStep}
-              </div>
-              <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+              <div className="mt-3 relative h-16 overflow-hidden rounded-2xl bg-slate-100">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 transition-all duration-500"
-                  style={{ width: `${Math.min(100, Math.max(0, loadingProgress))}%` }}
+                  className="absolute inset-0 rounded-2xl transition-all duration-500"
+                  style={{
+                    width: `${clampedLoadingProgress}%`,
+                    backgroundImage: loadingGradient,
+                  }}
                 />
+                <div className="absolute inset-0 flex items-center justify-between px-5 text-sm font-semibold text-slate-900">
+                  <span className="text-sm font-semibold text-slate-900">{loadingStep}</span>
+                  <span className="text-base font-bold">
+                    {Math.round(clampedLoadingProgress)}%
+                  </span>
+                </div>
               </div>
             </div>
           </div>
