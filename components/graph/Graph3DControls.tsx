@@ -93,10 +93,10 @@ export function Graph3DControls({
     { label: "Juror-Concept Links", value: showJurorConceptLinks, onChange: onShowJurorConceptLinksChange },
     { label: "Juror-Juror Links", value: showJurorJurorLinks, onChange: onShowJurorJurorLinksChange },
     { label: "Concept-Concept Links", value: showConceptConceptLinks, onChange: onShowConceptConceptLinksChange },
-  ].filter(
-    (control): control is { label: string; value: boolean; onChange?: (show: boolean) => void } =>
-      typeof control.value === "boolean"
-  );
+    ].filter(
+      (control): control is { label: string; value: boolean; onChange: (show: boolean) => void } =>
+        typeof control.value === "boolean" && typeof control.onChange === "function"
+    );
   const hasTurntablePanel = typeof onTurntableSpeedChange === "function";
   const hasNodePanel = nodeLinkControls.length > 0;
   const showAIPanel = enableAxisLabelAI && typeof onRefreshAxisLabels === "function";
@@ -436,4 +436,3 @@ export function Graph3DControls({
     </>
   );
 }
-
