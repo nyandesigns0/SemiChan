@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { AxisLabelsRequest, AxisLabelsResponse } from "@/types/api";
+import type { AxisSynthesisRequest, AxisSynthesisResponse } from "@/types/api";
 import type { AnalysisResult } from "@/types/analysis";
 
 import { DEFAULT_MODEL } from "@/constants/nlp-constants";
@@ -7,7 +7,7 @@ import { loadPrompts, processPrompt } from "@/lib/prompts/prompt-processor";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-type AxisLabelsPayload = AxisLabelsRequest & {
+type AxisSynthesisPayload = AxisSynthesisRequest & {
   analysis?: AnalysisResult;
   corpus_domain?: string;
   style_preset?: string;
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = (await request.json()) as AxisLabelsPayload;
+    const body = (await request.json()) as AxisSynthesisPayload;
     const { axisLabels, model = DEFAULT_MODEL } = body;
     const analysis = body.analysis;
     const corpusDomain = body.corpus_domain ?? "architecture jury comments";
@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    const responseData: AxisLabelsResponse = {
+    const responseData: AxisSynthesisResponse = {
       axisLabels: responseAxisLabels as any,
       usage: totalUsage
     };
@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(responseData);
 
   } catch (error) {
-    console.error("Axis Labels API Error:", error);
+    console.error("Axis Synthesis API Error:", error);
     return NextResponse.json({ error: "Internal server error during axis label synthesis" }, { status: 500 });
   }
 }

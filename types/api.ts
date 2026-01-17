@@ -82,22 +82,22 @@ export interface TokenUsage {
   total_tokens: number;
 }
 
-export interface AxisLabelsRequest {
-  axisLabels: Record<string, { 
-    negative: string; 
-    positive: string; 
-    negativeContext: { keywords: string[], sentences: string[] }; 
-    positiveContext: { keywords: string[], sentences: string[] };
+export interface AxisSynthesisRequest {
+  axisLabels: Record<string, {
+    negative: string;
+    positive: string;
+    negativeContext: { keywords: string[]; sentences: string[] };
+    positiveContext: { keywords: string[]; sentences: string[] };
     name?: string;
   }>;
   model?: string;
 }
 
-export interface AxisLabelsResponse {
-  axisLabels: Record<string, { 
-    negative: string; 
-    positive: string; 
-    synthesizedNegative: string; 
+export interface AxisSynthesisResponse {
+  axisLabels: Record<string, {
+    negative: string;
+    positive: string;
+    synthesizedNegative: string;
     synthesizedPositive: string;
     name?: string;
     synthesizedName?: string;
@@ -118,11 +118,11 @@ export interface ConceptBrief {
   };
 }
 
-export interface SynthesizeRequest extends ConceptBrief {
+export interface ConceptSynthesisRequest extends ConceptBrief {
   model?: string;
 }
 
-export interface SynthesisResponse {
+export interface ConceptSynthesisResponse {
   concept_title: string;
   concept_one_liner: string;
   is_fallback: boolean;

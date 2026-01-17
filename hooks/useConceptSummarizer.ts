@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import type { AnalysisResult } from "@/types/analysis";
-import type { SynthesizeRequest, SynthesisResponse } from "@/types/api";
+import type { ConceptSynthesisRequest, ConceptSynthesisResponse } from "@/types/api";
 import { generateShortLabel } from "@/lib/nlp/summarizer";
 import type { LogEntry } from "@/components/inspector/InspectorConsole";
 
@@ -92,7 +92,7 @@ export function useConceptSummarizer(
       neutral: counts.neutral / total,
     };
     
-    const requestBody: SynthesizeRequest = {
+    const requestBody: ConceptSynthesisRequest = {
       id: conceptId,
       label_seed: insights[conceptId].shortLabel || concept.label,
       top_ngrams: concept.topTerms,
@@ -113,15 +113,15 @@ export function useConceptSummarizer(
     if (onAddLog) onAddLog("api_request", `Synthesizing concept: ${requestBody.label_seed} using ${selectedModel}`);
 
     try {
-      const response = await fetch("/api/synthesize", {
+      const response = await fetch("/api/analyze/concept-synthesis", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
       });
 
-      if (!response.ok) throw new Error("Synthesis API failed");
+      if (!response.ok) throw new Error("Concept synthesis API failed");
 
-      const data: SynthesisResponse = await response.json();
+      const data: ConceptSynthesisResponse = await response.json();
       console.log(`[Synthesis] Received response for ${conceptId}:`, data);
       if (onAddLog) onAddLog("api_response", `Synthesis complete: ${data.concept_title}`, { ...data, model: selectedModel });
       

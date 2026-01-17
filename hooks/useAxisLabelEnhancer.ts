@@ -95,7 +95,7 @@ export function useAxisLabelEnhancer(
           };
         });
 
-        const response = await fetch("/api/analyze/axis-labels", {
+        const response = await fetch("/api/analyze/axis-synthesis", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -104,7 +104,7 @@ export function useAxisLabelEnhancer(
           }),
         });
 
-        if (!response.ok) throw new Error("Axis labels API failed");
+        if (!response.ok) throw new Error("Axis synthesis API failed");
 
         const data: any = await response.json();
         console.log(`[Axis Labels] Enhancement successful`, data);

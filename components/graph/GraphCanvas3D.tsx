@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils/cn";
 import { Node3D } from "./Node3D";
 import { Link3D } from "./Link3D";
+import { LoadingProgressCard } from "./LoadingProgressCard";
 import { Graph3DControls } from "./Graph3DControls";
-import { GraphLegend } from "./GraphLegend";
 import { generateSymmetricAxisDirections, AxisDirection } from "@/lib/graph/dimensionality-reduction";
 import { getAxisColors } from "@/lib/utils/graph-color-utils";
 import type { GraphNode, GraphLink } from "@/types/graph";
@@ -44,8 +44,6 @@ interface GraphCanvas3DProps {
   onRefreshAxisLabels?: () => void;
   isRefreshingAxisLabels?: boolean;
   analysis?: AnalysisResult | null;
-  filteredNodesCount?: number;
-  filteredLinksCount?: number;
   checkpointIndex?: number;
   onCheckpointIndexChange?: (index: number) => void;
   showAxes?: boolean;
@@ -53,8 +51,6 @@ interface GraphCanvas3DProps {
   showGraph?: boolean;
   onToggleGraph?: (show: boolean) => void;
   numDimensions?: number;
-  apiCallCount?: number;
-  apiCostTotal?: number;
   anchorAxes?: import("@/types/anchor-axes").AnchorAxis[];
   anchorAxisScores?: AnalysisResult["anchorAxisScores"];
   selectedAnchorAxisId?: string | null;
@@ -64,11 +60,28 @@ interface GraphCanvas3DProps {
   loadingProgress?: number;
   loadingStep?: string;
   samplePhase?: SamplePhase;
+  recalculating?: boolean;
+  recalculationProgress?: number;
+  recalculationStep?: string;
   focusScale?: number;
   autoRotateDisabled?: boolean;
   onAutoRotateDisabled?: () => void;
   turntableEnabled?: boolean;
   onToggleTurntable?: () => void;
+  turntableSpeed?: number;
+  onTurntableSpeedChange?: (speed: number) => void;
+  showJurorNodes?: boolean;
+  onShowJurorNodesChange?: (show: boolean) => void;
+  showConceptNodes?: boolean;
+  onShowConceptNodesChange?: (show: boolean) => void;
+  showDesignerNodes?: boolean;
+  onShowDesignerNodesChange?: (show: boolean) => void;
+  showJurorConceptLinks?: boolean;
+  onShowJurorConceptLinksChange?: (show: boolean) => void;
+  showJurorJurorLinks?: boolean;
+  onShowJurorJurorLinksChange?: (show: boolean) => void;
+  showConceptConceptLinks?: boolean;
+  onShowConceptConceptLinksChange?: (show: boolean) => void;
   onOpenUploadSidebar?: () => void;
 }
 
@@ -921,8 +934,6 @@ export function GraphCanvas3D({
   onRefreshAxisLabels,
   isRefreshingAxisLabels = false,
   analysis = null,
-  filteredNodesCount = 0,
-  filteredLinksCount = 0,
   checkpointIndex: checkpointIndexProp = -1,
   onCheckpointIndexChange,
   showAxes: showAxesProp = true,
@@ -930,8 +941,6 @@ export function GraphCanvas3D({
   showGraph: showGraphProp = true,
   onToggleGraph,
   numDimensions = 3,
-  apiCallCount = 0,
-  apiCostTotal = 0,
   anchorAxes,
   anchorAxisScores,
   selectedAnchorAxisId = null,
@@ -941,11 +950,28 @@ export function GraphCanvas3D({
   loadingProgress = 0,
   loadingStep = "Preparing sample...",
   samplePhase = "idle",
+  recalculating = false,
+  recalculationProgress = 0,
+  recalculationStep = "Recalculating graph...",
   focusScale: focusScaleProp,
   autoRotateDisabled = false,
   onAutoRotateDisabled,
   turntableEnabled = false,
   onToggleTurntable,
+  turntableSpeed,
+  onTurntableSpeedChange,
+  showJurorNodes,
+  onShowJurorNodesChange,
+  showConceptNodes,
+  onShowConceptNodesChange,
+  showDesignerNodes,
+  onShowDesignerNodesChange,
+  showJurorConceptLinks,
+  onShowJurorConceptLinksChange,
+  showJurorJurorLinks,
+  onShowJurorJurorLinksChange,
+  showConceptConceptLinks,
+  onShowConceptConceptLinksChange,
   onOpenUploadSidebar,
 }: GraphCanvas3DProps) {
   const controlsRef = useRef<OrbitControlsType>(null);
@@ -954,7 +980,14 @@ export function GraphCanvas3D({
   const [revealedNodeIds, setRevealedNodeIds] = useState<Set<string>>(new Set());
   const [revealLinks, setRevealLinks] = useState(false);
   const focusScale = typeof focusScaleProp === "number" ? focusScaleProp : samplePhase === "ready" ? 0.55 : samplePhase === "loading" ? 0.8 : 1;
-  const autoRotateSpeed = samplePhase === "ready" ? 1.6 : samplePhase === "loading" ? 1.1 : 0.35;
+  const autoRotateSpeed =
+    typeof turntableSpeed === "number"
+      ? turntableSpeed
+      : samplePhase === "ready"
+        ? 1.6
+        : samplePhase === "loading"
+          ? 1.1
+          : 0.35;
   const projectionKey = useMemo(() => {
     const stats = analysis?.varianceStats;
     const lastCumulative = stats?.cumulativeVariances?.length ? stats.cumulativeVariances[stats.cumulativeVariances.length - 1] : "";
@@ -1007,36 +1040,6 @@ export function GraphCanvas3D({
   const [loadingDismissed, setLoadingDismissed] = useState(false);
   const [allowLoadingClose, setAllowLoadingClose] = useState(false);
   const [forceComplete, setForceComplete] = useState(false);
-
-  const progressForGradient = forceComplete ? 100 : clampedLoadingProgress;
-
-  const loadingGradient = useMemo(() => {
-    const stops = ["#ef4444", "#f59e0b", "#fbbf24", "#34d399"];
-    const ratio = progressForGradient / 100;
-    const segments = stops.length - 1;
-    const idx = Math.min(segments - 1, Math.floor(ratio * segments));
-    const localT = ratio * segments - idx;
-
-    const hexToRgb = (hex: string) => {
-      const n = hex.replace("#", "");
-      return {
-        r: parseInt(n.slice(0, 2), 16),
-        g: parseInt(n.slice(2, 4), 16),
-        b: parseInt(n.slice(4, 6), 16),
-      };
-    };
-    const lerp = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
-
-    const start = hexToRgb(stops[idx]);
-    const end = hexToRgb(stops[idx + 1]);
-    const mix = {
-      r: lerp(start.r, end.r, localT),
-      g: lerp(start.g, end.g, localT),
-      b: lerp(start.b, end.b, localT),
-    };
-
-    return `linear-gradient(90deg, ${stops[idx]} 0%, rgb(${mix.r}, ${mix.g}, ${mix.b}) 50%, ${stops[idx + 1]} 100%)`;
-  }, [progressForGradient]);
 
   const effectiveProgress = forceComplete ? 100 : clampedLoadingProgress;
 
@@ -1270,39 +1273,32 @@ export function GraphCanvas3D({
           </div>
         )}
 
-        {loadingSample && !loadingDismissed && (
+                {loadingSample && !loadingDismissed && (
           <div className="absolute inset-0 flex items-center justify-center px-6 pointer-events-none">
-            <div className="w-full max-w-2xl rounded-3xl border border-slate-200 bg-white/95 p-6 shadow-xl pointer-events-auto">
-              <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.32em] text-slate-500">
-                <span>Processing Sample</span>
-                {allowLoadingClose && (
-                  <button
-                    type="button"
-                    className="group rounded-full p-1.5 text-slate-400 transition-all hover:scale-105 hover:bg-slate-100 hover:text-slate-700"
-                    onClick={() => {
-                      setForceComplete(true);
-                      setTimeout(() => setLoadingDismissed(true), 350);
-                    }}
-                  >
-                    <span className="block text-base leading-none">×</span>
-                  </button>
-                )}
-              </div>
-              <div className="mt-3 relative h-16 overflow-hidden rounded-2xl bg-slate-100">
-                <div
-                  className="absolute inset-0 rounded-2xl transition-all duration-500"
-                  style={{
-                    width: `${effectiveProgress}%`,
-                    backgroundImage: loadingGradient,
-                  }}
-                />
-                <div className="absolute inset-0 flex items-center justify-between px-5 text-sm font-semibold text-slate-900">
-                  <span className="text-sm font-semibold text-slate-900">{loadingStep}</span>
-                  <span className="text-base font-bold">
-                    {Math.round(effectiveProgress)}%
-                  </span>
-                </div>
-              </div>
+            <LoadingProgressCard
+              title="Processing Sample"
+              step={loadingStep}
+              progress={effectiveProgress}
+              allowClose={allowLoadingClose}
+              onClose={() => {
+                setForceComplete(true);
+                setTimeout(() => setLoadingDismissed(true), 350);
+              }}
+            />
+          </div>
+        )}
+
+        {!empty && recalculating && !loadingSample && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 bg-white/70 backdrop-blur-sm pointer-events-none">
+            <LoadingProgressCard
+              title="Recalculating Graph"
+              step={recalculationStep ?? "Updating layout..."}
+              progress={recalculationProgress ?? 0}
+              className="pointer-events-auto"
+            />
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+              <span className="h-2 w-2 animate-ping rounded-full bg-amber-400" />
+              <span>Applying your latest parameter changes...</span>
             </div>
           </div>
         )}
@@ -1319,6 +1315,8 @@ export function GraphCanvas3D({
               onResetCamera={handleResetCamera}
               turntableEnabled={turntableEnabled}
               onToggleTurntable={onToggleTurntable}
+              turntableSpeed={turntableSpeed}
+              onTurntableSpeedChange={onTurntableSpeedChange}
               axisLabels={axisLabels}
               enableAxisLabelAI={enableAxisLabelAI}
               onToggleAxisLabelAI={onToggleAxisLabelAI}
@@ -1327,6 +1325,18 @@ export function GraphCanvas3D({
               onRefreshAxisLabels={onRefreshAxisLabels}
               isRefreshingAxisLabels={isRefreshingAxisLabels}
               numDimensions={numDimensions}
+              showJurorNodes={showJurorNodes}
+              onShowJurorNodesChange={onShowJurorNodesChange}
+              showConceptNodes={showConceptNodes}
+              onShowConceptNodesChange={onShowConceptNodesChange}
+              showDesignerNodes={showDesignerNodes}
+              onShowDesignerNodesChange={onShowDesignerNodesChange}
+              showJurorConceptLinks={showJurorConceptLinks}
+              onShowJurorConceptLinksChange={onShowJurorConceptLinksChange}
+              showJurorJurorLinks={showJurorJurorLinks}
+              onShowJurorJurorLinksChange={onShowJurorJurorLinksChange}
+              showConceptConceptLinks={showConceptConceptLinks}
+              onShowConceptConceptLinksChange={onShowConceptConceptLinksChange}
             />
             <div className="absolute bottom-3 right-3 rounded-xl border bg-white/95 px-3 py-2 text-xs text-slate-700 shadow-sm">
               <div className="flex items-center gap-2">
@@ -1339,14 +1349,6 @@ export function GraphCanvas3D({
           </>
         )}
       </div>
-      <GraphLegend 
-        analysis={analysis}
-        filteredNodesCount={filteredNodesCount}
-        filteredLinksCount={filteredLinksCount}
-        numDimensions={numDimensions}
-        apiCallCount={apiCallCount}
-        apiCostTotal={apiCostTotal}
-      />
     </>
   );
 }

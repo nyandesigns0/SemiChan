@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { Terminal, BarChart3, ChevronDown, ChevronUp } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { formatCostReadable } from "@/lib/utils/api-utils";
+import { Terminal, BarChart3, ChevronDown, ChevronUp, Users, MessageSquare, Lightbulb, Layers, Activity, Hash, Link as LinkIcon } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { InspectorConsole, type LogEntry } from "./InspectorConsole";
 import { AnalysisReport } from "@/components/inspector/AnalysisReport";
@@ -20,6 +22,11 @@ interface InspectorPanelProps {
   enableAxisLabelAI?: boolean;
   isRefreshingAxisLabels?: boolean;
   insights?: Record<string, ConceptInsight>;
+  filteredNodesCount?: number;
+  filteredLinksCount?: number;
+  numDimensions?: number;
+  apiCallCount?: number;
+  apiCostTotal?: number;
   /** When provided, the panel will follow this tab value. */
   activeTab?: InspectorTab;
   /** Notify parent when a tab changes. */
@@ -39,6 +46,11 @@ const MAX_HEIGHT = 800;
 export function InspectorPanel({
   logs,
   analysis,
+  filteredNodesCount = 0,
+  filteredLinksCount = 0,
+  numDimensions = 0,
+  apiCallCount = 0,
+  apiCostTotal = 0,
   jurorBlocks,
   axisLabels,
   enableAxisLabelAI,
@@ -90,6 +102,8 @@ export function InspectorPanel({
   }, [isResizing]);
 
   const currentTab = activeTab ?? internalTab;
+  const { amount: formattedCost, unit: costUnit } = formatCostReadable(apiCostTotal);
+  const stats = analysis?.stats;
 
   useEffect(() => {
     if (activeTab && activeTab !== internalTab) {
@@ -159,14 +173,46 @@ export function InspectorPanel({
           />
         </div>
 
-        {/* Center: Current Status (Visible when collapsed or for context) */}
-        {isCollapsed && (
-          <div className="flex flex-1 items-center justify-center px-4 overflow-hidden">
-            <span className="truncate text-[10px] font-medium text-slate-400 uppercase tracking-tight">
-              {currentTab === "console" ? "System Logs Active" : "Analysis Report"}
-            </span>
-          </div>
-        )}
+        <div className="flex flex-1 items-center justify-center gap-2 overflow-x-auto px-3">
+          {stats && (
+            <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
+              <Users className="h-3.5 w-3.5" />
+              <span>{stats.totalJurors} jurors</span>
+            </Badge>
+          )}
+          {stats && (
+            <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
+              <MessageSquare className="h-3.5 w-3.5" />
+              <span>{stats.totalSentences} sentences</span>
+            </Badge>
+          )}
+          {stats && (
+            <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
+              <Lightbulb className="h-3.5 w-3.5" />
+              <span>{stats.totalConcepts} concepts</span>
+            </Badge>
+          )}
+          <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
+            <Layers className="h-3.5 w-3.5" />
+            <span>{numDimensions} axes</span>
+          </Badge>
+          <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
+            <Activity className="h-3.5 w-3.5" />
+            <div className="flex items-center gap-1.5">
+              <span>{apiCallCount} calls</span>
+              <span className="h-4 w-px bg-slate-200" />
+              <span>{formattedCost} {costUnit}</span>
+            </div>
+          </Badge>
+          <Badge variant="secondary" className="flex items-center gap-1.5 border border-indigo-100 bg-indigo-50 px-3 py-1 text-indigo-700 shadow-sm">
+            <Hash className="h-3.5 w-3.5" />
+            <span>{filteredNodesCount} Nodes</span>
+          </Badge>
+          <Badge variant="secondary" className="flex items-center gap-1.5 border border-emerald-100 bg-emerald-50 px-3 py-1 text-emerald-700">
+            <LinkIcon className="h-3.5 w-3.5" />
+            <span>{filteredLinksCount} Edges ({analysis?.links.length ?? 0} total)</span>
+          </Badge>
+        </div>
 
         {/* Right Side: Actions */}
         <div className="flex items-center gap-2">

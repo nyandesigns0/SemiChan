@@ -460,17 +460,6 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
     return arr;
   }, [analysis]);
 
-  if (!analysis) {
-    return (
-      <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white">
-        <div className="text-center text-slate-500">
-          <p className="text-sm font-semibold">Run an analysis to see the report.</p>
-          <p className="text-xs">Results will summarize jurors, dimensions, concepts, and stance distribution.</p>
-        </div>
-      </div>
-    );
-  }
-
   const stanceBadgeConfig = [
     { key: "praise", label: "Praise", color: "bg-emerald-400" },
     { key: "critique", label: "Critique", color: "bg-rose-400" },
@@ -628,6 +617,17 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
       content
     }];
   }, [analysis, rawExportContext]);
+
+  if (!analysis) {
+    return (
+      <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white">
+        <div className="text-center text-slate-500">
+          <p className="text-sm font-semibold">Run an analysis to see the report.</p>
+          <p className="text-xs">Results will summarize jurors, dimensions, concepts, and stance distribution.</p>
+        </div>
+      </div>
+    );
+  }
   const orderedAxesAll = axisKeys
     .map((key, idx) => {
       const parsed = Number.parseInt(key, 10);

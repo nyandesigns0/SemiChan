@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { Download, FileText, Network, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { DataInputPanel } from "@/components/ingest/DataInputPanel";
@@ -11,6 +10,8 @@ import { IngestModal } from "@/components/ingest/IngestModal";
 import { AnalysisControlsAccordion } from "@/components/controls/AnalysisControlsAccordion";
 import { AlignmentControls } from "@/components/controls/AlignmentControls";
 import { AIControlsAccordion } from "@/components/controls/AIControlsAccordion";
+import { AnchoredAxesAccordion } from "@/components/controls/AnchoredAxesAccordion";
+import { AxisInputModal } from "@/components/controls/AxisInputModal";
 import { SearchBarAccordion } from "@/components/controls/SearchBarAccordion";
 import { GraphFiltersAccordion } from "@/components/controls/GraphFiltersAccordion";
 import { GraphCanvas3D } from "@/components/graph/GraphCanvas3D";
@@ -42,6 +43,7 @@ export default function HomePage() {
   const [jurorBlocks, setJurorBlocks] = useState<JurorBlock[]>([]);
   const [ingestModalOpen, setIngestModalOpen] = useState(false);
   const [designerModalOpen, setDesignerModalOpen] = useState(false);
+  const [axisModalOpen, setAxisModalOpen] = useState(false);
   const [sampleLoadPending, setSampleLoadPending] = useState(false);
   const [sampleLoading, setSampleLoading] = useState(false);
   const [sampleProgress, setSampleProgress] = useState(0);
@@ -50,6 +52,7 @@ export default function HomePage() {
   const [samplePhase, setSamplePhase] = useState<"idle" | "loading" | "ready">("idle");
   const [autoRotateDisabled, setAutoRotateDisabled] = useState(false);
   const [turntableEnabled, setTurntableEnabled] = useState(true);
+  const [turntableSpeed, setTurntableSpeed] = useState(0.6);
   const sampleEventSourceRef = useRef<EventSource | null>(null);
   const sampleLoadPendingRef = useRef(false);
   const sampleProgressIdRef = useRef<string | null>(null);
@@ -130,6 +133,9 @@ export default function HomePage() {
   // Analysis state
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+  const [recalculationVisible, setRecalculationVisible] = useState(false);
+  const [recalculationProgress, setRecalculationProgress] = useState(0);
+  const [recalculationStep, setRecalculationStep] = useState("Recalculating graph...");
   const [anchorAxes, setAnchorAxes] = useState<AnchorAxis[]>([]);
   const [selectedAnchorAxisId, setSelectedAnchorAxisId] = useState<string | null>(null);
 
@@ -221,6 +227,11 @@ export default function HomePage() {
       setSelectedAnchorAxisId(anchorAxes[0].id);
     }
   }, [anchorAxes, selectedAnchorAxisId]);
+
+  const handleAddAnchorAxis = useCallback((axis: AnchorAxis) => {
+    setAnchorAxes((prev) => [...prev, axis]);
+    setSelectedAnchorAxisId((prev) => prev ?? axis.id);
+  }, []);
 
   // Log keywords when analysis completes
   useEffect(() => {
@@ -592,6 +603,52 @@ export default function HomePage() {
 
     analyze();
   }, [jurorBlocks, kConcepts, similarityThreshold, evidenceRankingParams, clusteringMode, autoK, autoUnit, autoWeights, autoKStability, autoKDominanceThreshold, autoKKPenalty, autoKEpsilon, autoMinClusterSize, minClusterSize, autoDominanceCap, autoDominanceCapThreshold, autoSeed, seedCandidates, seedPerturbations, seedCoherenceWeight, seedSeparationWeight, seedStabilityWeight, seedDominancePenaltyWeight, seedMicroClusterPenaltyWeight, seedLabelPenaltyWeight, seedDominanceThreshold, kMinOverride, kMaxOverride, clusterSeed, softMembership, cutType, granularityPercent, numDimensions, selectedModel, dimensionMode, varianceThreshold, anchorAxes, addLog]);
+
+  useEffect(() => {
+    let ticker: ReturnType<typeof setInterval> | null = null;
+    let closer: ReturnType<typeof setTimeout> | null = null;
+
+    if (sampleLoading) {
+      setRecalculationVisible(false);
+      setRecalculationProgress(0);
+      return () => {
+        if (ticker) clearInterval(ticker);
+        if (closer) clearTimeout(closer);
+      };
+    }
+
+    if (loadingAnalysis) {
+      setRecalculationVisible(true);
+      setRecalculationStep("Recalculating graph...");
+      setRecalculationProgress((prev) => (prev > 6 ? prev : 8));
+
+      ticker = setInterval(() => {
+        setRecalculationProgress((prev) => {
+          if (prev >= 92) return prev;
+          const increment = 3 + Math.random() * 5;
+          return Math.min(92, prev + increment);
+        });
+      }, 380);
+
+      return () => {
+        if (ticker) clearInterval(ticker);
+      };
+    }
+
+    if (recalculationVisible) {
+      setRecalculationStep("Applying layout...");
+      setRecalculationProgress((prev) => Math.max(prev, 98));
+      closer = setTimeout(() => {
+        setRecalculationVisible(false);
+        setRecalculationProgress(0);
+      }, 650);
+    }
+
+    return () => {
+      if (ticker) clearInterval(ticker);
+      if (closer) clearTimeout(closer);
+    };
+  }, [loadingAnalysis, sampleLoading, recalculationVisible]);
 
   useEffect(() => {
     if (!sampleProgressId || !sampleLoadPending) return;
@@ -1133,6 +1190,11 @@ export default function HomePage() {
     });
   }, []);
 
+  const handleTurntableSpeedChange = useCallback((speed: number) => {
+    const clamped = Math.min(2, Math.max(0, speed));
+    setTurntableSpeed(clamped);
+  }, []);
+
   const handleOpenUploadSidebar = useCallback(() => {
     // Open the left sidebar
     setLeftSidebarOpen(true);
@@ -1158,7 +1220,7 @@ export default function HomePage() {
         isOpen={leftSidebarOpen}
         onToggle={() => setLeftSidebarOpen(!leftSidebarOpen)}
         width={400}
-        disableOutsideClick={ingestModalOpen || designerModalOpen}
+        disableOutsideClick={ingestModalOpen || designerModalOpen || axisModalOpen}
       >
         <div className="space-y-4" ref={dataInputPanelRef}>
           <DataInputPanel
@@ -1255,8 +1317,12 @@ export default function HomePage() {
             varianceThreshold={varianceThreshold}
             onVarianceThresholdChange={setVarianceThreshold}
             appliedNumDimensions={appliedNumDimensions}
-            anchorAxes={anchorAxes}
-            onAnchorAxesChange={setAnchorAxes}
+          />
+
+          <AnchoredAxesAccordion
+            axes={anchorAxes}
+            onAxesChange={setAnchorAxes}
+            onOpenModal={() => setAxisModalOpen(true)}
           />
 
         </div>
@@ -1383,11 +1449,9 @@ export default function HomePage() {
                   onToggleAxisLabelAI={setEnableAxisLabelAI}
                   autoSynthesize={autoSynthesize}
                   onToggleAutoSynthesize={setAutoSynthesize}
-                  onRefreshAxisLabels={enableAxisLabelAI ? refreshAxisLabels : undefined}
+                  onRefreshAxisLabels={refreshAxisLabels}
                   isRefreshingAxisLabels={isRefreshingAxisLabels}
                   analysis={analysis}
-                  filteredNodesCount={combinedNodes.length}
-                  filteredLinksCount={combinedLinks.length}
                   checkpointIndex={checkpointIndex}
                   onCheckpointIndexChange={setCheckpointIndex}
                   showAxes={showAxes}
@@ -1395,8 +1459,6 @@ export default function HomePage() {
                   showGraph={showGraph}
                   onToggleGraph={setShowGraph}
                   numDimensions={appliedNumDimensions}
-                  apiCallCount={apiCallCount}
-                  apiCostTotal={apiCostTotal}
                   anchorAxes={analysis?.anchorAxes}
                   anchorAxisScores={analysis?.anchorAxisScores}
                   selectedAnchorAxisId={selectedAnchorAxisId}
@@ -1406,12 +1468,29 @@ export default function HomePage() {
                   loadingProgress={sampleProgress}
                   loadingStep={sampleStep}
                   samplePhase={samplePhase}
+                  recalculating={recalculationVisible}
+                  recalculationProgress={recalculationProgress}
+                  recalculationStep={recalculationStep}
                   autoRotateDisabled={autoRotateDisabled}
                   onAutoRotateDisabled={handleAutoRotateDisabled}
                   turntableEnabled={turntableEnabled}
                   onToggleTurntable={handleToggleTurntable}
+                  turntableSpeed={turntableSpeed}
+                  onTurntableSpeedChange={handleTurntableSpeedChange}
+                  showJurorNodes={showJurorNodes}
+                  onShowJurorNodesChange={setShowJurorNodes}
+                  showConceptNodes={showConceptNodes}
+                  onShowConceptNodesChange={setShowConceptNodes}
+                  showDesignerNodes={showDesignerNodes}
+                  onShowDesignerNodesChange={setShowDesignerNodes}
+                  showJurorConceptLinks={showJurorConceptLinks}
+                  onShowJurorConceptLinksChange={setShowJurorConceptLinks}
+                  showJurorJurorLinks={showJurorJurorLinks}
+                  onShowJurorJurorLinksChange={setShowJurorJurorLinks}
+                  showConceptConceptLinks={showConceptConceptLinks}
+                  onShowConceptConceptLinksChange={setShowConceptConceptLinks}
                   onOpenUploadSidebar={handleOpenUploadSidebar}
-              />
+                />
               </div>
 
               {/* Floating Details Panel */}
@@ -1437,6 +1516,11 @@ export default function HomePage() {
             enableAxisLabelAI={enableAxisLabelAI}
             isRefreshingAxisLabels={isRefreshingAxisLabels}
             insights={insights}
+            filteredNodesCount={combinedNodes.length}
+            filteredLinksCount={combinedLinks.length}
+            numDimensions={appliedNumDimensions}
+            apiCallCount={apiCallCount}
+            apiCostTotal={apiCostTotal}
             activeTab={inspectorTab}
             onTabChange={setInspectorTab}
             autoExpandOnAnalysis
@@ -1453,7 +1537,7 @@ export default function HomePage() {
         isOpen={rightSidebarOpen}
         onToggle={() => setRightSidebarOpen(!rightSidebarOpen)}
         width={400}
-        disableOutsideClick={ingestModalOpen || designerModalOpen}
+        disableOutsideClick={ingestModalOpen || designerModalOpen || axisModalOpen}
       >
         <div className="space-y-4">
           <GraphFiltersAccordion
@@ -1511,6 +1595,7 @@ export default function HomePage() {
         mode="designer"
         onAddDesignerBlock={handleAddDesignerBlock}
       />
+      <AxisInputModal open={axisModalOpen} onOpenChange={setAxisModalOpen} onAddAxis={handleAddAnchorAxis} />
     </div>
   );
 }

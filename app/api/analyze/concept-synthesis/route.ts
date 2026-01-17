@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { SynthesizeRequest, SynthesisResponse } from "@/types/api";
+import type { ConceptSynthesisRequest, ConceptSynthesisResponse } from "@/types/api";
 import type { AnalysisResult } from "@/types/analysis";
 
 import { DEFAULT_MODEL } from "@/constants/nlp-constants";
@@ -7,7 +7,7 @@ import { loadPrompts, processPrompt } from "@/lib/prompts/prompt-processor";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-type SynthesizePayload = SynthesizeRequest & {
+type ConceptSynthesisPayload = ConceptSynthesisRequest & {
   analysis?: AnalysisResult;
   centroid_semantic_terms?: string[];
   related_axes_scores?: Record<string, number>;
@@ -15,7 +15,7 @@ type SynthesizePayload = SynthesizeRequest & {
   constraints?: string[];
 };
 
-const formatStanceMix = (stanceMix: SynthesizeRequest["stance_mix"]) => {
+const formatStanceMix = (stanceMix: ConceptSynthesisRequest["stance_mix"]) => {
   const toPercent = (value?: number) => `${Math.round((value ?? 0) * 100)}%`;
   return `Praise: ${toPercent(stanceMix.praise)}, Critique: ${toPercent(stanceMix.critique)}, Suggestion: ${toPercent(stanceMix.suggestion)}, Neutral: ${toPercent(stanceMix.neutral)}`;
 };
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = (await request.json()) as SynthesizePayload;
+    const body = (await request.json()) as ConceptSynthesisPayload;
     const { id, label_seed, top_ngrams, evidence_sentences, stance_mix, model = DEFAULT_MODEL } = body;
     const analysis = body.analysis;
     const totalSentences = analysis?.stats?.totalSentences;
@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
       finalOneLiner = `Focus on ${label_seed.toLowerCase()} as reflected in juror feedback regarding ${top_ngrams.slice(0, 3).join(" and ")}.`;
     }
 
-    const synthesis: SynthesisResponse = {
+    const synthesis: ConceptSynthesisResponse = {
       concept_title: finalTitle,
       concept_one_liner: finalOneLiner,
       is_fallback: isFallback,
@@ -142,8 +142,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(synthesis);
 
   } catch (error) {
-    console.error("Synthesis API Error:", error);
+    console.error("Concept Synthesis API Error:", error);
     return NextResponse.json({ error: "Internal server error during synthesis" }, { status: 500 });
   }
 }
-
