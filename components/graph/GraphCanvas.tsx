@@ -4,7 +4,6 @@ import { useRef, useEffect, useState } from "react";
 import { FileText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ForceGraph } from "./ForceGraph";
-import { GraphLegend } from "./GraphLegend";
 import type { GraphNode, GraphLink } from "@/types/graph";
 
 interface GraphCanvasProps {
@@ -83,7 +82,6 @@ export function GraphCanvas({
           </>
         )}
       </div>
-      <GraphLegend />
     </>
   );
 }
