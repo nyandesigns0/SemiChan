@@ -114,7 +114,7 @@ export async function buildAnalysis(
     autoDominanceCap = true,
     autoDominanceCapThreshold,
     autoSeed = false,
-    seedCandidates = 32,
+    seedCandidates = 64,
     seedPerturbations = 3,
     seedCoherenceWeight = 0.3,
     seedSeparationWeight = 0.25,

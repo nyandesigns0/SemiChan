@@ -97,7 +97,7 @@ export default function HomePage() {
   const [autoSeed, setAutoSeed] = useState(true);
   const [autoUnit, setAutoUnit] = useState(false);
   const [autoWeights, setAutoWeights] = useState(false);
-  const [seedCandidates, setSeedCandidates] = useState(32);
+  const [seedCandidates, setSeedCandidates] = useState(64);
   const [seedPerturbations, setSeedPerturbations] = useState(3);
   const [seedCoherenceWeight, setSeedCoherenceWeight] = useState(0.3);
   const [seedSeparationWeight, setSeedSeparationWeight] = useState(0.25);
@@ -155,7 +155,7 @@ export default function HomePage() {
   }, [analysis, numDimensions]);
 
   // AI controls
-  const [enableAxisLabelAI, setEnableAxisLabelAI] = useState(false);
+  const [enableAxisLabelAI, setEnableAxisLabelAI] = useState(true);
   const [autoSynthesize, setAutoSynthesize] = useState(false);
   
   // Pipeline checkpoint state
@@ -314,7 +314,7 @@ export default function HomePage() {
     
     const labels: Record<string, any> = { ...analysis.axisLabels };
     
-    if (enhancedLabels) {
+    if (enableAxisLabelAI && enhancedLabels) {
       Object.keys(enhancedLabels).forEach(key => {
         if (labels[key] && (enhancedLabels as any)[key]) {
           labels[key] = {
@@ -329,7 +329,7 @@ export default function HomePage() {
     }
     
     return labels as AnalysisResult["axisLabels"];
-  }, [analysis?.axisLabels, enhancedLabels]);
+  }, [analysis?.axisLabels, enhancedLabels, enableAxisLabelAI]);
 
   // Raw data export context for analysis report
   const rawDataExportContext = useMemo(() => {

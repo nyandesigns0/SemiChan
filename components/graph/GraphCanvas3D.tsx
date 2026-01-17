@@ -1053,9 +1053,19 @@ export function GraphCanvas3D({
     setLoadingDismissed(false);
     setForceComplete(false);
     setAllowLoadingClose(false);
-    const timer = setTimeout(() => setAllowLoadingClose(true), 5000);
+    const timer = setTimeout(() => setAllowLoadingClose(true), 1000);
     return () => clearTimeout(timer);
   }, [loadingSample, loadingStep]);
+
+  // Auto-dismiss when loading completes (progress reaches 100% or samplePhase becomes ready)
+  useEffect(() => {
+    if (loadingSample && !loadingDismissed && (effectiveProgress >= 100 || samplePhase === "ready")) {
+      const timer = setTimeout(() => {
+        setLoadingDismissed(true);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [loadingSample, loadingDismissed, effectiveProgress, samplePhase]);
 
   // Ensure we always have a Set to avoid runtime reference errors
   const expandedConcepts = useMemo(
@@ -1275,16 +1285,18 @@ export function GraphCanvas3D({
 
                 {loadingSample && !loadingDismissed && (
           <div className="absolute inset-0 flex items-center justify-center px-6 pointer-events-none">
-            <LoadingProgressCard
-              title="Processing Sample"
-              step={loadingStep}
-              progress={effectiveProgress}
-              allowClose={allowLoadingClose}
-              onClose={() => {
-                setForceComplete(true);
-                setTimeout(() => setLoadingDismissed(true), 350);
-              }}
-            />
+            <div className="pointer-events-auto">
+              <LoadingProgressCard
+                title="Processing Sample"
+                step={loadingStep}
+                progress={effectiveProgress}
+                allowClose={allowLoadingClose}
+                onClose={() => {
+                  setForceComplete(true);
+                  setTimeout(() => setLoadingDismissed(true), 350);
+                }}
+              />
+            </div>
           </div>
         )}
 

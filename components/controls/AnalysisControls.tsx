@@ -468,7 +468,7 @@ export function AnalysisControls({
                               <Slider
                                 value={[seedCandidates]}
                                 min={16}
-                                max={64}
+                                max={128}
                                 step={1}
                                 onValueChange={(v) => onSeedCandidatesChange(v[0])}
                               />

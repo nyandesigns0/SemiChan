@@ -84,7 +84,7 @@ export function Graph3DControls({
   const hoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const axisLabelsMap = axisLabels ?? {};
   const showAxisPanel = Boolean(axisLabels);
-  const aiBoostActive = enableAxisLabelAI && autoSynthesize && showAxes;
+  const aiBoostActive = enableAxisLabelAI && showAxes;
   const turntableSpeedValue = typeof turntableSpeed === "number" ? turntableSpeed : 0.6;
   const nodeLinkControls = [
     { label: "Concept Nodes", value: showConceptNodes, onChange: onShowConceptNodesChange },
@@ -117,8 +117,9 @@ export function Graph3DControls({
   };
 
   const handleAIBoost = () => {
-    const shouldEnable = !aiBoostActive;
+    const shouldEnable = !enableAxisLabelAI;
     if (onToggleAxisLabelAI) onToggleAxisLabelAI(shouldEnable);
+    // Toggle autoSynthesize to match labels state for "boost" behavior
     if (onToggleAutoSynthesize) onToggleAutoSynthesize(shouldEnable);
     if (shouldEnable && !showAxes) onToggleAxes();
   };

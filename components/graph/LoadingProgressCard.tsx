@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
 interface LoadingProgressCardProps {
@@ -53,7 +54,7 @@ export function LoadingProgressCard({
   const gradient = useMemo(() => getProgressGradient(clampedProgress), [clampedProgress]);
 
   return (
-    <div className={cn("w-full max-w-2xl rounded-3xl border border-slate-200 bg-white/95 p-6 shadow-xl", className)}>
+    <div className={cn("w-full max-w-2xl min-w-[32rem] rounded-3xl border border-slate-200 bg-white/95 p-6 shadow-xl", className)}>
       <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.32em] text-slate-500">
         <span>{title}</span>
         {allowClose && onClose && (
@@ -61,12 +62,13 @@ export function LoadingProgressCard({
             type="button"
             className="group rounded-full p-1.5 text-slate-400 transition-all hover:scale-105 hover:bg-slate-100 hover:text-slate-700"
             onClick={onClose}
+            aria-label="Close"
           >
-            <span className="block text-base leading-none">A-</span>
+            <X className="h-4 w-4" />
           </button>
         )}
       </div>
-      <div className="mt-3 relative h-16 overflow-hidden rounded-2xl bg-slate-100">
+      <div className="mt-3 relative h-16 w-full min-w-full overflow-hidden rounded-2xl bg-slate-100">
         <div
           className="absolute inset-0 rounded-2xl transition-all duration-500"
           style={{
