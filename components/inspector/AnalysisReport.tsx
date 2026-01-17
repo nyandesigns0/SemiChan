@@ -251,6 +251,17 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
   const [isAxisSectionExpanded, setIsAxisSectionExpanded] = useState(true);
   const [expandedPrimaryConcepts, setExpandedPrimaryConcepts] = useState<Set<string>>(new Set());
   const [expandedJurorVectors, setExpandedJurorVectors] = useState<Record<string, boolean>>({});
+  const renderHeading = (icon: React.ReactNode, iconBg: string, title: string, subtitle: string) => (
+    <div className="flex items-center gap-3">
+      <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconBg}`}>
+        {icon}
+      </div>
+      <div className="flex flex-col leading-tight">
+        <span className="text-sm font-semibold text-slate-900">{title}</span>
+        <span className="text-[11px] font-semibold text-slate-500">{subtitle}</span>
+      </div>
+    </div>
+  );
 
   const togglePrimaryConceptExpand = (id: string) => {
     setExpandedPrimaryConcepts(prev => {
@@ -650,6 +661,11 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
   const stanceTotal =
     stanceCounts.praise + stanceCounts.critique + stanceCounts.suggestion + stanceCounts.neutral || 1;
 
+  const kSearchMetrics = analysis.kSearchMetrics ?? [];
+  const seedLeaderboard = analysis.seedLeaderboard ?? [];
+  const showAutoSeedSelection = analysis.autoSeed && seedLeaderboard.length > 0;
+  const showAutoKSelection = kSearchMetrics.length > 0;
+
   const overviewBadges = [
     { label: "Sentences", value: analysis.stats.totalSentences },
     { label: "Concepts", value: analysis.stats.totalConcepts },
@@ -659,126 +675,172 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
 
   return (
     <div className="flex h-full flex-col gap-6 overflow-y-auto p-6">
-      {/* Corpus Summary pinned to top, compact rows */}
-      <div className="rounded-2xl border border-slate-200 bg-slate-900 text-white shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="bg-white/10 text-white">
-              Corpus Summary
-            </Badge>
-            <span className="text-sm font-semibold text-white/80">Volume & stance mix</span>
+      {/* Top row: Corpus + auto selections */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
+            {renderHeading(<BarChart2 className="h-5 w-5" />, "bg-indigo-50 text-indigo-700", "Corpus Summary", "Volume & stance mix")}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {overviewBadges.map((item) => (
+                <Badge
+                  key={item.label}
+                  variant="outline"
+                  className="flex items-center gap-1 rounded-lg border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-sm"
+                >
+                  <span className="text-[9px] uppercase tracking-[0.15em] text-slate-500">{item.label}</span>
+                  <span className="text-sm font-black text-slate-900">{item.value}</span>
+                </Badge>
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {overviewBadges.map((item) => (
-              <Badge
-                key={item.label}
-                variant="outline"
-                className="flex items-center gap-1 rounded-lg border-white/30 bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm"
-              >
-                <span className="text-[9px] uppercase tracking-[0.15em] text-white/60">{item.label}</span>
-                <span className="text-sm font-black text-white">{item.value}</span>
-              </Badge>
-            ))}
-            <BarChart2 className="h-4 w-4 text-white/60" />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3 px-5 py-4 md:grid-cols-4">
-          {stanceBadgeConfig.map(({ key, label, color }) => {
-            const count = stanceCounts[key] || 0;
-            const percent = stanceTotal > 0 ? count / stanceTotal : 0;
-            return (
-              <div key={key} className="flex flex-col gap-1 rounded-lg bg-white/5 p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-white/80">
-                    <span className={`h-2.5 w-2.5 rounded-full ${color}`} />
-                    <span>{label}</span>
+          <div className="grid grid-cols-2 gap-3 px-5 py-4 md:grid-cols-4">
+            {stanceBadgeConfig.map(({ key, label, color }) => {
+              const count = stanceCounts[key] || 0;
+              const percent = stanceTotal > 0 ? count / stanceTotal : 0;
+              return (
+                <div key={key} className="flex flex-col gap-1 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                      <span className={`h-2.5 w-2.5 rounded-full ${color}`} />
+                      <span>{label}</span>
+                      <Badge
+                        variant="outline"
+                        className="border-slate-200 bg-white px-2 py-0 text-[10px] font-black text-slate-700 shadow-sm"
+                      >
+                        {count}
+                      </Badge>
+                    </div>
                     <Badge
                       variant="outline"
-                      className="border-white/30 bg-white/10 px-2 py-0 text-[10px] font-black text-white shadow-sm"
+                      className="border-slate-200 bg-white px-2 py-0 text-[10px] font-bold text-slate-600"
                     >
-                      {count}
+                      {formatPercent(percent, 0)}
                     </Badge>
                   </div>
-                  <Badge
-                    variant="outline"
-                    className="border-white/20 bg-white/5 px-2 py-0 text-[10px] font-bold text-white"
-                  >
-                    {formatPercent(percent, 0)}
-                  </Badge>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                    <div
+                      className={`h-1.5 ${color}`}
+                      style={{ width: `${Math.min(100, Math.max(percent * 100, 4))}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                  <div
-                    className={`h-1.5 ${color}`}
-                    style={{ width: `${Math.min(100, Math.max(percent * 100, 4))}%` }}
-                  />
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      </div>
 
-      {analysis && analysis.kSearchMetrics && analysis.kSearchMetrics.length > 0 && (
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="bg-indigo-50 text-indigo-700">
-                AutoK Selection
-              </Badge>
-              <span className="text-sm font-semibold text-slate-600">
-                Tested K {analysis.kSearchMetrics[0]?.k} - {analysis.kSearchMetrics[analysis.kSearchMetrics.length - 1]?.k}
-              </span>
+        {showAutoKSelection && (
+          <div className="h-full rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
+              {renderHeading(<CircleDot className="h-5 w-5" />, "bg-indigo-50 text-indigo-700", "AutoK Selection", "Automatic cluster search")}
+              {analysis.recommendedK !== undefined && (
+                <Badge variant="outline" className="border-indigo-200 bg-indigo-50 px-2 py-0 text-[11px] font-black text-indigo-700">
+                  Chosen K = {analysis.recommendedK}
+                </Badge>
+              )}
             </div>
-            {analysis.recommendedK !== undefined && (
-              <Badge variant="outline" className="border-indigo-200 bg-indigo-50 px-2 py-0 text-[11px] font-black text-indigo-700">
-                Chosen K = {analysis.recommendedK}
-              </Badge>
-            )}
-          </div>
-          <div className="px-5 py-4 space-y-3">
-            {analysis.autoKReasoning && (
-              <p className="text-[12px] text-slate-600">
-                Reasoning: {analysis.autoKReasoning}
-              </p>
-            )}
-            <div className="overflow-hidden rounded-lg border border-slate-100">
-              <table className="min-w-full divide-y divide-slate-100 text-[12px]">
-                <thead className="bg-slate-50 text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-semibold">K</th>
-                    <th className="px-3 py-2 text-left font-semibold">Score</th>
-                    <th className="px-3 py-2 text-left font-semibold">Dominance</th>
-                    <th className="px-3 py-2 text-left font-semibold">Stability</th>
-                    <th className="px-3 py-2 text-left font-semibold">Valid</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {analysis.kSearchMetrics.map((m) => {
-                    const isSelected = analysis.recommendedK === m.k;
-                    return (
-                      <tr key={`k-${m.k}`} className={isSelected ? "bg-indigo-50/50" : ""}>
-                        <td className="px-3 py-2 font-semibold text-slate-800">{m.k}</td>
-                        <td className="px-3 py-2 text-slate-700">{m.valid && Number.isFinite(m.score) ? m.score.toFixed(3) : "—"}</td>
-                        <td className="px-3 py-2 text-slate-700">
-                          {m.maxClusterShare !== undefined ? `${(m.maxClusterShare * 100).toFixed(1)}%` : "—"}
-                        </td>
-                        <td className="px-3 py-2 text-slate-700">
-                          {m.stabilityScore !== undefined ? m.stabilityScore.toFixed(3) : "—"}
-                        </td>
-                        <td className="px-3 py-2">
-                          <Badge variant={m.valid ? "secondary" : "outline"} className={m.valid ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}>
-                            {m.valid ? "Yes" : "No"}
-                          </Badge>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="px-5 py-4 space-y-3">
+              <div className="text-[12px] font-semibold text-slate-600">
+                Tested K {kSearchMetrics[0]?.k} - {kSearchMetrics[kSearchMetrics.length - 1]?.k}
+              </div>
+              {analysis.autoKReasoning && (
+                <p className="text-[12px] text-slate-600">
+                  Reasoning: {analysis.autoKReasoning}
+                </p>
+              )}
+              <div className="overflow-hidden rounded-lg border border-slate-100">
+                <table className="min-w-full divide-y divide-slate-100 text-[12px]">
+                  <thead className="bg-slate-50 text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold">K</th>
+                      <th className="px-3 py-2 text-left font-semibold">Score</th>
+                      <th className="px-3 py-2 text-left font-semibold">Dominance</th>
+                      <th className="px-3 py-2 text-left font-semibold">Stability</th>
+                      <th className="px-3 py-2 text-left font-semibold">Valid</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {kSearchMetrics.map((m) => {
+                      const isSelected = analysis.recommendedK === m.k;
+                      return (
+                        <tr key={`k-${m.k}`} className={isSelected ? "bg-indigo-50/50" : ""}>
+                          <td className="px-3 py-2 font-semibold text-slate-800">{m.k}</td>
+                          <td className="px-3 py-2 text-slate-700">{m.valid && Number.isFinite(m.score) ? m.score.toFixed(3) : "-"}</td>
+                          <td className="px-3 py-2 text-slate-700">
+                            {m.maxClusterShare !== undefined ? `${(m.maxClusterShare * 100).toFixed(1)}%` : "-"}
+                          </td>
+                          <td className="px-3 py-2 text-slate-700">
+                            {m.stabilityScore !== undefined ? m.stabilityScore.toFixed(3) : "-"}
+                          </td>
+                          <td className="px-3 py-2">
+                            <Badge variant={m.valid ? "secondary" : "outline"} className={m.valid ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}>
+                              {m.valid ? "Yes" : "No"}
+                            </Badge>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {showAutoSeedSelection && (
+          <div className="h-full rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
+              {renderHeading(<Sparkles className="h-5 w-5" />, "bg-emerald-50 text-emerald-700", "Auto-Seed Selection", "Seed stability exploration")}
+              {analysis.seedChosen !== undefined && (
+                <Badge variant="outline" className="border-emerald-200 bg-emerald-50 px-2 py-0 text-[11px] font-black text-emerald-700">
+                  Chosen Seed = {analysis.seedChosen}
+                </Badge>
+              )}
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div className="text-[12px] font-semibold text-slate-600">
+                Evaluated {analysis.seedCandidatesEvaluated ?? seedLeaderboard.length} candidate seeds
+              </div>
+              {analysis.autoSeedReasoning && (
+                <p className="text-[12px] text-slate-600">
+                  Reasoning: {analysis.autoSeedReasoning}
+                </p>
+              )}
+              <div className="overflow-hidden rounded-lg border border-slate-100">
+                <table className="min-w-full divide-y divide-slate-100 text-[12px]">
+                  <thead className="bg-slate-50 text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold">Seed</th>
+                      <th className="px-3 py-2 text-left font-semibold">Score</th>
+                      <th className="px-3 py-2 text-left font-semibold">Dominance</th>
+                      <th className="px-3 py-2 text-left font-semibold">Micro-Clusters</th>
+                      <th className="px-3 py-2 text-left font-semibold">Stability</th>
+                      <th className="px-3 py-2 text-left font-semibold">Coherence</th>
+                      <th className="px-3 py-2 text-left font-semibold">Separation</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {seedLeaderboard.slice(0, 10).map((entry, idx) => {
+                      const isSelected = analysis.seedChosen === entry.seed;
+                      return (
+                        <tr key={`seed-${entry.seed}-${idx}`} className={isSelected ? "bg-indigo-50/50" : ""}>
+                          <td className="px-3 py-2 font-semibold text-slate-800">{entry.seed}</td>
+                          <td className="px-3 py-2 text-slate-700">{Number.isFinite(entry.score) ? entry.score.toFixed(4) : "-"}</td>
+                          <td className="px-3 py-2 text-slate-700">{(entry.maxClusterShare * 100).toFixed(1)}%</td>
+                          <td className="px-3 py-2 text-slate-700">{entry.microClusters}</td>
+                          <td className="px-3 py-2 text-slate-700">{entry.stability.toFixed(3)}</td>
+                          <td className="px-3 py-2 text-slate-700">{entry.coherence !== undefined ? entry.coherence.toFixed(3) : "-"}</td>
+                          <td className="px-3 py-2 text-slate-700">{entry.separation !== undefined ? entry.separation.toFixed(3) : "-"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {analysis.unitSearchMetrics && analysis.unitSearchMetrics.length > 0 && (
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -982,75 +1044,12 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
         </div>
       )}
 
-      {analysis?.autoSeed && analysis.seedLeaderboard && analysis.seedLeaderboard.length > 0 && (
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="bg-indigo-50 text-indigo-700">
-                Auto-Seed Selection
-              </Badge>
-              <span className="text-sm font-semibold text-slate-600">
-                Evaluated {analysis.seedCandidatesEvaluated ?? analysis.seedLeaderboard.length} candidate seeds
-              </span>
-            </div>
-            {analysis.seedChosen !== undefined && (
-              <Badge variant="outline" className="border-indigo-200 bg-indigo-50 px-2 py-0 text-[11px] font-black text-indigo-700">
-                Chosen Seed = {analysis.seedChosen}
-              </Badge>
-            )}
-          </div>
-          <div className="px-5 py-4 space-y-3">
-            {analysis.autoSeedReasoning && (
-              <p className="text-[12px] text-slate-600">
-                Reasoning: {analysis.autoSeedReasoning}
-              </p>
-            )}
-            <div className="overflow-hidden rounded-lg border border-slate-100">
-              <table className="min-w-full divide-y divide-slate-100 text-[12px]">
-                <thead className="bg-slate-50 text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-semibold">Seed</th>
-                    <th className="px-3 py-2 text-left font-semibold">Score</th>
-                    <th className="px-3 py-2 text-left font-semibold">Dominance</th>
-                    <th className="px-3 py-2 text-left font-semibold">Micro-Clusters</th>
-                    <th className="px-3 py-2 text-left font-semibold">Stability</th>
-                    <th className="px-3 py-2 text-left font-semibold">Coherence</th>
-                    <th className="px-3 py-2 text-left font-semibold">Separation</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {analysis.seedLeaderboard.slice(0, 10).map((entry, idx) => {
-                    const isSelected = analysis.seedChosen === entry.seed;
-                    return (
-                      <tr key={`seed-${entry.seed}-${idx}`} className={isSelected ? "bg-indigo-50/50" : ""}>
-                        <td className="px-3 py-2 font-semibold text-slate-800">{entry.seed}</td>
-                        <td className="px-3 py-2 text-slate-700">{Number.isFinite(entry.score) ? entry.score.toFixed(4) : "-"}</td>
-                        <td className="px-3 py-2 text-slate-700">{(entry.maxClusterShare * 100).toFixed(1)}%</td>
-                        <td className="px-3 py-2 text-slate-700">{entry.microClusters}</td>
-                        <td className="px-3 py-2 text-slate-700">{entry.stability.toFixed(3)}</td>
-                        <td className="px-3 py-2 text-slate-700">{entry.coherence !== undefined ? entry.coherence.toFixed(3) : "-"}</td>
-                        <td className="px-3 py-2 text-slate-700">{entry.separation !== undefined ? entry.separation.toFixed(3) : "-"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Three-column layout: Juror, Dimension, Concept */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Juror Analysis */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="bg-indigo-50 text-indigo-700">
-                Juror Analysis
-              </Badge>
-              <span className="text-xs font-semibold text-slate-500">Raw terms vs concept pull</span>
-            </div>
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+            {renderHeading(<Users className="h-5 w-5" />, "bg-indigo-50 text-indigo-700", "Juror Analysis", "Raw terms vs concept pull")}
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="border-slate-200 bg-white text-[11px] font-semibold text-slate-600">
                 {analysis.stats.totalJurors} jurors
@@ -1089,10 +1088,9 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                   </div>
                 )}
               </div>
-              <Users className="h-4 w-4 text-slate-400" />
             </div>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-3 px-5 py-4">
             {sortedJurors.map((juror) => {
               const semanticTerms = analysis.jurorTopTerms?.[juror] || [];
               const vector = analysis.jurorVectors[juror] || {};
@@ -1391,41 +1389,35 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
 
         {/* Dimension Analysis */}
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md">
-          <button
-            onClick={() => setIsAxisSectionExpanded(!isAxisSectionExpanded)}
-            className="flex w-full items-center justify-between px-5 py-3 transition-colors hover:bg-slate-50"
-          >
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-amber-50 p-2 text-amber-600">
-                <Layers className="h-5 w-5" />
+          <div className="border-b border-slate-100">
+            <button
+              onClick={() => setIsAxisSectionExpanded(!isAxisSectionExpanded)}
+              className="flex w-full items-center justify-between px-5 py-3 transition-colors hover:bg-slate-50"
+            >
+              {renderHeading(<Layers className="h-5 w-5" />, "bg-amber-50 text-amber-600", "Dimension Analysis", "Why points sit where they do")}
+              <div className="flex items-center gap-3">
+                {enableAxisLabelAI && (
+                  <Badge variant="outline" className="border-indigo-100 bg-indigo-50 text-indigo-700">
+                    AI labels
+                  </Badge>
+                )}
+                {isRefreshingAxisLabels && (
+                  <div className="flex items-center gap-1 text-xs text-indigo-600">
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    Updating
+                  </div>
+                )}
+                {isAxisSectionExpanded ? (
+                  <ChevronUp className="h-5 w-5 text-slate-400" />
+                ) : (
+                  <ChevronDown className="h-5 w-5 text-slate-400" />
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-800">Dimension Analysis</span>
-                <span className="text-xs font-semibold text-slate-500">Why points sit where they do</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              {enableAxisLabelAI && (
-                <Badge variant="outline" className="border-indigo-100 bg-indigo-50 text-indigo-700">
-                  AI labels
-                </Badge>
-              )}
-              {isRefreshingAxisLabels && (
-                <div className="flex items-center gap-1 text-xs text-indigo-600">
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                  Updating
-                </div>
-              )}
-              {isAxisSectionExpanded ? (
-                <ChevronUp className="h-5 w-5 text-slate-400" />
-              ) : (
-                <ChevronDown className="h-5 w-5 text-slate-400" />
-              )}
-            </div>
-          </button>
+            </button>
+          </div>
 
           {isAxisSectionExpanded && (
-            <div className="px-5 pb-5">
+            <div className="px-5 py-4">
               <div className="space-y-3">
             {orderedAxes.length === 0 && <div className="text-xs text-slate-400">No axis labels available.</div>}
             {orderedAxes.map(({ key: axisKey, axisIndex }) => {
@@ -1595,51 +1587,13 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
         )}
 
         {/* Concept Analysis */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="bg-emerald-50 text-emerald-700">
-                Concept Analysis
-              </Badge>
-              <span className="text-xs font-semibold text-slate-500">Juror ownership & evidence</span>
-            </div>
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+            {renderHeading(<Sparkles className="h-5 w-5" />, "bg-emerald-50 text-emerald-700", "Concept Analysis", "Juror ownership & evidence")}
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="border-slate-200 bg-white text-[11px] font-semibold text-slate-600">
                 {analysis.stats.totalConcepts}
               </Badge>
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setLimitMenuOpen((prev) => !prev)}
-                  className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 shadow-sm hover:bg-slate-50"
-                >
-                  <Filter className="h-3.5 w-3.5" />
-                  Limit
-                </button>
-                {limitMenuOpen && (
-                  <div className="absolute right-0 top-8 z-10 w-40 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
-                    {[
-                      { value: "5", label: "Top 5" },
-                      { value: "10", label: "Top 10" },
-                      { value: "all", label: "Show all" },
-                    ].map((opt) => (
-                      <button
-                        key={opt.value}
-                        onClick={() => {
-                          setConceptLimit(opt.value as any);
-                          setLimitMenuOpen(false);
-                        }}
-                        className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-[12px] font-semibold ${
-                          conceptLimit === opt.value ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:bg-slate-50"
-                        }`}
-                      >
-                        <span>{opt.label}</span>
-                        {conceptLimit === opt.value && <span className="text-[10px] text-indigo-600">•</span>}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
               <div className="relative">
                 <button
                   type="button"
@@ -1674,10 +1628,42 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                   </div>
                 )}
               </div>
-              <Sparkles className="h-4 w-4 text-slate-400" />
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setLimitMenuOpen((prev) => !prev)}
+                  className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 shadow-sm hover:bg-slate-50"
+                >
+                  <Filter className="h-3.5 w-3.5" />
+                  Limit
+                </button>
+                {limitMenuOpen && (
+                  <div className="absolute right-0 top-8 z-10 w-40 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                    {[
+                      { value: "5", label: "Top 5" },
+                      { value: "10", label: "Top 10" },
+                      { value: "all", label: "Show all" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => {
+                          setConceptLimit(opt.value as any);
+                          setLimitMenuOpen(false);
+                        }}
+                        className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-[12px] font-semibold ${
+                          conceptLimit === opt.value ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:bg-slate-50"
+                        }`}
+                      >
+                        <span>{opt.label}</span>
+                        {conceptLimit === opt.value && <span className="text-[10px] text-indigo-600">•</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-3 px-5 py-4">
             {visibleConcepts.map((concept) => {
               const distribution = (conceptJurorDistribution.get(concept.id) || [])
                 .slice()
