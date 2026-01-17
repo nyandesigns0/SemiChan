@@ -64,9 +64,10 @@ export function Graph3DControls({
   };
 
   const handleAIBoost = () => {
-    if (onToggleAxisLabelAI) onToggleAxisLabelAI(true);
-    if (onToggleAutoSynthesize) onToggleAutoSynthesize(true);
-    if (!showAxes) onToggleAxes();
+    const shouldEnable = !aiBoostActive;
+    if (onToggleAxisLabelAI) onToggleAxisLabelAI(shouldEnable);
+    if (onToggleAutoSynthesize) onToggleAutoSynthesize(shouldEnable);
+    if (shouldEnable && !showAxes) onToggleAxes();
   };
 
   return (
@@ -140,8 +141,8 @@ export function Graph3DControls({
               : "bg-gradient-to-br from-amber-200/80 via-orange-300/80 to-rose-300/80 text-white hover:from-amber-300/90 hover:via-orange-400/90 hover:to-rose-400/90"
           )}
           onClick={handleAIBoost}
-          title="Enable AI insights"
-          aria-label="Enable AI insights"
+          title={aiBoostActive ? "Disable AI insights" : "Enable AI insights"}
+          aria-label={aiBoostActive ? "Disable AI insights" : "Enable AI insights"}
         >
           <Sparkles className="h-4 w-4" />
         </Button>

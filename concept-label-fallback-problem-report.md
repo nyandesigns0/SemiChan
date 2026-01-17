@@ -219,3 +219,4 @@ The semantic fallback mechanism for concept labeling is not working correctly. C
 - The user reported seeing text in the inspector but "Concept" in the label, suggesting the data exists but extraction/assembly is failing
 
 
+

@@ -61,3 +61,4 @@ Write-Host "`n✓ SUCCESS: Lock file removed. Git should work normally now." -Fo
 
 
 
+
