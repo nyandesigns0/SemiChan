@@ -693,7 +693,7 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
               ))}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3 px-5 py-4 md:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 px-5 py-4">
             {stanceBadgeConfig.map(({ key, label, color }) => {
               const count = stanceCounts[key] || 0;
               const percent = stanceTotal > 0 ? count / stanceTotal : 0;
