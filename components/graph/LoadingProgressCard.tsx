@@ -54,13 +54,13 @@ export function LoadingProgressCard({
   const gradient = useMemo(() => getProgressGradient(clampedProgress), [clampedProgress]);
 
   return (
-    <div className={cn("w-full max-w-2xl min-w-[32rem] rounded-3xl border border-slate-200 bg-white/95 p-6 shadow-xl", className)}>
-      <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.32em] text-slate-500">
-        <span>{title}</span>
+    <div className={cn("w-[600px] h-[160px] rounded-3xl border border-slate-200 bg-white/95 p-6 shadow-xl", className)}>
+      <div className="flex items-center justify-between h-[24px] text-[10px] font-semibold uppercase tracking-[0.32em] text-slate-500">
+        <span className="truncate pr-2">{title}</span>
         {allowClose && onClose && (
           <button
             type="button"
-            className="group rounded-full p-1.5 text-slate-400 transition-all hover:scale-105 hover:bg-slate-100 hover:text-slate-700"
+            className="group flex-shrink-0 rounded-full p-1.5 text-slate-400 transition-all hover:scale-105 hover:bg-slate-100 hover:text-slate-700"
             onClick={onClose}
             aria-label="Close"
           >
@@ -68,7 +68,7 @@ export function LoadingProgressCard({
           </button>
         )}
       </div>
-      <div className="mt-3 relative h-16 w-full min-w-full overflow-hidden rounded-2xl bg-slate-100">
+      <div className="mt-3 relative h-[72px] w-full overflow-hidden rounded-2xl bg-slate-100">
         <div
           className="absolute inset-0 rounded-2xl transition-all duration-500"
           style={{
@@ -77,8 +77,8 @@ export function LoadingProgressCard({
           }}
         />
         <div className="absolute inset-0 flex items-center justify-between px-5 text-sm font-semibold text-slate-900">
-          <span className="text-sm font-semibold text-slate-900">{step}</span>
-          <span className="text-base font-bold">
+          <span className="text-sm font-semibold text-slate-900 truncate pr-2">{step}</span>
+          <span className="text-base font-bold flex-shrink-0">
             {Math.round(clampedProgress)}%
           </span>
         </div>

@@ -56,9 +56,10 @@ export default function HomePage() {
   const [autoRotateDisabled, setAutoRotateDisabled] = useState(false);
   const [turntableEnabled, setTurntableEnabled] = useState(true);
   const [turntableSpeed, setTurntableSpeed] = useState(0.6);
-  const [showSplashScreen, setShowSplashScreen] = useState(true);
+  const [showSplashScreen, setShowSplashScreen] = useState(false);
   const [fadeSplashScreen, setFadeSplashScreen] = useState(false);
   const [fadeLoader, setFadeLoader] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const sampleEventSourceRef = useRef<EventSource | null>(null);
   const sampleLoadPendingRef = useRef(false);
   const sampleProgressIdRef = useRef<string | null>(null);
@@ -66,6 +67,9 @@ export default function HomePage() {
   const [ingestError, setIngestError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Only show splash screen on client after mount to avoid hydration mismatch
+    setMounted(true);
+    setShowSplashScreen(true);
     const loaderTimer = window.setTimeout(() => setFadeLoader(true), 825);
     const fadeTimer = window.setTimeout(() => setFadeSplashScreen(true), 1125);
     const hideTimer = window.setTimeout(() => setShowSplashScreen(false), 1500);
@@ -1800,7 +1804,7 @@ export default function HomePage() {
       />
       <AxisInputModal open={axisModalOpen} onOpenChange={setAxisModalOpen} onAddAxis={handleAddAnchorAxis} />
       </div>
-      {showSplashScreen && (
+      {mounted && showSplashScreen && (
         <div className="pointer-events-none fixed inset-0 z-[9999] flex items-center justify-center">
           <div
             className={`pointer-events-none absolute inset-0 bg-white transition-opacity duration-300 ${
