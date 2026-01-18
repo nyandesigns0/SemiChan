@@ -56,7 +56,7 @@ export default function HomePage() {
   const [autoRotateDisabled, setAutoRotateDisabled] = useState(false);
   const [turntableEnabled, setTurntableEnabled] = useState(true);
   const [turntableSpeed, setTurntableSpeed] = useState(0.6);
-  const [showSplashScreen, setShowSplashScreen] = useState(false);
+  const [showSplashScreen, setShowSplashScreen] = useState(true);
   const [fadeSplashScreen, setFadeSplashScreen] = useState(false);
   const [fadeLoader, setFadeLoader] = useState(false);
   const [mounted, setMounted] = useState(false);
