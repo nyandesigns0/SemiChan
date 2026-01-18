@@ -112,9 +112,9 @@ The ingestion phase handles different input types. For PDFs, it iterates through
 ---
 
 ## Step 2: Juror Segmentation
-**Plain Language:** The system identifies who said what by looking for juror names as headers.
+**Plain Language:** The system identifies who said what by looking for juror names as headers, and automatically extracts tags from the text.
 
-**Technical Detail:** The system employs a heuristic `looksLikeName` function that analyzes lines for specific metadata patterns: it checks for a word count between 2 and 5, proper capitalization of each word, absence of trailing punctuation (like periods or colons), and a total length between 6 and 60 characters. A look-ahead mechanism confirms a line is a header if the subsequent non-empty line does *not* look like another name, allowing for robust segmentation of different juror comments into discrete `JurorBlock` objects.
+**Technical Detail:** The system employs a heuristic `looksLikeName` function that analyzes lines for specific metadata patterns: it checks for a word count between 2 and 5, proper capitalization of each word, absence of trailing punctuation (like periods or colons), and a total length between 6 and 60 characters. A look-ahead mechanism confirms a line is a header if the subsequent non-empty line does *not* look like another name, allowing for robust segmentation of different juror comments into discrete `JurorBlock` objects. Additionally, the system automatically extracts tags using both `#hashtag` syntax and `[bracketed tag]` syntax, cleans the tag syntax from the text for semantic analysis, and saves discovered tags to the global tag library.
 
 **Location:** `lib/segmentation/juror-segmenter.ts` (`segmentByJuror`, `looksLikeName`)
 
@@ -122,20 +122,32 @@ The ingestion phase handles different input types. For PDFs, it iterates through
 The segmenter splits the text by lines and uses `looksLikeName` to find potential headers (checking for capitalization patterns and length). It flushes a buffer whenever a new name is found, assigning the collected text to the previous name. Small stray blocks are merged into an "Unattributed" category.
 
 ### Example Tracking
-*   **Thought A:** "I appreciated the careful attention to daylight and the sun path. The proposal is strong in its narrative, but the site response could be clearer. The plan feels tight and circulation could be improved."
-*   **A* (Explanation):** Grouped into Sarah Broadstock's block after identifying her name as a header using the `looksLikeName` heuristic.
-*   **Thought B:** "The geometry creates unique light conditions; indirect lighting and shadows form a serene atmosphere. The sustainability strategy would benefit from clearer explanation."
-*   **B* (Explanation):** Grouped into Sandra Baggerman's block after identifying her name as a header using the `looksLikeName` heuristic.
+*   **Thought A:** "I appreciated the careful attention to daylight and the sun path. #lighting The proposal is strong in its narrative, but the site response could be clearer. The plan feels tight and circulation could be improved. [circulation issues]"
+*   **A* (Explanation):** Grouped into Sarah Broadstock's block after identifying her name as a header using the `looksLikeName` heuristic. Tags `#lighting` and `[circulation issues]` are extracted, and the text is cleaned to remove tag syntax for semantic analysis.
+*   **Thought B:** "The geometry creates unique light conditions; indirect lighting and shadows form a serene atmosphere. #atmosphere The sustainability strategy would benefit from clearer explanation."
+*   **B* (Explanation):** Grouped into Sandra Baggerman's block after identifying her name as a header using the `looksLikeName` heuristic. Tag `#atmosphere` is extracted, and the text is cleaned to remove tag syntax for semantic analysis.
 *   **State (Full Juror Blocks):**
 ```json
 [
-  { 
-    "juror": "Sarah Broadstock", 
-    "text": "I appreciated the careful attention to daylight and the sun path. The proposal is strong in its narrative, but the site response could be clearer. The plan feels tight and circulation could be improved." 
+  {
+    "juror": "Sarah Broadstock",
+    "comments": [
+      {
+        "id": "uuid-1",
+        "text": "I appreciated the careful attention to daylight and the sun path. The proposal is strong in its narrative, but the site response could be clearer. The plan feels tight and circulation could be improved.",
+        "tags": ["lighting", "circulation issues"]
+      }
+    ]
   },
-  { 
-    "juror": "Sandra Baggerman", 
-    "text": "The geometry creates unique light conditions; indirect lighting and shadows form a serene atmosphere. The sustainability strategy would benefit from clearer explanation." 
+  {
+    "juror": "Sandra Baggerman",
+    "comments": [
+      {
+        "id": "uuid-2",
+        "text": "The geometry creates unique light conditions; indirect lighting and shadows form a serene atmosphere. The sustainability strategy would benefit from clearer explanation.",
+        "tags": ["atmosphere"]
+      }
+    ]
   }
 ]
 ```

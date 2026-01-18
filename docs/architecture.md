@@ -225,9 +225,12 @@ app/api/
 ### API Route Responsibilities
 
 1. **`/api/segment`** - Text Processing
-   - Parses raw text into juror blocks
+   - Parses raw text into juror blocks with automatic tag recognition
+   - Extracts tags using `#hashtag` and `[bracketed tag]` syntax
+   - Cleans tag syntax from text for semantic analysis
+   - Saves discovered tags to global tag library
    - Lightweight, synchronous operation
-   - Returns structured `JurorBlock[]`
+   - Returns structured `JurorBlock[]` with populated `tags` arrays
 
 2. **`/api/analyze`** - Core Analysis Pipeline
    - Orchestrates the entire analysis pipeline
@@ -288,7 +291,7 @@ lib/
 │   ├── stance-classifier.ts       # Sentiment/stance classification
 │   └── summarizer.ts              # Text summarization
 ├── segmentation/         # Text segmentation
-│   └── juror-segmenter.ts         # Juror block identification
+│   └── juror-segmenter.ts         # Juror block identification with tag extraction
 ├── pdf/                  # PDF processing
 │   └── pdf-parser.ts              # PDF text extraction
 └── utils/                # Shared utilities
@@ -328,6 +331,9 @@ User Input (Text/PDF)
 [API] POST /api/segment
     ↓
 [Lib] segmentByJuror()
+    ├── Tag Extraction (#hashtags, [bracketed tags])
+    ├── Text Cleaning (remove tag syntax)
+    └── Global Tag Library Update
     ↓
 [Frontend] Analysis Controls Configuration
     ↓

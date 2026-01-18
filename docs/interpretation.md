@@ -4,6 +4,29 @@ This guide helps you interpret the results of the SemiChan pipeline, focusing on
 
 ## Chapter 1: The Core - Semantic vs. Frequency
 
+### Tag-Based Analysis
+In addition to semantic and frequency analysis, the system automatically extracts and processes tags from juror feedback:
+
+#### Tag Recognition
+- **Hashtag Syntax**: `#tagname` (e.g., `#lighting`, `#spatial`, `#circulation`)
+- **Bracketed Tags**: `[tag name]` (e.g., `[high priority]`, `[design issue]`, `[structural concern]`)
+- **Automatic Extraction**: Tags are identified during juror segmentation and saved to a global library
+- **Text Cleaning**: Tag syntax is removed from comments before semantic analysis to ensure clean embeddings
+
+#### Interpreting Tags
+Tags provide additional metadata about juror feedback:
+- **Thematic Grouping**: Tags help identify common themes across jurors
+- **Priority Indicators**: Tags like `[urgent]` or `[high priority]` highlight critical concerns
+- **Content Categories**: Tags can indicate specific aspects (lighting, spatial, structural, etc.)
+- **Cross-Reference**: Tags appear in the inspector panel and can be used for filtering and analysis
+
+#### Tag Patterns to Watch For
+- **Universal Tags**: When multiple jurors use the same tag, it indicates shared concerns
+- **Unique Tags**: Juror-specific tags may reveal individual perspectives or specialized expertise
+- **Tag Evolution**: New tags discovered in uploaded files are automatically added to the global library for future use
+
+---
+
 At the heart of SemiChan is the **Hybrid Fingerprint**. Every sentence a juror speaks is converted into a mathematical representation that exists in two "layers" simultaneously.
 
 ### 1. The Semantic Layer (The "Meaning")

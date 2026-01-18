@@ -1,5 +1,6 @@
 import type { JurorBlock } from "@/types/nlp";
 import { normalizeWhitespace } from "@/lib/utils/text-utils";
+import { saveGlobalTags } from "@/lib/utils/tag-storage";
 
 export function looksLikeName(line: string): boolean {
   const s = line.trim();
@@ -15,6 +16,47 @@ export function looksLikeName(line: string): boolean {
   // Middle initial
   const initials = words.filter((w) => /^[A-Z]\.$/.test(w)).length;
   return caps + initials >= Math.min(2, words.length);
+}
+
+/**
+ * Extracts tags from text using supported syntax patterns.
+ * Supported patterns:
+ * - Hashtags: #tagname (word characters after #)
+ * - Bracketed: [tagname] (single word in brackets)
+ */
+export function extractTags(text: string): string[] {
+  const tags: string[] = [];
+
+  // Extract hashtags: # followed by word characters
+  const hashtagRegex = /#(\w+)/g;
+  let match;
+  while ((match = hashtagRegex.exec(text)) !== null) {
+    tags.push(match[1]);
+  }
+
+  // Extract bracketed tags: [tag] - single word in brackets
+  const bracketRegex = /\[(\w+)\]/g;
+  while ((match = bracketRegex.exec(text)) !== null) {
+    tags.push(match[1]);
+  }
+
+  // Remove duplicates and return
+  return Array.from(new Set(tags));
+}
+
+/**
+ * Removes tag syntax from text for clean analysis.
+ * Strips both #hashtags and [bracketed tags] from the text.
+ */
+export function cleanTagsFromText(text: string): string {
+  // Remove hashtags: #tagname
+  let cleaned = text.replace(/#\w+/g, '').trim();
+
+  // Remove bracketed tags: [tag]
+  cleaned = cleaned.replace(/\[\w+\]/g, '').trim();
+
+  // Clean up extra whitespace that might result from tag removal
+  return normalizeWhitespace(cleaned);
 }
 
 export function segmentByJuror(raw: string): JurorBlock[] {
@@ -77,13 +119,27 @@ export function segmentByJuror(raw: string): JurorBlock[] {
   for (const b of cleaned) {
     map.set(b.juror, [...(map.get(b.juror) ?? []), b.text]);
   }
-  return [...map.entries()].map(([juror, texts]) => ({ 
-    juror, 
-    comments: texts.map(text => ({
-      id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2),
-      text,
-      tags: []
-    }))
+  const jurorBlocks = Array.from(map.entries()).map(([juror, texts]) => ({
+    juror,
+    comments: texts.map(text => {
+      const tags = extractTags(text);
+      const cleanText = cleanTagsFromText(text);
+      return {
+        id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2),
+        text: cleanText,
+        tags
+      };
+    })
   }));
+
+  // Collect all discovered tags and save to global library
+  const allTags = jurorBlocks.flatMap(block =>
+    block.comments.flatMap(comment => comment.tags)
+  );
+  if (allTags.length > 0) {
+    saveGlobalTags(allTags);
+  }
+
+  return jurorBlocks;
 }
 
