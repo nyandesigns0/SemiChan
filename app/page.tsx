@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import { Download, FileText, Network, Trash2 } from "lucide-react";
+import Image from "next/image";
+import { Download, FileText, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -27,12 +28,14 @@ import { cn } from "@/lib/utils/cn";
 import { DEFAULT_SAMPLE, DEFAULT_MODEL } from "@/constants/nlp-constants";
 import { calculateCost, formatCost } from "@/lib/utils/api-utils";
 import type { JurorBlock, DesignerBlock, DesignerAnalysisResult } from "@/types/nlp";
-import type { AnalysisResult, SentenceRecord } from "@/types/analysis";
+import type { AnalysisResult, SavedReport, SentenceRecord } from "@/types/analysis";
 import type { GraphNode, GraphLink } from "@/types/graph";
 import type { Stance } from "@/types/nlp";
-import type { LogEntry } from "@/components/inspector/InspectorConsole";
+import { type LogEntry, getPhaseFromMessage } from "@/components/inspector/InspectorConsole";
 import type { TokenUsage } from "@/types/api";
 import type { AnchorAxis } from "@/types/anchor-axes";
+import { LoadingScreen } from "@/components/ui/LoadingScreen";
+import logoImage from "@/assets/logo/logo.png";
 
 export default function HomePage() {
   // Sidebar state defaults to closed on load
@@ -53,10 +56,25 @@ export default function HomePage() {
   const [autoRotateDisabled, setAutoRotateDisabled] = useState(false);
   const [turntableEnabled, setTurntableEnabled] = useState(true);
   const [turntableSpeed, setTurntableSpeed] = useState(0.6);
+  const [showSplashScreen, setShowSplashScreen] = useState(true);
+  const [fadeSplashScreen, setFadeSplashScreen] = useState(false);
+  const [fadeLoader, setFadeLoader] = useState(false);
   const sampleEventSourceRef = useRef<EventSource | null>(null);
   const sampleLoadPendingRef = useRef(false);
   const sampleProgressIdRef = useRef<string | null>(null);
+  const restoringReportRef = useRef(false);
   const [ingestError, setIngestError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loaderTimer = window.setTimeout(() => setFadeLoader(true), 550);
+    const fadeTimer = window.setTimeout(() => setFadeSplashScreen(true), 750);
+    const hideTimer = window.setTimeout(() => setShowSplashScreen(false), 1000);
+    return () => {
+      window.clearTimeout(loaderTimer);
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(hideTimer);
+    };
+  }, []);
 
   // Analysis params
   const [kConcepts, setKConcepts] = useState(10);
@@ -170,10 +188,12 @@ export default function HomePage() {
   const [apiCallCount, setApiCallCount] = useState(0);
   const [apiCostTotal, setApiCostTotal] = useState(0);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("console");
+  const [reportRefreshToken, setReportRefreshToken] = useState(0);
   const analysisContainerRef = useRef<HTMLDivElement | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportTimestamp, setExportTimestamp] = useState<string | null>(null);
   const lastVarianceLogSignature = useRef<string | null>(null);
+  const lastStartedSignatureRef = useRef<string | null>(null);
   const dataInputPanelRef = useRef<HTMLDivElement>(null);
   const addLog = useCallback((type: LogEntry["type"], message: string, data?: any) => {
     let finalMessage = message;
@@ -207,7 +227,7 @@ export default function HomePage() {
     if (selectedNodeId && analysis) {
       const node = analysis.nodes.find(n => n.id === selectedNodeId);
       if (node) {
-        addLog("node", `Selected node: ${node.label} (${node.type})`, node);
+        addLog("node", `Selected node: ${node.label} (${node.type})`, { ...node, phase: "general" });
       }
     }
   }, [selectedNodeId, analysis, addLog]);
@@ -217,7 +237,7 @@ export default function HomePage() {
     if (selectedLinkId && analysis) {
       const link = analysis.links.find(l => l.id === selectedLinkId);
       if (link) {
-        addLog("link", `Selected link: ${link.kind}`, link);
+        addLog("link", `Selected link: ${link.kind}`, { ...link, phase: "general" });
       }
     }
   }, [selectedLinkId, analysis, addLog]);
@@ -241,34 +261,42 @@ export default function HomePage() {
         .map((n) => n.label);
       addLog(
         "keyword",
-        `Keywords extracted: ${allKeywords.length} keywords from ${analysis.stats.totalSentences} sentences`,
-        { keywords: allKeywords, sentenceCount: analysis.stats.totalSentences }
+        `Concepts: ${allKeywords.length} concepts from ${analysis.stats.totalSentences} sentences`,
+        { keywords: allKeywords, sentenceCount: analysis.stats.totalSentences, phase: "analysis", runId: analysis.runId }
       );
-      addLog("analysis", `Analysis complete: ${analysis.stats.totalSentences} sentences, ${analysis.stats.totalConcepts} concepts`);
       
       if (analysis.minClusterSizeMerged && analysis.minClusterSizeMerged > 0) {
         addLog(
           "quality",
-          `Cluster hygiene: merged ${analysis.minClusterSizeMerged} small clusters (minSize=${analysis.minClusterSize})`
+          `Cluster hygiene: merged ${analysis.minClusterSizeMerged} small clusters (minSize=${analysis.minClusterSize})`,
+          { phase: "quality", runId: analysis.runId }
         );
       }
       if (analysis.dominanceSplitApplied) {
         const primarySplits = analysis.dominanceSplitDetails?.primary?.splitCount ?? 0;
         const detailSplits = analysis.dominanceSplitDetails?.detail?.splitCount ?? 0;
         if (primarySplits > 0 || detailSplits > 0) {
-          addLog("quality", `Cluster hygiene: applied dominance splits (primary: ${primarySplits}, detail: ${detailSplits})`);
+          addLog(
+            "quality",
+            `Cluster hygiene: applied dominance splits (primary: ${primarySplits}, detail: ${detailSplits})`,
+            { phase: "quality", runId: analysis.runId }
+          );
         }
       }
 
-      if (analysis.varianceStats) {
+      if (analysis.varianceStats && dimensionMode === "manual") {
         const cumulative = analysis.varianceStats.cumulativeVariances;
         const total = analysis.varianceStats.totalVariance;
         const lastCumulative = cumulative[cumulative.length - 1];
         const percent = Math.round((lastCumulative / total) * 100);
-        addLog("analysis", `Visualization uses ${cumulative.length} dimensions, capturing ${percent}% of data variance.`);
+        addLog(
+          "analysis",
+          `Visualization uses ${cumulative.length} dimensions, capturing ${percent}% of data variance.`,
+          { phase: "dimensions", runId: analysis.runId }
+        );
       }
     }
-  }, [analysis, addLog]);
+  }, [analysis, dimensionMode, addLog]);
   
   useEffect(() => {
     if (analysis?.anchorAxes && analysis.anchorAxes.length > 0 && anchorAxes.length === 0) {
@@ -295,9 +323,17 @@ export default function HomePage() {
       : 0;
 
     if (applied === requested) {
-      addLog("analysis", `Auto dimension (${dimensionMode}) kept ${applied} axes (~${percent}% variance).`);
+      addLog(
+        "analysis",
+        `Auto dimension (${dimensionMode}) kept ${applied} axes (~${percent}% variance).`,
+        { phase: "dimensions", runId: analysis.runId }
+      );
     } else {
-      addLog("analysis", `Auto dimension (${dimensionMode}) chose ${applied} axes (requested ${requested}, ~${percent}% variance).`);
+      addLog(
+        "analysis",
+        `Auto dimension (${dimensionMode}) chose ${applied} axes (requested ${requested}, ~${percent}% variance).`,
+        { phase: "dimensions", runId: analysis.runId }
+      );
     }
   }, [analysis, dimensionMode, appliedNumDimensions, numDimensions, addLog]);
 
@@ -305,8 +341,13 @@ export default function HomePage() {
   const { insights, fetchSummary } = useConceptSummarizer(analysis, selectedModel, autoSynthesize, addLog);
   
   // Axis Label Enhancement
+  const handleAxisLog = useCallback(
+    (type: LogEntry["type"], message: string, data?: any) =>
+      addLog(type, message, { ...(data ?? {}), phase: "axis", runId: analysis?.runId }),
+    [addLog, analysis?.runId]
+  );
   const { enhancedLabels, isLoading: isRefreshingAxisLabels, refreshAxisLabels } =
-    useAxisLabelEnhancer(analysis, enableAxisLabelAI, selectedModel, addLog);
+    useAxisLabelEnhancer(analysis, enableAxisLabelAI, selectedModel, handleAxisLog);
   
   // Merge enhanced axis labels with analysis axis labels
   const displayAxisLabels = useMemo(() => {
@@ -448,6 +489,8 @@ export default function HomePage() {
   // Call segment API when rawText changes
   useEffect(() => {
     const segmentText = async () => {
+      if (restoringReportRef.current) return;
+      const segmentRunId = crypto.randomUUID();
       // Set initial blocks immediately for quick feedback
       setJurorBlocks(segmentByJuror(rawText));
 
@@ -456,7 +499,7 @@ export default function HomePage() {
         setSampleStep("Chunking feedback");
       }
       
-      addLog("api_request", "Segmenting input text...");
+      addLog("api_request", "Segmenting input text...", { phase: "segment", runId: segmentRunId });
       try {
         const response = await fetch("/api/segment", {
           method: "POST",
@@ -465,14 +508,19 @@ export default function HomePage() {
         });
         if (response.ok) {
           const data = await response.json();
-          addLog("api_response", `Text segmented into ${data.blocks.length} juror blocks`);
+          addLog("api_response", `Text segmented into ${data.blocks.length} juror blocks`, { phase: "segment", runId: segmentRunId });
           setJurorBlocks(data.blocks);
           if (sampleLoadPendingRef.current) {
             setSampleProgress((prev) => Math.max(prev, 35));
             setSampleStep("Preparing analysis");
           }
         } else {
-          addLog("api_error", "Segmentation failed");
+          const errBody = await response.json().catch(() => ({}));
+          addLog(
+            "api_error",
+            `Segmentation failed: ${response.status} ${errBody?.error || response.statusText}`,
+            { phase: "segment", runId: segmentRunId }
+          );
           if (sampleLoadPendingRef.current) {
             setSampleLoading(false);
             setSampleLoadPending(false);
@@ -483,7 +531,11 @@ export default function HomePage() {
         }
       } catch (error) {
         console.error("Error segmenting text:", error);
-        addLog("api_error", "Network error during segmentation");
+        addLog(
+          "api_error",
+          `Network error during segmentation: ${error instanceof Error ? error.message : String(error)}`,
+          { phase: "segment", runId: segmentRunId }
+        );
         if (sampleLoadPendingRef.current) {
           setSampleLoading(false);
           setSampleLoadPending(false);
@@ -498,6 +550,10 @@ export default function HomePage() {
   // Call analyze API when blocks or params change
   useEffect(() => {
     const analyze = async () => {
+      if (restoringReportRef.current) {
+        setLoadingAnalysis(false);
+        return;
+      }
       if (jurorBlocks.length === 0) {
         setAnalysis(null);
         return;
@@ -508,58 +564,75 @@ export default function HomePage() {
         setSampleStep("Processing embeddings");
       }
 
+      const requestPayload = {
+        blocks: jurorBlocks,
+        kConcepts,
+        similarityThreshold,
+        evidenceRankingParams,
+        clusteringMode,
+        autoK,
+        autoUnit,
+        autoWeights,
+        autoKStability,
+        autoKDominanceThreshold,
+        autoKKPenalty,
+        autoKEpsilon,
+        autoMinClusterSize,
+        minClusterSize,
+        autoDominanceCap,
+        autoDominanceCapThreshold,
+        autoSeed,
+        seedCandidates,
+        seedPerturbations,
+        seedCoherenceWeight,
+        seedSeparationWeight,
+        seedStabilityWeight,
+        seedDominancePenaltyWeight,
+        seedMicroClusterPenaltyWeight,
+        seedLabelPenaltyWeight,
+        seedDominanceThreshold,
+        kMin: kMinOverride,
+        kMax: kMaxOverride,
+        clusterSeed,
+        softMembership,
+        cutType,
+        granularityPercent: cutType === "granularity" ? granularityPercent : undefined,
+        numDimensions,
+        dimensionMode,
+        varianceThreshold,
+        model: selectedModel,
+        anchorAxes,
+      };
+      const requestSignature = JSON.stringify(requestPayload);
+      if (lastStartedSignatureRef.current === requestSignature) {
+        return;
+      }
+      lastStartedSignatureRef.current = requestSignature;
+      const analyzeRunId = crypto.randomUUID();
+
       setLoadingAnalysis(true);
       console.log(`[Analysis] Starting analysis with model: ${selectedModel}`, { kConcepts, clusteringMode });
-      addLog("api_request", `Starting semantic analysis (k=${kConcepts}, mode=${clusteringMode})`);
+      addLog("api_request", `Starting semantic analysis (k=${kConcepts}, mode=${clusteringMode})`, {
+        phase: "analysis",
+        runId: analyzeRunId,
+      });
       try {
         const response = await fetch("/api/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            blocks: jurorBlocks,
-            kConcepts,
-            similarityThreshold,
-            evidenceRankingParams,
-            clusteringMode,
+            ...requestPayload,
             progressId: sampleLoadPendingRef.current ? sampleProgressIdRef.current ?? undefined : undefined,
-            autoK,
-            autoUnit,
-            autoWeights,
-            autoKStability,
-            autoKDominanceThreshold,
-            autoKKPenalty,
-            autoKEpsilon,
-            autoMinClusterSize,
-            minClusterSize,
-            autoDominanceCap,
-            autoDominanceCapThreshold,
-            autoSeed,
-            seedCandidates,
-            seedPerturbations,
-            seedCoherenceWeight,
-            seedSeparationWeight,
-            seedStabilityWeight,
-            seedDominancePenaltyWeight,
-            seedMicroClusterPenaltyWeight,
-            seedLabelPenaltyWeight,
-            seedDominanceThreshold,
-            kMin: kMinOverride,
-            kMax: kMaxOverride,
-            clusterSeed,
-            softMembership,
-            cutType,
-            granularityPercent: cutType === "granularity" ? granularityPercent : undefined,
-            numDimensions,
-            dimensionMode,
-            varianceThreshold,
-            model: selectedModel,
-            anchorAxes,
           }),
         });
         if (response.ok) {
           const data = await response.json();
           console.log(`[Analysis] Analysis successful`, data);
-          addLog("api_response", `Analysis complete`, data);
+          addLog(
+            "api_response",
+            `Analysis complete: ${data.analysis.stats.totalSentences} sentences, ${data.analysis.stats.totalConcepts} concepts`,
+            { ...data, phase: "analysis", runId: analyzeRunId }
+          );
           if (sampleLoadPendingRef.current) {
             setSampleProgress((prev) => Math.max(prev, 80));
             setSampleStep("Clustering concepts");
@@ -568,15 +641,21 @@ export default function HomePage() {
           // Add any server-side logs to the console
           if (data.logs && Array.isArray(data.logs)) {
             data.logs.forEach((l: any) => {
-              addLog(l.type, l.message, l.data);
+              const phaseData = getPhaseFromMessage(l.type, l.message);
+              const baseData = l.data && typeof l.data === "object" ? l.data : {};
+              addLog(l.type, l.message, { ...baseData, ...phaseData, runId: analyzeRunId });
             });
           }
           
-          setAnalysis(data.analysis);
+          setAnalysis({ ...data.analysis, runId: analyzeRunId });
         } else {
-          const errorData = await response.json();
+          const errorData = await response.json().catch(() => ({}));
           console.error(`[Analysis] Analysis failed`, errorData);
-          addLog("api_error", `Analysis failed: ${errorData.error || response.statusText}`);
+          addLog(
+            "api_error",
+            `Analysis failed: ${response.status} ${errorData.error || response.statusText}`,
+            { phase: "analysis", runId: analyzeRunId }
+          );
           if (sampleLoadPendingRef.current) {
             setSampleLoading(false);
             setSampleLoadPending(false);
@@ -587,7 +666,11 @@ export default function HomePage() {
         }
       } catch (error) {
         console.error("[Analysis] Network error:", error);
-        addLog("api_error", `Network error during analysis`);
+        addLog(
+          "api_error",
+          `Network error during analysis: ${error instanceof Error ? error.message : String(error)}`,
+          { phase: "analysis", runId: analyzeRunId }
+        );
         setAnalysis(null);
         if (sampleLoadPendingRef.current) {
           setSampleLoading(false);
@@ -597,6 +680,9 @@ export default function HomePage() {
           setSamplePhase("idle");
         }
       } finally {
+        if (lastStartedSignatureRef.current === requestSignature) {
+          lastStartedSignatureRef.current = null;
+        }
         setLoadingAnalysis(false);
       }
     };
@@ -1117,13 +1203,13 @@ export default function HomePage() {
       if (response.ok) {
         const data = await response.json();
         setDesignerAnalysis(data.analysis);
-        addLog("analysis", "Designer analysis complete");
+        addLog("analysis", "Designer analysis complete", { phase: "analysis" });
       } else {
-        addLog("api_error", "Designer analysis failed");
+        addLog("api_error", "Designer analysis failed", { phase: "analysis" });
       }
     } catch (error) {
       console.error("[DesignerAnalysis] Network error:", error);
-      addLog("api_error", "Network error during designer analysis");
+      addLog("api_error", "Network error during designer analysis", { phase: "analysis" });
     } finally {
       setDesignerLoading(false);
     }
@@ -1141,13 +1227,13 @@ export default function HomePage() {
       if (response.ok) {
         const data = await response.json();
         setAlignmentLinks(data.links || []);
-        addLog("analysis", `Alignment complete: ${data.links?.length ?? 0} links`);
+        addLog("analysis", `Alignment complete: ${data.links?.length ?? 0} links`, { phase: "analysis" });
       } else {
-        addLog("api_error", "Alignment failed");
+        addLog("api_error", "Alignment failed", { phase: "analysis" });
       }
     } catch (error) {
       console.error("[Alignment] error", error);
-      addLog("api_error", "Network error during alignment");
+      addLog("api_error", "Network error during alignment", { phase: "analysis" });
     } finally {
       setAligning(false);
     }
@@ -1176,7 +1262,7 @@ export default function HomePage() {
   const handleAutoRotateDisabled = useCallback(() => {
     setAutoRotateDisabled(true);
     setTurntableEnabled(false);
-    addLog("info", "User interacted with 3D canvas - turntable disabled");
+    addLog("info", "User interacted with 3D canvas - turntable disabled", { phase: "general" });
   }, [addLog]);
 
   const handleToggleTurntable = useCallback(() => {
@@ -1209,19 +1295,95 @@ export default function HomePage() {
       }
     }, 550); // Wait for sidebar animation (500ms) + small buffer
     
-    addLog("info", "User opened upload sidebar from welcome screen");
+    addLog("info", "User opened upload sidebar from welcome screen", { phase: "general" });
   }, [addLog]);
 
+  const handleReportSaved = useCallback((report: SavedReport) => {
+    setReportRefreshToken((prev) => prev + 1);
+    setInspectorTab("reports");
+    addLog("info", `Report saved: ${report.name} (id: ${report.id})`, { phase: "report" });
+  }, [addLog, setInspectorTab]);
+
+  const handleLoadReport = useCallback((report: SavedReport) => {
+    restoringReportRef.current = true;
+    const params = report.parameters;
+
+    setAnalysis(report.analysis);
+    setJurorBlocks(report.jurorBlocks);
+    setRawText(report.rawText);
+    setIngestError(null);
+    setAnchorAxes(report.analysis.anchorAxes ?? []);
+    setSelectedAnchorAxisId(report.analysis.anchorAxes?.[0]?.id ?? null);
+
+    setKConcepts(params.kConcepts);
+    setMinEdgeWeight(params.minEdgeWeight);
+    setSimilarityThreshold(params.similarityThreshold);
+    setEvidenceRankingParams(params.evidenceRankingParams ?? { semanticWeight: 0.7, frequencyWeight: 0.3 });
+    setClusteringMode(params.clusteringMode);
+    setAutoK(params.autoK);
+    setAutoKStability(params.autoKStability ?? false);
+    setAutoKDominanceThreshold(params.autoKDominanceThreshold ?? 0.35);
+    setAutoKKPenalty(params.autoKKPenalty ?? 0.001);
+    setAutoKEpsilon(params.autoKEpsilon ?? 0.02);
+    setAutoMinClusterSize(params.autoMinClusterSize ?? false);
+    setMinClusterSize(params.minClusterSize);
+    setAutoDominanceCap(params.autoDominanceCap ?? true);
+    setAutoDominanceCapThreshold(params.autoDominanceCapThreshold);
+    setAutoUnit(params.autoUnit ?? false);
+    setAutoWeights(params.autoWeights ?? false);
+    setAutoSeed(params.autoSeed ?? false);
+    setSeedCandidates(params.seedCandidates ?? 64);
+    setSeedPerturbations(params.seedPerturbations ?? 3);
+    setSeedCoherenceWeight(params.seedCoherenceWeight ?? 0.3);
+    setSeedSeparationWeight(params.seedSeparationWeight ?? 0.25);
+    setSeedStabilityWeight(params.seedStabilityWeight ?? 0.2);
+    setSeedDominancePenaltyWeight(params.seedDominancePenaltyWeight ?? 0.15);
+    setSeedMicroClusterPenaltyWeight(params.seedMicroClusterPenaltyWeight ?? 0.05);
+    setSeedLabelPenaltyWeight(params.seedLabelPenaltyWeight ?? 0.05);
+    setSeedDominanceThreshold(params.seedDominanceThreshold ?? 0.35);
+    setKMinOverride(params.kMinOverride);
+    setKMaxOverride(params.kMaxOverride);
+    setClusterSeed(params.clusterSeed ?? 42);
+    setSoftMembership(params.softMembership);
+    setCutType(params.cutType);
+    setGranularityPercent(params.granularityPercent);
+    setNumDimensions(params.numDimensions);
+    setDimensionMode(params.dimensionMode);
+    setVarianceThreshold(params.varianceThreshold);
+    setShowAxes(params.showAxes);
+    setShowGraph(params.showGraph);
+    setEnableAxisLabelAI(params.enableAxisLabelAI);
+    setAutoSynthesize(params.autoSynthesize);
+    setSelectedModel(report.metadata?.model ?? selectedModel);
+
+    setApiCallCount(0);
+    setApiCostTotal(0);
+    setLogs([]);
+    setSelectedNodeId(null);
+    setSelectedLinkId(null);
+    setAdaptiveSelectedNodeIds(new Set());
+    setAdaptiveSelectedLinkIds(new Set());
+    setCheckpointIndex(-1);
+    setSearch("");
+    setInspectorTab("analysis");
+    addLog("info", `Loaded report: ${report.name} (id: ${report.id})`, { phase: "report" });
+
+    setTimeout(() => {
+      restoringReportRef.current = false;
+    }, 150);
+  }, [addLog, selectedModel]);
+
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-slate-50 text-slate-900">
-      {/* Left Sidebar */}
-      <CollapsibleSidebar
-        side="left"
-        isOpen={leftSidebarOpen}
-        onToggle={() => setLeftSidebarOpen(!leftSidebarOpen)}
-        width={400}
-        disableOutsideClick={ingestModalOpen || designerModalOpen || axisModalOpen}
-      >
+    <>
+      <div className="flex h-screen w-full overflow-hidden bg-slate-50 text-slate-900">
+        {/* Left Sidebar */}
+        <CollapsibleSidebar
+          side="left"
+          isOpen={leftSidebarOpen}
+          onToggle={() => setLeftSidebarOpen(!leftSidebarOpen)}
+          width={400}
+          disableOutsideClick={ingestModalOpen || designerModalOpen || axisModalOpen}
+        >
         <div className="space-y-4" ref={dataInputPanelRef}>
           <DataInputPanel
             jurorBlocks={jurorBlocks}
@@ -1336,20 +1498,25 @@ export default function HomePage() {
         )}
       >
         {/* Header */}
-        <header className="flex-shrink-0 border-b border-slate-200 bg-white px-8 py-2.5">
+        <header className="flex-shrink-0 border-b border-slate-200 bg-white px-4 sm:px-8 py-3 sm:py-2.5">
           <div className="flex items-center justify-between gap-6">
             <div className="flex items-center gap-4">
-              <div className="rounded-xl bg-slate-900 p-1.5 text-white">
-                <Network className="h-5 w-5" />
-              </div>
-              <div>
+              <Image
+                src={logoImage}
+                alt="SemiChan logo"
+                width={48}
+                height={48}
+                className="h-10 w-10 sm:h-11 sm:w-11 object-contain"
+                priority
+              />
+              <div className="hidden md:flex flex-col">
                 <h1 className="text-xl font-bold tracking-tight text-slate-900">Jury Concept Graph</h1>
                 <p className="text-xs text-slate-500 font-medium">Explainable juror-concept mapping</p>
               </div>
             </div>
             
             {/* Middle: Pipeline Controls */}
-            <div className="flex items-center gap-4">
+            <div className="hidden md:flex items-center gap-4">
               {/* Pipeline Controls */}
               {analysis?.checkpoints && analysis.checkpoints.length > 0 && (
                 <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-4 py-1.5 shadow-sm">
@@ -1374,7 +1541,7 @@ export default function HomePage() {
               )}
             </div>
             
-            <div className="flex items-center gap-3">
+            <div className="hidden md:flex items-center gap-3">
               {analysis?.anchorAxes && analysis.anchorAxes.length > 0 && (
                 <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 shadow-sm">
                   <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Anchor Axis</span>
@@ -1526,6 +1693,9 @@ export default function HomePage() {
             autoExpandOnAnalysis
             analysisContainerRef={analysisContainerRef}
             rawExportContext={rawDataExportContext}
+            onLoadReport={handleLoadReport}
+            reportRefreshToken={reportRefreshToken}
+            onReportSaved={handleReportSaved}
           />
 
         </div>
@@ -1596,7 +1766,23 @@ export default function HomePage() {
         onAddDesignerBlock={handleAddDesignerBlock}
       />
       <AxisInputModal open={axisModalOpen} onOpenChange={setAxisModalOpen} onAddAxis={handleAddAnchorAxis} />
-    </div>
+      </div>
+      {showSplashScreen && (
+        <div className="pointer-events-none fixed inset-0 z-[9999] flex items-center justify-center">
+          <div
+            className={`pointer-events-none absolute inset-0 bg-white transition-opacity duration-200 ${
+              fadeSplashScreen ? "opacity-0" : "opacity-100"
+            }`}
+          />
+          <div
+            className={`relative transition-opacity duration-200 ${
+              fadeLoader ? "opacity-0" : "opacity-100"
+            }`}
+          >
+            <LoadingScreen />
+          </div>
+        </div>
+      )}
+    </>
   );
 }
-

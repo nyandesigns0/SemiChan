@@ -11,6 +11,7 @@ export interface CutQualityParams {
 
 export interface CutQualityScore {
   isValid: boolean;
+  violatingClusterIndices?: number[];
   score: number;
   penalties: {
     imbalance: number;
@@ -99,6 +100,10 @@ export function evaluateCutQuality(
     if (mass < minEffectiveMassPerConcept) massViolations++;
   }
 
+  const violatingClusterIndices = jurorSupport
+    .map((support, index) => (support < minJurorSupportPerConcept ? index : -1))
+    .filter((index) => index >= 0);
+
   // 2. Imbalance Penalty (Gini Coefficient of masses)
   const sortedMasses = [...effectiveMasses].sort((a, b) => a - b);
   const n = numClusters;
@@ -141,6 +146,7 @@ export function evaluateCutQuality(
 
   return {
     isValid,
+    violatingClusterIndices,
     score,
     penalties: {
       imbalance: imbalancePenalty,
@@ -156,6 +162,7 @@ export function evaluateCutQuality(
     }
   };
 }
+
 
 
 

@@ -389,7 +389,6 @@ export async function buildAnalysis(
     );
 
     if (autoSeedEnabled) {
-      const progressInterval = Math.max(1, Math.floor(seedCandidates / 4));
       const evalResult = evaluateKRangeWithAutoSeed(
         semanticVectors,
         chunkRecords,
@@ -406,7 +405,7 @@ export async function buildAnalysis(
           ...seedSelectionOptions,
           onProgress: (evaluated, total, best, kValue) => {
             if (!kValue) return;
-            if (evaluated === total || evaluated % progressInterval === 0) {
+            if (evaluated === total) {
               log(
                 "analysis",
                 `Auto-Seed progress (K=${kValue}): ${evaluated}/${total} seeds evaluated${best ? `, best=${best.seed} (${best.score.toFixed(4)})` : ""}`
@@ -438,7 +437,7 @@ export async function buildAnalysis(
         );
       }
       if (seedLeaderboard && seedLeaderboard.length > 0) {
-        seedLeaderboard.slice(0, 5).forEach((entry, idx) => {
+        seedLeaderboard.slice(0, 1).forEach((entry, idx) => {
           log(
             "analysis",
             `Auto-Seed leaderboard #${idx + 1}: seed=${entry.seed}, score=${entry.score.toFixed(4)}, dominance=${(entry.maxClusterShare * 100).toFixed(1)}%, stability=${entry.stability.toFixed(3)}`
@@ -483,7 +482,6 @@ export async function buildAnalysis(
 
   if (!autoK && autoSeedEnabled) {
     const resolvedK = Math.max(1, Math.min(K ?? 1, contextualUnits.length));
-    const progressInterval = Math.max(1, Math.floor(seedCandidates / 4));
     log("analysis", `Auto-Seed evaluating ${seedCandidates} candidate seeds for K=${resolvedK}...`);
 
     const seedResult = selectBestSeed(semanticVectors, chunkRecords, {
@@ -491,7 +489,7 @@ export async function buildAnalysis(
       k: resolvedK,
       baseSeed: seed,
       onProgress: (evaluated, total, best) => {
-        if (evaluated === total || evaluated % progressInterval === 0) {
+        if (evaluated === total) {
           log(
             "analysis",
             `Auto-Seed progress: ${evaluated}/${total} seeds evaluated${best ? `, best=${best.seed} (${best.score.toFixed(4)})` : ""}`
@@ -507,7 +505,7 @@ export async function buildAnalysis(
     autoSeedReasoning = seedResult.reasoning;
 
     if (seedLeaderboard && seedLeaderboard.length > 0) {
-      seedLeaderboard.slice(0, 5).forEach((entry, idx) => {
+      seedLeaderboard.slice(0, 1).forEach((entry, idx) => {
         log(
           "analysis",
           `Auto-Seed leaderboard #${idx + 1}: seed=${entry.seed}, score=${entry.score.toFixed(4)}, dominance=${(entry.maxClusterShare * 100).toFixed(1)}%, stability=${entry.stability.toFixed(3)}`
@@ -864,9 +862,25 @@ export async function buildAnalysis(
 
   // Quality check for primary layer
   const quality = evaluateCutQuality(assignments, chunkRecords, centroids, resolvedCutQualityParams);
-  log("quality", `Primary cut quality for K=${K}: score=${quality.score.toFixed(2)}, valid=${quality.isValid}`, quality);
-  if (quality.penalties.supportViolations > 0) {
-    log("quality", `Quality warning: ${quality.penalties.supportViolations} primary concepts violate minJurorSupport`);
+  const supportViolations = quality.penalties.supportViolations;
+  const supportSuffix =
+    !quality.isValid && supportViolations > 0 ? ` (${supportViolations} below minJurorSupport)` : "";
+  log(
+    "quality",
+    `Primary cut quality for K=${K}: score=${quality.score.toFixed(2)}, valid=${quality.isValid}${supportSuffix}`,
+    quality
+  );
+  if (supportViolations > 0) {
+    const violatingClusters = quality.violatingClusterIndices?.length
+      ? quality.violatingClusterIndices.join(", ")
+      : "-";
+    log(
+      "quality",
+      `Quality warning: ${supportViolations} primary concepts (clusters ${violatingClusters}) violate minJurorSupport`
+    );
+    if (!quality.isValid) {
+      log("quality", "Consider relaxing minJurorSupport or adding more jurors.");
+    }
   }
 
   const clusterSentenceMap = new Map<number, Set<number>>();

@@ -1,6 +1,7 @@
-import type { Stance } from "./nlp";
+import type { Stance, JurorBlock } from "./nlp";
 import type { GraphNode, GraphLink } from "./graph";
 import type { AnchorAxis } from "./anchor-axes";
+import type { ExportAnalysisParams } from "@/components/inspector/export-types";
 
 export interface SentenceRecord {
   id: string;
@@ -60,6 +61,7 @@ export interface SeedLeaderboardEntry {
 }
 
 export interface AnalysisResult {
+  runId?: string;
   jurors: string[];
   concepts: Concept[]; // Backward compat - defaults to primary layer
   primaryConcepts?: Concept[];
@@ -158,4 +160,33 @@ export interface AnalysisResult {
     primary?: { splitCount: number; originalSizes: number[]; newSizes: number[] };
     detail?: { splitCount: number; originalSizes: number[]; newSizes: number[] };
   };
+}
+
+export interface SavedReportMetadata {
+  stats: {
+    jurors: number;
+    sentences: number;
+    concepts: number;
+  };
+  parameters: {
+    kConcepts?: number;
+    numDimensions?: number;
+    clusteringMode?: "kmeans" | "hierarchical";
+    autoK?: boolean;
+  };
+  anchorAxisCount?: number;
+  hasAxisLabels?: boolean;
+  model?: string;
+}
+
+export interface SavedReport {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  analysis: AnalysisResult;
+  jurorBlocks: JurorBlock[];
+  rawText: string;
+  parameters: ExportAnalysisParams;
+  metadata: SavedReportMetadata;
 }

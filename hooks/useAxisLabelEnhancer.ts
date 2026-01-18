@@ -185,7 +185,8 @@ export function useAxisLabelEnhancer(
         lastRefreshAppliedRef.current = refreshTrigger;
       } catch (error) {
         console.error("[Axis Labels] Error:", error);
-        if (onAddLog) onAddLog("api_error", `Axis label enhancement failed`);
+        const message = error instanceof Error ? error.message : String(error);
+        if (onAddLog) onAddLog("api_error", `Axis label enhancement failed: ${message}`);
       } finally {
         setIsLoading(false);
       }

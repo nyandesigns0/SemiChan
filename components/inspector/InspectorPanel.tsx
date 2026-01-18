@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { formatCostReadable } from "@/lib/utils/api-utils";
-import { Terminal, BarChart3, ChevronDown, ChevronUp, Users, MessageSquare, Lightbulb, Layers, Activity, Hash, Link as LinkIcon } from "lucide-react";
+import { Terminal, BarChart3, ChevronDown, ChevronUp, Users, MessageSquare, Lightbulb, Layers, Activity, Hash, Link as LinkIcon, FileText } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { InspectorConsole, type LogEntry } from "./InspectorConsole";
 import { AnalysisReport } from "@/components/inspector/AnalysisReport";
@@ -11,8 +11,11 @@ import type { RawDataExportContext } from "@/components/inspector/export-types";
 import type { AnalysisResult } from "@/types/analysis";
 import type { JurorBlock } from "@/types/nlp";
 import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
+import { ReportsList } from "./ReportsList";
+import type { SavedReport } from "@/types/analysis";
+import { getAllReports } from "@/lib/utils/report-storage";
 
-export type InspectorTab = "console" | "analysis";
+export type InspectorTab = "console" | "analysis" | "reports";
 
 interface InspectorPanelProps {
   logs: LogEntry[];
@@ -37,6 +40,12 @@ interface InspectorPanelProps {
   analysisContainerRef?: React.RefObject<HTMLDivElement>;
   /** Optional context used by hidden export sections */
   rawExportContext?: RawDataExportContext;
+  /** Load a saved report */
+  onLoadReport?: (report: SavedReport) => void;
+  /** External trigger to refresh report list */
+  reportRefreshToken?: number;
+  /** Notify when a report is saved */
+  onReportSaved?: (report: SavedReport) => void;
 }
 
 const MIN_HEIGHT = 40;
@@ -61,12 +70,24 @@ export function InspectorPanel({
   autoExpandOnAnalysis = false,
   analysisContainerRef,
   rawExportContext,
+  onLoadReport,
+  reportRefreshToken = 0,
+  onReportSaved,
 }: InspectorPanelProps) {
   const [internalTab, setInternalTab] = useState<InspectorTab>("console");
   const [height, setHeight] = useState(MIN_HEIGHT);
   const [isResizing, setIsResizing] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
+  const [savedReportCount, setSavedReportCount] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
+  const expandPanel = useCallback(() => {
+    setIsCollapsed(false);
+    setHeight((prev) => (prev < DEFAULT_HEIGHT ? DEFAULT_HEIGHT : prev));
+  }, []);
+
+  useEffect(() => {
+    setSavedReportCount(getAllReports().length);
+  }, [reportRefreshToken]);
 
   // Resizing logic
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -104,24 +125,26 @@ export function InspectorPanel({
   const currentTab = activeTab ?? internalTab;
   const { amount: formattedCost, unit: costUnit } = formatCostReadable(apiCostTotal);
   const stats = analysis?.stats;
+  const prevActiveTabRef = useRef<InspectorTab | null>(null);
 
   useEffect(() => {
-    if (activeTab && activeTab !== internalTab) {
+    if (!activeTab) return;
+    if (activeTab !== internalTab) {
       setInternalTab(activeTab);
+    }
+    if (prevActiveTabRef.current !== activeTab) {
+      expandPanel();
       if (activeTab === "analysis" && autoExpandOnAnalysis) {
-        setIsCollapsed(false);
         setHeight((prev) => (prev < DEFAULT_HEIGHT ? DEFAULT_HEIGHT : prev));
       }
     }
-  }, [activeTab, internalTab, autoExpandOnAnalysis]);
+    prevActiveTabRef.current = activeTab;
+  }, [activeTab, internalTab, autoExpandOnAnalysis, expandPanel]);
 
   const handleTabChange = (tab: InspectorTab) => {
     setInternalTab(tab);
     onTabChange?.(tab);
-    if (tab === "analysis" && autoExpandOnAnalysis) {
-      setIsCollapsed(false);
-      setHeight((prev) => (prev < DEFAULT_HEIGHT ? DEFAULT_HEIGHT : prev));
-    }
+    expandPanel();
   };
 
   const toggleCollapse = () => {
@@ -160,16 +183,23 @@ export function InspectorPanel({
         <div className="flex items-center gap-1">
           <TabButton
             active={currentTab === "console"}
-            onClick={() => { handleTabChange("console"); setIsCollapsed(false); }}
+            onClick={() => handleTabChange("console")}
             icon={<Terminal className="h-3.5 w-3.5" />}
             label="Console"
             count={logs.length}
           />
           <TabButton
             active={currentTab === "analysis"}
-            onClick={() => { handleTabChange("analysis"); setIsCollapsed(false); }}
+            onClick={() => handleTabChange("analysis")}
             icon={<BarChart3 className="h-3.5 w-3.5" />}
             label="Analysis"
+          />
+          <TabButton
+            active={currentTab === "reports"}
+            onClick={() => handleTabChange("reports")}
+            icon={<FileText className="h-3.5 w-3.5" />}
+            label="Reports"
+            count={savedReportCount}
           />
         </div>
 
@@ -235,19 +265,32 @@ export function InspectorPanel({
             />
           )}
 
-          {currentTab === "analysis" && (
+        {currentTab === "analysis" && (
             <div ref={analysisContainerRef} className="h-full overflow-y-auto bg-white">
-            <AnalysisReport 
-              analysis={analysis} 
-              jurorBlocks={jurorBlocks} 
-              axisLabels={axisLabels}
-              enableAxisLabelAI={enableAxisLabelAI}
-              isRefreshingAxisLabels={isRefreshingAxisLabels}
-              insights={insights}
-              rawExportContext={rawExportContext}
-            />
+              <AnalysisReport 
+                analysis={analysis} 
+                jurorBlocks={jurorBlocks} 
+                axisLabels={axisLabels}
+                enableAxisLabelAI={enableAxisLabelAI}
+                isRefreshingAxisLabels={isRefreshingAxisLabels}
+                insights={insights}
+                rawExportContext={rawExportContext}
+                onReportSaved={onReportSaved}
+              />
           </div>
         )}
+          {currentTab === "reports" && (
+            <div className="h-full overflow-y-auto bg-white">
+              <ReportsList
+                onLoadReport={(report) => {
+                  onLoadReport?.(report);
+                  handleTabChange("analysis");
+                }}
+                refreshToken={reportRefreshToken}
+                onCountChange={setSavedReportCount}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -2,9 +2,10 @@
 
 import React, { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils/cn";
-import { BarChart2, Layers, Users, Sparkles, CircleDot, RefreshCw, ListFilter, Filter, Plus, Minus, ChevronDown, ChevronUp } from "lucide-react";
-import type { AnalysisResult } from "@/types/analysis";
+import { BarChart2, Layers, Users, Sparkles, CircleDot, RefreshCw, ListFilter, Filter, Plus, Minus, ChevronDown, ChevronUp, Save, CheckCircle2, AlertCircle } from "lucide-react";
+import type { AnalysisResult, SavedReport } from "@/types/analysis";
 import type { JurorBlock } from "@/types/nlp";
 import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
 import type { GraphNode } from "@/types/graph";
@@ -12,6 +13,7 @@ import { getPCColor, lightenColor, getAxisColors } from "@/lib/utils/graph-color
 import { extractKeyphrases } from "@/lib/nlp/keyphrase-extractor";
 import { resolveInsightLabel } from "@/lib/utils/label-utils";
 import type { RawDataExportContext } from "./export-types";
+import { saveReport } from "@/lib/utils/report-storage";
 
 type AxisPlotDatum = {
   axisIndex: number;
@@ -240,6 +242,7 @@ interface AnalysisReportProps {
   isRefreshingAxisLabels?: boolean;
   insights?: Record<string, ConceptInsight>;
   rawExportContext?: RawDataExportContext;
+  onReportSaved?: (report: SavedReport) => void;
 }
 
 function formatPercent(value: number | undefined, digits = 1): string {
@@ -247,10 +250,13 @@ function formatPercent(value: number | undefined, digits = 1): string {
   return `${(value * 100).toFixed(digits)}%`;
 }
 
-export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLabelAI, isRefreshingAxisLabels = false, insights, rawExportContext }: AnalysisReportProps) {
+export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLabelAI, isRefreshingAxisLabels = false, insights, rawExportContext, onReportSaved }: AnalysisReportProps) {
   const [isAxisSectionExpanded, setIsAxisSectionExpanded] = useState(true);
   const [expandedPrimaryConcepts, setExpandedPrimaryConcepts] = useState<Set<string>>(new Set());
   const [expandedJurorVectors, setExpandedJurorVectors] = useState<Record<string, boolean>>({});
+  const [savingReport, setSavingReport] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
   const renderHeading = (icon: React.ReactNode, iconBg: string, title: string, subtitle: string) => (
     <div className="flex items-center gap-3">
       <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconBg}`}>
@@ -673,8 +679,99 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
     { label: "Source Files", value: jurorBlocks.length },
   ];
 
+  const handleSaveReport = () => {
+    if (!analysis || !rawExportContext) return;
+    setSavingReport(true);
+    setSaveError(null);
+    setSaveSuccessMessage(null);
+
+    const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const defaultName = `Report ${new Date().toISOString().slice(0, 16).replace("T", " ")}`;
+    const name = typeof window !== "undefined"
+      ? (window.prompt("Name this report", defaultName) || defaultName)
+      : defaultName;
+
+    try {
+      const metadata: SavedReport["metadata"] = {
+        stats: {
+          jurors: analysis.stats.totalJurors,
+          sentences: analysis.stats.totalSentences,
+          concepts: analysis.stats.totalConcepts,
+        },
+        parameters: {
+          kConcepts: rawExportContext.analysisParams.kConcepts,
+          numDimensions: rawExportContext.analysisParams.appliedNumDimensions,
+          clusteringMode: rawExportContext.analysisParams.clusteringMode,
+          autoK: rawExportContext.analysisParams.autoK,
+        },
+        anchorAxisCount: analysis.anchorAxes?.length ?? 0,
+        hasAxisLabels: Boolean(analysis.axisLabels && Object.keys(analysis.axisLabels).length > 0),
+        model: rawExportContext.selectedModel,
+      };
+
+      const now = new Date().toISOString();
+      const report: SavedReport = {
+        id,
+        name,
+        createdAt: now,
+        updatedAt: now,
+        analysis,
+        jurorBlocks: rawExportContext.jurorBlocks,
+        rawText: rawExportContext.rawText,
+        parameters: rawExportContext.analysisParams,
+        metadata,
+      };
+
+      saveReport(report);
+      setSaveSuccessMessage("Report saved locally.");
+      onReportSaved?.(report);
+    } catch (error) {
+      console.error("[Reports] Failed to save report", error);
+      setSaveError("Could not save report. Check browser storage capacity.");
+    } finally {
+      setSavingReport(false);
+      if (typeof window !== "undefined") {
+        window.setTimeout(() => setSaveSuccessMessage(null), 3000);
+      }
+    }
+  };
+
   return (
     <div className="flex h-full flex-col gap-6 overflow-y-auto p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 shadow-sm">
+        <div className="flex flex-col">
+          <span className="text-sm font-semibold text-slate-900">Reports</span>
+          <span className="text-[11px] font-semibold text-slate-500">Save a snapshot locally for later reuse</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {saveSuccessMessage && (
+            <Badge variant="secondary" className="flex items-center gap-1 bg-emerald-50 text-emerald-700">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              {saveSuccessMessage}
+            </Badge>
+          )}
+          {saveError && (
+            <Badge variant="outline" className="flex items-center gap-1 border-amber-200 bg-amber-50 text-amber-700">
+              <AlertCircle className="h-3.5 w-3.5" />
+              {saveError}
+            </Badge>
+          )}
+          <Button
+            onClick={handleSaveReport}
+            disabled={!rawExportContext || !analysis || savingReport}
+            className="h-9 rounded-lg bg-slate-900 px-4 text-xs font-semibold text-white shadow-sm hover:bg-slate-800"
+          >
+            {savingReport ? (
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="mr-2 h-4 w-4" />
+            )}
+            {savingReport ? "Saving..." : "Save Report"}
+          </Button>
+        </div>
+      </div>
       {/* Top row: Corpus + auto selections */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">

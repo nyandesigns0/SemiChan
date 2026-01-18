@@ -181,6 +181,7 @@ export async function POST(request: NextRequest) {
         cutQualityParams,
         onProgress: (payload) => {
           if (progressId) emitProgress(progressId, payload);
+          logs.push({ type: "analysis", message: payload.step, data: { progress: payload.progress } });
         },
         onLog: (type, message, data) => {
           logs.push({ type, message, data });
