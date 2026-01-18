@@ -78,33 +78,28 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
     const params = meta.metadata?.parameters;
     const anchorCount = meta.metadata?.anchorAxisCount ?? 0;
     return (
-      <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] font-semibold text-slate-600 md:grid-cols-4">
-        <div className="flex items-center gap-2 rounded-lg border border-slate-100 bg-slate-50/70 px-2 py-1.5">
-          <span className="inline-flex h-2 w-2 rounded-full bg-indigo-500" />
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-semibold text-slate-600">
+        <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded border border-slate-100 bg-slate-50/50">
+          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-indigo-500" />
           <span>{stats?.jurors ?? 0} jurors</span>
         </div>
-        <div className="flex items-center gap-2 rounded-lg border border-slate-100 bg-slate-50/70 px-2 py-1.5">
-          <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+        <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded border border-slate-100 bg-slate-50/50">
+          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
           <span>{stats?.sentences ?? 0} sentences</span>
         </div>
-        <div className="flex items-center gap-2 rounded-lg border border-slate-100 bg-slate-50/70 px-2 py-1.5">
-          <span className="inline-flex h-2 w-2 rounded-full bg-amber-500" />
+        <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded border border-slate-100 bg-slate-50/50">
+          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-amber-500" />
           <span>{stats?.concepts ?? 0} concepts</span>
         </div>
-        <div className="flex items-center gap-2 rounded-lg border border-slate-100 bg-slate-50/70 px-2 py-1.5">
-          <span className="inline-flex h-2 w-2 rounded-full bg-sky-500" />
+        <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded border border-slate-100 bg-slate-50/50">
+          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-sky-500" />
           <span>{anchorCount} axes</span>
         </div>
-        <div className="flex items-center gap-2 rounded-lg border border-slate-100 bg-white px-2 py-1.5 md:col-span-2">
-          <SlidersHorizontal className="h-3.5 w-3.5 text-slate-400" />
-          <span className="truncate">
-            k={params?.kConcepts ?? "?"} | dims={params?.numDimensions ?? "?"} | {params?.clusteringMode ?? "?"}
-            {params?.autoK ? " (auto-k)" : ""}
+        <div className="flex items-center gap-1.5 ml-1 text-slate-400">
+          <SlidersHorizontal className="h-3 w-3" />
+          <span className="truncate max-w-[150px]">
+            k={params?.kConcepts ?? "?"} | dims={params?.numDimensions ?? "?"} | {params?.clusteringMode ?? "?"}{params?.autoK ? " (auto-k)" : ""}
           </span>
-        </div>
-        <div className="flex items-center gap-2 rounded-lg border border-slate-100 bg-white px-2 py-1.5 md:col-span-2">
-          <Calendar className="h-3.5 w-3.5 text-slate-400" />
-          <span className="truncate">Updated {formatDate(meta.updatedAt)}</span>
         </div>
       </div>
     );
@@ -139,20 +134,25 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
       )}
 
       {latestUpdated && (
-        <Card className="border border-indigo-100 bg-indigo-50/60 shadow-sm">
-          <CardContent className="p-4">
+        <Card className="border border-indigo-100 bg-indigo-50/60 shadow-sm h-[100px] overflow-hidden">
+          <CardContent className="p-3 h-full flex flex-col justify-between">
             <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-wide text-indigo-600">Latest</p>
-                <p className="text-sm font-semibold text-slate-900">{latestUpdated.name}</p>
-                <p className="text-[11px] font-semibold text-slate-500">
-                  Saved {formatDate(latestUpdated.createdAt)} • Updated {formatDate(latestUpdated.updatedAt)}
-                </p>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-indigo-600 mb-0.5">Latest Snapshot</p>
+                <p className="text-sm font-bold text-slate-900 truncate">{latestUpdated.name}</p>
+                <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-500 font-medium">
+                  <Calendar className="h-3 w-3" />
+                  <span className="truncate">Created {formatDate(latestUpdated.createdAt)}</span>
+                </div>
               </div>
-              <Button className="h-8 bg-slate-900 text-white px-4" onClick={() => onLoadReport(latestUpdated)}>
+              <Button className="h-8 bg-slate-900 text-white px-4 text-xs font-bold shrink-0" onClick={() => onLoadReport(latestUpdated)}>
                 <Play className="mr-2 h-3.5 w-3.5" />
                 Load
               </Button>
+            </div>
+            <div className="flex items-center justify-between gap-2 border-t border-indigo-100/50 pt-2 mt-auto text-[9px] font-bold text-indigo-400 uppercase tracking-tight">
+              <span>Last updated: {formatDate(latestUpdated.updatedAt)}</span>
+              {latestUpdated.metadata?.model && <span>Model: {latestUpdated.metadata.model}</span>}
             </div>
           </CardContent>
         </Card>
@@ -162,29 +162,29 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
         {metadata.map((meta) => {
           const report = reports.find(r => r.id === meta.id);
           return (
-            <Card key={meta.id} className="border border-slate-200 bg-white shadow-sm">
-              <CardContent className="p-4">
+            <Card key={meta.id} className="border border-slate-200 bg-white shadow-sm overflow-hidden h-[100px]">
+              <CardContent className="p-3 h-full flex flex-col justify-between">
                 <div className="flex items-start justify-between gap-2">
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <Badge variant="secondary" className="bg-slate-100 text-[11px] font-semibold text-slate-700">
-                        {meta.metadata?.parameters?.clusteringMode ?? "analysis"}
-                      </Badge>
+                      <p className="text-sm font-bold text-slate-900 truncate max-w-[200px]">{meta.name}</p>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Badge variant="secondary" className="h-4 bg-slate-100 text-[9px] px-1.5 font-bold text-slate-600 border-none">
+                          {meta.metadata?.parameters?.clusteringMode ?? "analysis"}
+                        </Badge>
                       {meta.metadata?.hasAxisLabels && (
-                        <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[10px] font-semibold text-amber-700">
+                        <Badge variant="outline" className="h-4 border-amber-200 bg-amber-50 text-[9px] px-1.5 font-bold text-amber-700">
                           Axis labels
                         </Badge>
                       )}
+                      </div>
                     </div>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">{meta.name}</p>
-                    <p className="text-[11px] font-semibold text-slate-500">
-                      Created {formatDate(meta.createdAt)}
-                    </p>
+                    {renderMetadata(meta, report)}
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-0.5 shrink-0">
                     <Button
                       variant="ghost"
-                      className="h-8 w-8 text-slate-500 hover:text-slate-900"
+                      className="h-7 w-7 p-0 text-slate-400 hover:text-slate-900"
                       onClick={() => {
                         if (report) {
                           setEditTarget(report);
@@ -192,37 +192,33 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
                         }
                       }}
                     >
-                      <Pencil className="h-4 w-4" />
+                      <Pencil className="h-3.5 w-3.5" />
                     </Button>
                     <Button
                       variant="ghost"
-                      className="h-8 w-8 text-rose-500 hover:text-rose-600"
+                      className="h-7 w-7 p-0 text-rose-300 hover:text-rose-600"
                       onClick={() => {
                         if (report) {
                           setDeleteTarget(report);
                         }
                       }}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 </div>
 
-                {renderMetadata(meta, report)}
-
-                <Separator className="my-3" />
-
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-1 text-[10px] font-semibold text-slate-500">
-                    <span className="rounded-full bg-slate-100 px-2 py-1">
-                      Model: {meta.metadata?.model ?? "n/a"}
-                    </span>
-                    <span className="rounded-full bg-slate-100 px-2 py-1">
-                      Text: {meta.totalTextLength.toLocaleString()} chars
-                    </span>
+                <div className="flex items-center justify-between gap-2 border-t border-slate-50 pt-2">
+                  <div className="flex items-center gap-2.5 text-[9px] font-bold text-slate-400 uppercase tracking-tight overflow-hidden">
+                    <span className="truncate">Model: {meta.metadata?.model ?? "n/a"}</span>
+                    <span className="shrink-0">{meta.totalTextLength.toLocaleString()} chars</span>
+                    <span className="text-slate-200 shrink-0">|</span>
+                    <span className="truncate">Updated {formatDate(meta.updatedAt)}</span>
+                    <span className="text-slate-200 shrink-0">|</span>
+                    <span className="truncate">Created {formatDate(meta.createdAt)}</span>
                   </div>
                   <Button 
-                    className="h-8 bg-slate-900 text-white px-4" 
+                    className="h-7 bg-slate-900 text-white px-3 text-xs font-bold shrink-0" 
                     onClick={() => {
                       if (report) {
                         onLoadReport(report);
@@ -235,7 +231,7 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
                       }
                     }}
                   >
-                    <Play className="mr-2 h-3.5 w-3.5" />
+                    <Play className="mr-1.5 h-3 w-3" />
                     Load
                   </Button>
                 </div>
