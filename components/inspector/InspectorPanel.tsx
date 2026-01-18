@@ -126,9 +126,17 @@ export function InspectorPanel({
   const { amount: formattedCost, unit: costUnit } = formatCostReadable(apiCostTotal);
   const stats = analysis?.stats;
   const prevActiveTabRef = useRef<InspectorTab | null>(null);
+  const hasSyncedActiveTabRef = useRef(false);
 
   useEffect(() => {
     if (!activeTab) return;
+    if (!hasSyncedActiveTabRef.current) {
+      setInternalTab(activeTab);
+      prevActiveTabRef.current = activeTab;
+      hasSyncedActiveTabRef.current = true;
+      return;
+    }
+
     if (activeTab !== internalTab) {
       setInternalTab(activeTab);
     }
@@ -203,44 +211,81 @@ export function InspectorPanel({
           />
         </div>
 
-        <div className="flex flex-1 items-center justify-center gap-2 overflow-x-auto px-3">
+        <div className="flex flex-1 flex-wrap items-center justify-center gap-2 overflow-x-auto px-3">
           {stats && (
             <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
               <Users className="h-3.5 w-3.5" />
-              <span>{stats.totalJurors} jurors</span>
+              <span className="flex items-center gap-1">
+                <strong className="text-xs font-semibold text-slate-700">{stats.totalJurors}</strong>
+                <span className="hidden sm:inline text-[10px] font-semibold uppercase tracking-tight text-slate-500">
+                  jurors
+                </span>
+              </span>
             </Badge>
           )}
           {stats && (
             <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
               <MessageSquare className="h-3.5 w-3.5" />
-              <span>{stats.totalSentences} sentences</span>
+              <span className="flex items-center gap-1">
+                <strong className="text-xs font-semibold text-slate-700">{stats.totalSentences}</strong>
+                <span className="hidden sm:inline text-[10px] font-semibold uppercase tracking-tight text-slate-500">
+                  sentences
+                </span>
+              </span>
             </Badge>
           )}
           {stats && (
             <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
               <Lightbulb className="h-3.5 w-3.5" />
-              <span>{stats.totalConcepts} concepts</span>
+              <span className="flex items-center gap-1">
+                <strong className="text-xs font-semibold text-slate-700">{stats.totalConcepts}</strong>
+                <span className="hidden sm:inline text-[10px] font-semibold uppercase tracking-tight text-slate-500">
+                  concepts
+                </span>
+              </span>
             </Badge>
           )}
           <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
             <Layers className="h-3.5 w-3.5" />
-            <span>{numDimensions} axes</span>
+            <span className="flex items-center gap-1">
+              <strong className="text-xs font-semibold text-slate-700">{numDimensions}</strong>
+              <span className="hidden sm:inline text-[10px] font-semibold uppercase tracking-tight text-slate-500">
+                axes
+              </span>
+            </span>
           </Badge>
           <Badge variant="outline" className="flex items-center gap-1.5 border-slate-200 bg-white px-3 py-1 text-slate-500 shadow-sm">
             <Activity className="h-3.5 w-3.5" />
-            <div className="flex items-center gap-1.5">
-              <span>{apiCallCount} calls</span>
+            <div className="flex items-center gap-2 text-[10px]">
+              <span className="flex items-center gap-1">
+                <strong className="font-semibold text-slate-700">{apiCallCount}</strong>
+                <span className="hidden sm:inline text-slate-500">calls</span>
+              </span>
               <span className="h-4 w-px bg-slate-200" />
-              <span>{formattedCost} {costUnit}</span>
+              <span className="flex items-center gap-1">
+                <strong className="font-semibold text-slate-700">{formattedCost}</strong>
+                <span className="hidden sm:inline text-slate-500">{costUnit}</span>
+              </span>
             </div>
           </Badge>
           <Badge variant="secondary" className="flex items-center gap-1.5 border border-indigo-100 bg-indigo-50 px-3 py-1 text-indigo-700 shadow-sm">
             <Hash className="h-3.5 w-3.5" />
-            <span>{filteredNodesCount} Nodes</span>
+            <span className="flex items-center gap-1">
+              <strong className="text-xs font-semibold text-indigo-700">{filteredNodesCount}</strong>
+              <span className="hidden sm:inline text-[10px] font-semibold uppercase tracking-tight">Nodes</span>
+            </span>
           </Badge>
           <Badge variant="secondary" className="flex items-center gap-1.5 border border-emerald-100 bg-emerald-50 px-3 py-1 text-emerald-700">
             <LinkIcon className="h-3.5 w-3.5" />
-            <span>{filteredLinksCount} Edges ({analysis?.links.length ?? 0} total)</span>
+            <span className="flex flex-col gap-0.5 text-[10px]">
+              <span className="flex items-center gap-1">
+                <strong className="font-semibold text-emerald-700">{filteredLinksCount}</strong>
+                <span className="hidden sm:inline font-semibold uppercase tracking-tight">Edges</span>
+              </span>
+              <span className="hidden sm:inline text-emerald-600">
+                ({analysis?.links.length ?? 0} total)
+              </span>
+            </span>
           </Badge>
         </div>
 
@@ -306,25 +351,30 @@ interface TabButtonProps {
 }
 
 function TabButton({ active, onClick, icon, label, count }: TabButtonProps) {
+  const accessibleLabel = count ? `${label} (${count})` : label;
+
   return (
     <button
       onClick={onClick}
+      aria-label={accessibleLabel}
       className={cn(
-        "relative flex h-8 items-center gap-2 rounded-lg px-3 transition-all",
-        active 
-          ? "bg-slate-900 text-white shadow-md shadow-slate-900/10" 
+        "group relative flex h-8 items-center gap-2 rounded-lg px-3 transition-all",
+        active
+          ? "bg-slate-900 text-white shadow-md shadow-slate-900/10"
           : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
       )}
     >
       <span className={cn(active ? "text-white" : "text-slate-400 group-hover:text-slate-900")}>
         {icon}
       </span>
-      <span className="text-xs font-bold tracking-tight">{label}</span>
+      <span className="hidden sm:inline text-xs font-bold tracking-tight">{label}</span>
       {typeof count === "number" && count > 0 && (
-        <span className={cn(
-          "ml-1 flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-black",
-          active ? "bg-white/20 text-white" : "bg-slate-200 text-slate-600"
-        )}>
+        <span
+          className={cn(
+            "ml-1 flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-black",
+            active ? "bg-white/20 text-white" : "bg-slate-200 text-slate-600"
+          )}
+        >
           {count}
         </span>
       )}

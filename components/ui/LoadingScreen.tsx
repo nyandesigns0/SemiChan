@@ -1,16 +1,18 @@
 "use client";
 
 import type { CSSProperties } from "react";
+
 import { useMemo } from "react";
 import Image from "next/image";
 
 import LogoGraphic from "@/assets/logo/logo.png";
 
 const DOT_COUNT = 28;
+const DOT_PALETTE = ["#f59e0b", "#a855f7", "#ec4899", "#ef4444", "#10b981", "#3b82f6"];
 
 export function LoadingScreen() {
   const loaderDots = useMemo(() => {
-    const dots: Array<{ id: string; delay: string; finalX: number; finalY: number; size: number }> = [];
+    const dots: Array<{ id: string; delay: string; finalX: number; finalY: number; size: number; color: string }> = [];
     for (let i = 0; i < DOT_COUNT; i++) {
       const angle = Math.random() * Math.PI * 2;
       const radius = 120 + Math.random() * 90;
@@ -22,6 +24,7 @@ export function LoadingScreen() {
         finalX,
         finalY,
         size: 4 + Math.random() * 12,
+        color: DOT_PALETTE[i % DOT_PALETTE.length],
       });
     }
     return dots;
@@ -42,9 +45,10 @@ export function LoadingScreen() {
                     "--dot-y": `${dot.finalY}px`,
                     "--dot-delay": dot.delay,
                     "--dot-size": `${dot.size}px`,
+                    "--dot-color": dot.color,
                   } as CSSProperties
                 }
-                className="loader-dot absolute left-1/2 top-1/2 h-2 w-2 rounded-full bg-slate-900"
+                className="loader-dot absolute left-1/2 top-1/2"
               />
             ))}
           </div>

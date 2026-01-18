@@ -61,6 +61,9 @@
     height: var(--dot-size, 2px);
     animation: dot-burst 0.8s cubic-bezier(0.55, 0.1, 0.1, 1) forwards;
     animation-delay: var(--dot-delay);
+    background-color: var(--dot-color, #0f172a);
+    border-radius: 999px;
+    box-shadow: 0 0 6px var(--dot-color, #0f172a);
   }
 
   @keyframes logo-pop {

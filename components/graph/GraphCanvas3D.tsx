@@ -311,6 +311,7 @@ function NeuronLoader({
   const groupRef = useRef<THREE.Group>(null);
   const pointsRef = useRef<THREE.Points>(null);
   const linesRef = useRef<THREE.LineSegments>(null);
+  const pointsMaterialRef = useRef<THREE.PointsMaterial>(null);
   const phase2StartTime = useRef<number | null>(null);
   const pointerTarget = useRef<PointerPosition>({ x: 0, y: 0 });
   const pointerCurrent = useRef<PointerPosition>({ x: 0, y: 0 });
@@ -324,31 +325,31 @@ function NeuronLoader({
     
     // Generate colors: varied colors from the start
     const colorVariations = [
-      new THREE.Color("#38bdf8"), // blue
-      new THREE.Color("#fbbf24"), // amber
-      new THREE.Color("#34d399"), // emerald
-      new THREE.Color("#f472b6"), // pink
-      new THREE.Color("#a78bfa"), // violet
-      new THREE.Color("#fb7185"), // rose
+      new THREE.Color("#3b82f6"), // blue
+      new THREE.Color("#f59e0b"), // yellow
+      new THREE.Color("#a855f7"), // purple
+      new THREE.Color("#ec4899"), // pink
+      new THREE.Color("#ef4444"), // red
+      new THREE.Color("#10b981"), // green
     ];
-    
+
     for (let i = 0; i < count; i += 1) {
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(2 * Math.random() - 1);
-      const radius = 2.2 + Math.random() * 0.8;
-      
-      positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        const radius = 2.2 + Math.random() * 0.8;
+
+        positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
       positions[i * 3 + 1] = radius * Math.cos(phi);
       positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
-      
-      // Assign varied colors immediately
+
       const targetColor = colorVariations[i % colorVariations.length];
       colors[i * 3] = targetColor.r;
       colors[i * 3 + 1] = targetColor.g;
       colors[i * 3 + 2] = targetColor.b;
-      
-      // Assign varied sizes (0.12 to 0.25)
-      sizes[i] = 0.12 + Math.random() * 0.13;
+
+      sizes[i] = Math.random() < 0.3
+        ? 0.16 + Math.random() * 0.08 // larger nodes
+        : 0.05 + Math.random() * 0.05; // smaller nodes
     }
 
     const connections = 120;
@@ -387,15 +388,46 @@ function NeuronLoader({
   const previousSamplePhase = useRef<SamplePhase>(samplePhase);
   const phase1StartTime = useRef<number | null>(null);
   
-  // Store color variations for glow effects
+  // Store color variations for glow effects and reuse the palette
   const colorVariations = useMemo(() => [
-    new THREE.Color("#38bdf8"), // blue
-    new THREE.Color("#fbbf24"), // amber
-    new THREE.Color("#34d399"), // emerald
-    new THREE.Color("#f472b6"), // pink
-    new THREE.Color("#a78bfa"), // violet
-    new THREE.Color("#fb7185"), // rose
+    new THREE.Color("#3b82f6"), // blue
+    new THREE.Color("#f59e0b"), // yellow
+    new THREE.Color("#a855f7"), // purple
+    new THREE.Color("#ec4899"), // pink
+    new THREE.Color("#ef4444"), // red
+    new THREE.Color("#10b981"), // green
   ], []);
+
+  const circleTexture = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const size = 128;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+    ctx.fill();
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.needsUpdate = true;
+    return texture;
+  }, []);
+
+  useEffect(() => {
+    const material = pointsMaterialRef.current;
+    if (!material) return;
+    material.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader.replace(
+        "gl_PointSize = size;",
+        "gl_PointSize = size * 2.0;"
+      );
+    };
+    material.needsUpdate = true;
+  }, [circleTexture]);
   
   // Initialize current colors and sizes with initial values (varied from start)
   useEffect(() => {
@@ -580,11 +612,16 @@ function NeuronLoader({
           <bufferAttribute attach="attributes-size" array={currentSizes.current} count={initialSizes.length} itemSize={1} />
         </bufferGeometry>
         <pointsMaterial
+          ref={pointsMaterialRef}
           vertexColors={true}
           size={1}
           sizeAttenuation
-          transparent
-          opacity={0.9}
+          transparent={false}
+          opacity={1}
+          alphaTest={0.1}
+          depthWrite={true}
+          depthTest={true}
+          map={circleTexture ?? undefined}
         />
       </points>
       <lineSegments ref={linesRef}>

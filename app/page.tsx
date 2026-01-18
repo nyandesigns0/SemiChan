@@ -1499,7 +1499,7 @@ export default function HomePage() {
       >
         {/* Header */}
         <header className="flex-shrink-0 border-b border-slate-200 bg-white px-4 sm:px-8 py-3 sm:py-2.5">
-          <div className="flex items-center justify-between gap-6">
+          <div className="flex flex-wrap items-center justify-between gap-6">
             <div className="flex items-center gap-4">
               <Image
                 src={logoImage}
@@ -1587,6 +1587,39 @@ export default function HomePage() {
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 Reset
+              </Button>
+            </div>
+
+            {/* Mobile nav icons */}
+            <div className="flex items-center gap-2 md:hidden">
+              <Button
+                variant="outline"
+                className="h-10 w-10 rounded-xl border-slate-200 p-0 text-slate-600 shadow-sm transition-all hover:bg-slate-50 hover:shadow-md active:scale-95"
+                onClick={handleExportPdf}
+                disabled={!analysis || emptyState || exportingPdf}
+                aria-label="Export PDF"
+              >
+                <FileText className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                className="h-10 w-10 rounded-xl border-slate-200 p-0 text-slate-600 shadow-sm transition-all hover:bg-slate-50 hover:shadow-md active:scale-95"
+                onClick={() => {
+                  if (!analysis) return;
+                  downloadJson(analysis, `jury-concept-graph-${new Date().toISOString().slice(0, 10)}.json`);
+                }}
+                disabled={!analysis || emptyState}
+                aria-label="Export JSON"
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                className="h-10 w-10 rounded-xl border-slate-200 p-0 text-slate-600 shadow-sm transition-all hover:bg-slate-50 hover:shadow-md active:scale-95"
+                onClick={resetSample}
+                aria-label="Reset analysis"
+              >
+                <Trash2 className="h-4 w-4" />
               </Button>
             </div>
           </div>
