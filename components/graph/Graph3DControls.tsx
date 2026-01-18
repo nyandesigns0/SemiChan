@@ -318,14 +318,14 @@ export function Graph3DControls({
             <div
               className={cn(
                 panelBaseClass,
-                "top-0 -translate-y-2",
+                "top-0 -translate-y-10",
                 hoveredControl === "ai" ? panelVisibleClass : panelHiddenClass
               )}
               onMouseEnter={() => handleHover("ai")}
               onMouseLeave={handleHoverLeave}
             >
               <div className="w-36 rounded-lg border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur-sm">
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">AI</div>
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">AI Labels</div>
                 <div className="mt-2 flex flex-col gap-2">
                   <Button
                     variant="outline"
