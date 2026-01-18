@@ -116,7 +116,6 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
         </div>
         <Button
           variant="outline"
-          size="sm"
           className="h-8 border-slate-200 text-xs font-semibold"
           onClick={loadReports}
           disabled={isLoading}
@@ -144,7 +143,7 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
                   Saved {formatDate(latestUpdated.createdAt)} • Updated {formatDate(latestUpdated.updatedAt)}
                 </p>
               </div>
-              <Button size="sm" className="h-8 bg-slate-900 text-white" onClick={() => onLoadReport(latestUpdated)}>
+              <Button className="h-8 bg-slate-900 text-white" onClick={() => onLoadReport(latestUpdated)}>
                 <Play className="mr-2 h-3.5 w-3.5" />
                 Load
               </Button>
@@ -176,7 +175,6 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
                 </div>
                 <div className="flex items-center gap-1">
                   <Button
-                    size="icon"
                     variant="ghost"
                     className="h-8 w-8 text-slate-500 hover:text-slate-900"
                     onClick={() => {
@@ -187,7 +185,6 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
                     <Pencil className="h-4 w-4" />
                   </Button>
                   <Button
-                    size="icon"
                     variant="ghost"
                     className="h-8 w-8 text-rose-500 hover:text-rose-600"
                     onClick={() => setDeleteTarget(report)}
@@ -210,7 +207,7 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
                     Raw text: {report.rawText.length} chars
                   </span>
                 </div>
-                <Button size="sm" className="h-8 bg-slate-900 text-white" onClick={() => onLoadReport(report)}>
+                <Button className="h-8 bg-slate-900 text-white" onClick={() => onLoadReport(report)}>
                   <Play className="mr-2 h-3.5 w-3.5" />
                   Load
                 </Button>
