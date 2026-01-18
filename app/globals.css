@@ -59,7 +59,7 @@
   .loader-dot {
     width: var(--dot-size, 2px);
     height: var(--dot-size, 2px);
-    animation: dot-burst 0.8s cubic-bezier(0.55, 0.1, 0.1, 1) forwards;
+    animation: dot-burst 1.2s cubic-bezier(0.55, 0.1, 0.1, 1) forwards;
     animation-delay: var(--dot-delay);
     background-color: var(--dot-color, #0f172a);
     border-radius: 999px;
@@ -76,7 +76,7 @@
   }
 
   .logo-grow {
-    animation: logo-pop 0.8s ease-out forwards;
+    animation: logo-pop 1.2s ease-out forwards;
     transform-origin: center;
   }
 }

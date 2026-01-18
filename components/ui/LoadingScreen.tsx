@@ -20,7 +20,7 @@ export function LoadingScreen() {
       const finalY = Math.sin(angle) * radius;
       dots.push({
         id: `loader-dot-${i}`,
-        delay: `${(Math.random() * 0.2).toFixed(2)}s`,
+        delay: `${(Math.random() * 0.3).toFixed(2)}s`,
         finalX,
         finalY,
         size: 4 + Math.random() * 12,

@@ -66,9 +66,9 @@ export default function HomePage() {
   const [ingestError, setIngestError] = useState<string | null>(null);
 
   useEffect(() => {
-    const loaderTimer = window.setTimeout(() => setFadeLoader(true), 550);
-    const fadeTimer = window.setTimeout(() => setFadeSplashScreen(true), 750);
-    const hideTimer = window.setTimeout(() => setShowSplashScreen(false), 1000);
+    const loaderTimer = window.setTimeout(() => setFadeLoader(true), 825);
+    const fadeTimer = window.setTimeout(() => setFadeSplashScreen(true), 1125);
+    const hideTimer = window.setTimeout(() => setShowSplashScreen(false), 1500);
     return () => {
       window.clearTimeout(loaderTimer);
       window.clearTimeout(fadeTimer);
@@ -1803,12 +1803,12 @@ export default function HomePage() {
       {showSplashScreen && (
         <div className="pointer-events-none fixed inset-0 z-[9999] flex items-center justify-center">
           <div
-            className={`pointer-events-none absolute inset-0 bg-white transition-opacity duration-200 ${
+            className={`pointer-events-none absolute inset-0 bg-white transition-opacity duration-300 ${
               fadeSplashScreen ? "opacity-0" : "opacity-100"
             }`}
           />
           <div
-            className={`relative transition-opacity duration-200 ${
+            className={`relative transition-opacity duration-300 ${
               fadeLoader ? "opacity-0" : "opacity-100"
             }`}
           >

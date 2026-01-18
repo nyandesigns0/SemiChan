@@ -423,7 +423,7 @@ function NeuronLoader({
     material.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader.replace(
         "gl_PointSize = size;",
-        "gl_PointSize = size * 2.0;"
+        "gl_PointSize = size * 1.5;"
       );
     };
     material.needsUpdate = true;

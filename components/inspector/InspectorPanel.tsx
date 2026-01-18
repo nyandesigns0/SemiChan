@@ -277,14 +277,9 @@ export function InspectorPanel({
           </Badge>
           <Badge variant="secondary" className="flex items-center gap-1.5 border border-emerald-100 bg-emerald-50 px-3 py-1 text-emerald-700">
             <LinkIcon className="h-3.5 w-3.5" />
-            <span className="flex flex-col gap-0.5 text-[10px]">
-              <span className="flex items-center gap-1">
-                <strong className="font-semibold text-emerald-700">{filteredLinksCount}</strong>
-                <span className="hidden sm:inline font-semibold uppercase tracking-tight">Edges</span>
-              </span>
-              <span className="hidden sm:inline text-emerald-600">
-                ({analysis?.links.length ?? 0} total)
-              </span>
+            <span className="flex items-center gap-1">
+              <strong className="text-xs font-semibold text-emerald-700">{filteredLinksCount}</strong>
+              <span className="hidden sm:inline text-[10px] font-semibold uppercase tracking-tight">Edges</span>
             </span>
           </Badge>
         </div>
