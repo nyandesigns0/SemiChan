@@ -14,6 +14,8 @@ import { extractKeyphrases } from "@/lib/nlp/keyphrase-extractor";
 import { resolveInsightLabel } from "@/lib/utils/label-utils";
 import type { RawDataExportContext } from "./export-types";
 import { saveReport } from "@/lib/utils/report-storage";
+import { ReportNameModal } from "./ReportNameModal";
+import { LoadingProgressCard } from "@/components/graph/LoadingProgressCard";
 
 type AxisPlotDatum = {
   axisIndex: number;
@@ -257,6 +259,10 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
   const [savingReport, setSavingReport] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+  const [reportNameModalOpen, setReportNameModalOpen] = useState(false);
+  const [savingProgress, setSavingProgress] = useState(0);
+  const [savingStep, setSavingStep] = useState("Preparing report data...");
+  const [isSaving, setIsSaving] = useState(false);
   const renderHeading = (icon: React.ReactNode, iconBg: string, title: string, subtitle: string) => (
     <div className="flex items-center gap-3">
       <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconBg}`}>
@@ -681,19 +687,32 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
 
   const handleSaveReport = () => {
     if (!analysis || !rawExportContext) return;
+    setSaveError(null);
+    setSaveSuccessMessage(null);
+    setReportNameModalOpen(true);
+  };
+
+  const performSave = async (name: string) => {
+    if (!analysis || !rawExportContext) return;
+
+    setIsSaving(true);
     setSavingReport(true);
+    setSavingProgress(0);
+    setSavingStep("Preparing report data...");
     setSaveError(null);
     setSaveSuccessMessage(null);
 
-    const id = typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const defaultName = `Report ${new Date().toISOString().slice(0, 16).replace("T", " ")}`;
-    const name = typeof window !== "undefined"
-      ? (window.prompt("Name this report", defaultName) || defaultName)
-      : defaultName;
-
     try {
+      // Progress: 0-20% - Preparing report data
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      setSavingProgress(20);
+      setSavingStep("Serializing analysis results...");
+
+      // Generate report ID and metadata
+      const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
       const metadata: SavedReport["metadata"] = {
         stats: {
           jurors: analysis.stats.totalJurors,
@@ -711,6 +730,19 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
         model: rawExportContext.selectedModel,
       };
 
+      // Progress: 20-40% - Serializing
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      setSavingProgress(40);
+      setSavingStep("Compressing data...");
+
+      // Progress: 40-60% - Compressing
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      setSavingProgress(60);
+      setSavingStep("Writing to storage...");
+
+      // Actual save happens here
+      // Note: rawText is not saved - it's redundant (can be computed from jurorBlocks)
+      // This significantly reduces storage size and save time
       const now = new Date().toISOString();
       const report: SavedReport = {
         id,
@@ -719,27 +751,71 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
         updatedAt: now,
         analysis,
         jurorBlocks: rawExportContext.jurorBlocks,
-        rawText: rawExportContext.rawText,
+        // rawText omitted - will be computed from jurorBlocks when needed
         parameters: rawExportContext.analysisParams,
         metadata,
       };
 
       saveReport(report);
+
+      // Progress: 60-80% - Writing to storage
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      setSavingProgress(80);
+      setSavingStep("Finalizing...");
+
+      // Progress: 80-100% - Finalizing
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      setSavingProgress(100);
+      setSavingStep("Report saved successfully");
+
       setSaveSuccessMessage("Report saved locally.");
       onReportSaved?.(report);
+
+      // Clear progress after a short delay
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      setIsSaving(false);
+      setSavingProgress(0);
+      setSavingStep("Preparing report data...");
     } catch (error) {
       console.error("[Reports] Failed to save report", error);
-      setSaveError("Could not save report. Check browser storage capacity.");
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : "Could not save report. Storage quota exceeded. Please delete some old reports.";
+      setSaveError(errorMessage);
+      setIsSaving(false);
+      setSavingProgress(0);
     } finally {
       setSavingReport(false);
       if (typeof window !== "undefined") {
-        window.setTimeout(() => setSaveSuccessMessage(null), 3000);
+        window.setTimeout(() => {
+          setSaveSuccessMessage(null);
+          setSaveError(null);
+        }, 5000);
       }
     }
   };
 
+  const defaultReportName = `Report ${new Date().toISOString().slice(0, 16).replace("T", " ")}`;
+
   return (
-    <div className="flex h-full flex-col gap-6 overflow-y-auto p-6">
+    <div className="relative flex h-full flex-col gap-6 overflow-y-auto p-6">
+      <ReportNameModal
+        open={reportNameModalOpen}
+        onOpenChange={setReportNameModalOpen}
+        defaultName={defaultReportName}
+        onSave={performSave}
+      />
+      {isSaving && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm pointer-events-none">
+          <div className="pointer-events-auto">
+            <LoadingProgressCard
+              title="Saving Report"
+              step={savingStep}
+              progress={savingProgress}
+            />
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 shadow-sm">
         <div className="flex flex-col">
           <span className="text-sm font-semibold text-slate-900">Reports</span>

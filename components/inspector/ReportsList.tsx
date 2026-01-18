@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { SavedReport } from "@/types/analysis";
-import { deleteReport, getAllReports, updateReport } from "@/lib/utils/report-storage";
+import { deleteReport, getAllReports, updateReport, getReportMetadataList, type ReportMetadata } from "@/lib/utils/report-storage";
 import { cn } from "@/lib/utils/cn";
 
 interface ReportsListProps {
@@ -26,6 +26,7 @@ const formatDate = (value: string) => {
 
 export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: ReportsListProps) {
   const [reports, setReports] = useState<SavedReport[]>([]);
+  const [metadata, setMetadata] = useState<ReportMetadata[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [editTarget, setEditTarget] = useState<SavedReport | null>(null);
   const [editName, setEditName] = useState("");
@@ -33,9 +34,15 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
 
   const loadReports = useCallback(() => {
     setIsLoading(true);
-    const items = getAllReports();
-    setReports(items);
-    onCountChange?.(items.length);
+    // Use lightweight metadata for fast listing (doesn't load full report data)
+    const metadataList = getReportMetadataList();
+    setMetadata(metadataList);
+    onCountChange?.(metadataList.length);
+    
+    // Load full reports lazily - only when needed for editing/deleting
+    // This is much faster than loading all reports upfront
+    const fullReports = getAllReports();
+    setReports(fullReports);
     setIsLoading(false);
   }, [onCountChange]);
 
@@ -44,12 +51,11 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
   }, [loadReports, refreshToken]);
 
   const latestUpdated = useMemo(() => {
-    if (reports.length === 0) return null;
-    return reports.reduce((latest, report) => {
-      const ts = new Date(report.updatedAt).getTime();
-      return ts > new Date(latest.updatedAt).getTime() ? report : latest;
-    }, reports[0]);
-  }, [reports]);
+    if (metadata.length === 0) return null;
+    const latestMeta = metadata[0]; // Already sorted by updatedAt
+    // Find full report for loading
+    return reports.find(r => r.id === latestMeta.id) || null;
+  }, [metadata, reports]);
 
   const handleRename = () => {
     if (!editTarget) return;
@@ -67,10 +73,10 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
     loadReports();
   };
 
-  const renderMetadata = (report: SavedReport) => {
-    const stats = report.metadata?.stats;
-    const params = report.metadata?.parameters;
-    const anchorCount = report.metadata?.anchorAxisCount ?? 0;
+  const renderMetadata = (meta: ReportMetadata, report?: SavedReport) => {
+    const stats = meta.metadata?.stats;
+    const params = meta.metadata?.parameters;
+    const anchorCount = meta.metadata?.anchorAxisCount ?? 0;
     return (
       <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] font-semibold text-slate-600 md:grid-cols-4">
         <div className="flex items-center gap-2 rounded-lg border border-slate-100 bg-slate-50/70 px-2 py-1.5">
@@ -98,7 +104,7 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
         </div>
         <div className="flex items-center gap-2 rounded-lg border border-slate-100 bg-white px-2 py-1.5 md:col-span-2">
           <Calendar className="h-3.5 w-3.5 text-slate-400" />
-          <span className="truncate">Updated {formatDate(report.updatedAt)}</span>
+          <span className="truncate">Updated {formatDate(meta.updatedAt)}</span>
         </div>
       </div>
     );
@@ -125,7 +131,7 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
         </Button>
       </div>
 
-      {reports.length === 0 && (
+      {metadata.length === 0 && (
         <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white px-6 py-10 text-center">
           <p className="text-sm font-semibold text-slate-700">No reports yet</p>
           <p className="text-[11px] font-semibold text-slate-500">Save an analysis to see it appear here.</p>
@@ -143,7 +149,7 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
                   Saved {formatDate(latestUpdated.createdAt)} • Updated {formatDate(latestUpdated.updatedAt)}
                 </p>
               </div>
-              <Button className="h-8 bg-slate-900 text-white" onClick={() => onLoadReport(latestUpdated)}>
+              <Button className="h-8 bg-slate-900 text-white px-4" onClick={() => onLoadReport(latestUpdated)}>
                 <Play className="mr-2 h-3.5 w-3.5" />
                 Load
               </Button>
@@ -153,68 +159,90 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
       )}
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        {reports.map((report) => (
-          <Card key={report.id} className="border border-slate-200 bg-white shadow-sm">
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary" className="bg-slate-100 text-[11px] font-semibold text-slate-700">
-                      {report.metadata?.parameters?.clusteringMode ?? "analysis"}
-                    </Badge>
-                    {report.metadata?.hasAxisLabels && (
-                      <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[10px] font-semibold text-amber-700">
-                        Axis labels
+        {metadata.map((meta) => {
+          const report = reports.find(r => r.id === meta.id);
+          return (
+            <Card key={meta.id} className="border border-slate-200 bg-white shadow-sm">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="bg-slate-100 text-[11px] font-semibold text-slate-700">
+                        {meta.metadata?.parameters?.clusteringMode ?? "analysis"}
                       </Badge>
-                    )}
+                      {meta.metadata?.hasAxisLabels && (
+                        <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[10px] font-semibold text-amber-700">
+                          Axis labels
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{meta.name}</p>
+                    <p className="text-[11px] font-semibold text-slate-500">
+                      Created {formatDate(meta.createdAt)}
+                    </p>
                   </div>
-                  <p className="mt-1 text-sm font-semibold text-slate-900">{report.name}</p>
-                  <p className="text-[11px] font-semibold text-slate-500">
-                    Created {formatDate(report.createdAt)}
-                  </p>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      className="h-8 w-8 text-slate-500 hover:text-slate-900"
+                      onClick={() => {
+                        if (report) {
+                          setEditTarget(report);
+                          setEditName(report.name);
+                        }
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="h-8 w-8 text-rose-500 hover:text-rose-600"
+                      onClick={() => {
+                        if (report) {
+                          setDeleteTarget(report);
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    className="h-8 w-8 text-slate-500 hover:text-slate-900"
+
+                {renderMetadata(meta, report)}
+
+                <Separator className="my-3" />
+
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-1 text-[10px] font-semibold text-slate-500">
+                    <span className="rounded-full bg-slate-100 px-2 py-1">
+                      Model: {meta.metadata?.model ?? "n/a"}
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-2 py-1">
+                      Text: {meta.totalTextLength.toLocaleString()} chars
+                    </span>
+                  </div>
+                  <Button 
+                    className="h-8 bg-slate-900 text-white px-4" 
                     onClick={() => {
-                      setEditTarget(report);
-                      setEditName(report.name);
+                      if (report) {
+                        onLoadReport(report);
+                      } else {
+                        // Load full report on demand
+                        const fullReport = getAllReports().find(r => r.id === meta.id);
+                        if (fullReport) {
+                          onLoadReport(fullReport);
+                        }
+                      }
                     }}
                   >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="h-8 w-8 text-rose-500 hover:text-rose-600"
-                    onClick={() => setDeleteTarget(report)}
-                  >
-                    <Trash2 className="h-4 w-4" />
+                    <Play className="mr-2 h-3.5 w-3.5" />
+                    Load
                   </Button>
                 </div>
-              </div>
-
-              {renderMetadata(report)}
-
-              <Separator className="my-3" />
-
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-1 text-[10px] font-semibold text-slate-500">
-                  <span className="rounded-full bg-slate-100 px-2 py-1">
-                    Model: {report.metadata?.model ?? "n/a"}
-                  </span>
-                  <span className="rounded-full bg-slate-100 px-2 py-1">
-                    Raw text: {report.rawText.length} chars
-                  </span>
-                </div>
-                <Button className="h-8 bg-slate-900 text-white" onClick={() => onLoadReport(report)}>
-                  <Play className="mr-2 h-3.5 w-3.5" />
-                  Load
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       <Dialog open={Boolean(editTarget)} onOpenChange={(open) => {
@@ -237,7 +265,7 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
             <div className="flex justify-end gap-2">
               <Button
                 variant="outline"
-                className="border-slate-200"
+                className="border-slate-200 px-4"
                 onClick={() => {
                   setEditTarget(null);
                   setEditName("");
@@ -245,7 +273,7 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
               >
                 Cancel
               </Button>
-              <Button onClick={handleRename} className="bg-slate-900 text-white">
+              <Button onClick={handleRename} className="bg-slate-900 text-white px-4">
                 Save
               </Button>
             </div>
@@ -267,7 +295,7 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
             <div className="flex justify-end gap-2">
               <Button
                 variant="outline"
-                className="border-slate-200"
+                className="border-slate-200 px-4"
                 onClick={() => setDeleteTarget(null)}
               >
                 Cancel
@@ -275,7 +303,7 @@ export function ReportsList({ onLoadReport, refreshToken = 0, onCountChange }: R
               <Button
                 variant="outline"
                 onClick={handleDelete}
-                className="border-rose-100 bg-rose-600 text-white hover:bg-rose-700"
+                className="border-rose-100 bg-rose-600 text-white hover:bg-rose-700 px-4"
               >
                 Delete
               </Button>

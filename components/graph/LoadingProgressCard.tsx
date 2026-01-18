@@ -70,7 +70,7 @@ export function LoadingProgressCard({
       </div>
       <div className="mt-3 relative h-[72px] w-full overflow-hidden rounded-2xl bg-slate-100">
         <div
-          className="absolute inset-0 rounded-2xl transition-all duration-500"
+          className="absolute left-0 top-0 bottom-0 rounded-2xl transition-all duration-500"
           style={{
             width: `${clampedProgress}%`,
             backgroundImage: gradient,

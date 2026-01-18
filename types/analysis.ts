@@ -179,14 +179,110 @@ export interface SavedReportMetadata {
   model?: string;
 }
 
+/**
+ * Minimal version of AnalysisResult for storage efficiency.
+ * Strips recomputable/redundant data while preserving essential display information.
+ */
+export interface MinimalAnalysisResult {
+  runId?: string;
+  jurors: string[];
+  concepts: Concept[]; // Backward compat - defaults to primary layer
+  primaryConcepts?: Concept[];
+  detailConcepts?: Concept[];
+  conceptHierarchy?: Record<string, string[]>; // primaryId -> detailIds[]
+  // conceptSets omitted - recomputed during analysis
+  // sentences omitted - redundant (text in jurorBlocks), counts preserved in stats
+  jurorVectors: Record<string, Record<string, number>>; // juror -> conceptId -> weight (Primary)
+  jurorVectorsDetail?: Record<string, Record<string, number>>; // juror -> conceptId -> weight (Detail)
+  // nodes omitted - positions recomputed, only essential fields preserved in minimalNodes
+  minimalNodes?: Array<{
+    id: string;
+    type: GraphNode["type"];
+    label: string;
+    size: number;
+    meta?: Record<string, unknown>;
+    pcValues?: number[];
+    layer?: "primary" | "detail";
+    parentConceptId?: string;
+    childConceptIds?: string[];
+    // x, y, z, fx, fy, fz omitted - recomputed by force simulation
+  }>;
+  // links omitted - recomputed from nodes/vectors
+  stats: {
+    totalJurors: number;
+    totalSentences: number;
+    totalConcepts: number;
+    stanceCounts: Record<Stance, number>;
+  };
+  recommendedK?: number;
+  // kSearchMetrics omitted - keep only summary
+  autoKReasoning?: string;
+  clusteringMode?: "kmeans" | "hierarchical";
+  // checkpoints omitted - snapshots not needed for reports
+  requestedNumDimensions?: number;
+  appliedNumDimensions?: number;
+  dimensionMode?: "manual" | "elbow" | "threshold";
+  varianceThreshold?: number;
+  // jurorTopTerms omitted - can be recomputed
+  axisLabels?: Record<string, { 
+    negative: string; 
+    positive: string; 
+    negativeId: string; 
+    positiveId: string; 
+    synthesizedNegative?: string; 
+    synthesizedPositive?: string;
+    name?: string;
+    synthesizedName?: string;
+  }>;
+  varianceStats?: {
+    totalVariance: number;
+    explainedVariances: number[];
+    cumulativeVariances: number[];
+  };
+  anchorAxes?: AnchorAxis[];
+  anchorAxisScores?: {
+    concepts: Record<string, Record<string, number>>;
+    jurors: Record<string, Record<string, number>>;
+  };
+  // chunks omitted - redundant, text in jurorBlocks
+  // chunkAssignments omitted - can be recomputed
+  autoSeed?: boolean;
+  seedChosen?: number;
+  seedCandidatesEvaluated?: number;
+  // seedLeaderboard omitted - keep only summary (seedChosen)
+  autoSeedReasoning?: string;
+  autoUnit?: boolean;
+  recommendedUnitMode?: { windowSize: number; label: string };
+  // unitSearchMetrics omitted - keep only summary (recommendedUnitMode)
+  autoUnitReasoning?: string;
+  autoWeights?: boolean;
+  recommendedWeights?: { semanticWeight: number; frequencyWeight: number };
+  // weightSearchMetrics omitted - keep only summary (recommendedWeights)
+  autoWeightsReasoning?: string;
+  minClusterSize?: number;
+  minClusterSizeAuto?: boolean;
+  minClusterSizeMerged?: number;
+  minClusterSizeDetails?: {
+    beforeSize: number;
+    afterSize: number;
+    mergedCount: number;
+  };
+  dominanceSplitApplied?: boolean;
+  dominanceSplitDetails?: {
+    primary?: { splitCount: number; originalSizes: number[]; newSizes: number[] };
+    detail?: { splitCount: number; originalSizes: number[]; newSizes: number[] };
+  };
+}
+
 export interface SavedReport {
   id: string;
   name: string;
   createdAt: string;
   updatedAt: string;
-  analysis: AnalysisResult;
+  analysis: AnalysisResult | MinimalAnalysisResult;
   jurorBlocks: JurorBlock[];
-  rawText: string;
+  rawText?: string; // Optional - can be computed from jurorBlocks to save storage
   parameters: ExportAnalysisParams;
   metadata: SavedReportMetadata;
+  isMinimal?: boolean; // Flag to indicate if analysis is minimal format
 }

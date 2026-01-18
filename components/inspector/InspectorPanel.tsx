@@ -13,7 +13,7 @@ import type { JurorBlock } from "@/types/nlp";
 import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
 import { ReportsList } from "./ReportsList";
 import type { SavedReport } from "@/types/analysis";
-import { getAllReports } from "@/lib/utils/report-storage";
+import { getReportCount } from "@/lib/utils/report-storage";
 
 export type InspectorTab = "console" | "analysis" | "reports";
 
@@ -86,7 +86,8 @@ export function InspectorPanel({
   }, []);
 
   useEffect(() => {
-    setSavedReportCount(getAllReports().length);
+    // Use fast count function that doesn't load full report data
+    setSavedReportCount(getReportCount());
   }, [reportRefreshToken]);
 
   // Resizing logic

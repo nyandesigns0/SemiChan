@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Image from "next/image";
-import { Download, FileText, Trash2 } from "lucide-react";
+import { Download, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -498,6 +498,13 @@ export default function HomePage() {
   useEffect(() => {
     const segmentText = async () => {
       if (restoringReportRef.current) return;
+      
+      // Skip API call if text is empty
+      if (!rawText || !rawText.trim()) {
+        setJurorBlocks([]);
+        return;
+      }
+      
       const segmentRunId = crypto.randomUUID();
       // Set initial blocks immediately for quick feedback
       setJurorBlocks(segmentByJuror(rawText));
@@ -1062,24 +1069,6 @@ export default function HomePage() {
     return ids.map((id) => m.get(id)).filter(Boolean) as SentenceRecord[];
   }, [analysis, selectedLink]);
 
-  function resetSample(): void {
-    setRawText(DEFAULT_SAMPLE);
-    setSearch("");
-    setSelectedNodeId(null);
-    setSelectedLinkId(null);
-    setSamplePhase("idle");
-    setSampleProgress(0);
-    setSampleStep("");
-    setSampleLoading(false);
-    setSampleLoadPending(false);
-    sampleLoadPendingRef.current = false;
-    setSampleProgressId(null);
-    sampleProgressIdRef.current = null;
-    if (sampleEventSourceRef.current) {
-      sampleEventSourceRef.current.close();
-      sampleEventSourceRef.current = null;
-    }
-  }
 
   // Graph interactivity
   function onNodeClick(n: GraphNode, event?: MouseEvent): void {
@@ -1592,14 +1581,6 @@ export default function HomePage() {
                 <Download className="mr-2 h-4 w-4" />
                 Export JSON
               </Button>
-              <Button
-                variant="outline"
-                className="h-9 rounded-xl border-slate-200 px-4 font-semibold shadow-sm transition-all hover:bg-slate-50 hover:shadow-md active:scale-95 text-xs"
-                onClick={resetSample}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Reset
-              </Button>
             </div>
 
             {/* Mobile nav icons */}
@@ -1624,14 +1605,6 @@ export default function HomePage() {
                 aria-label="Export JSON"
               >
                 <Download className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                className="h-10 w-10 rounded-xl border-slate-200 p-0 text-slate-600 shadow-sm transition-all hover:bg-slate-50 hover:shadow-md active:scale-95"
-                onClick={resetSample}
-                aria-label="Reset analysis"
-              >
-                <Trash2 className="h-4 w-4" />
               </Button>
             </div>
           </div>
