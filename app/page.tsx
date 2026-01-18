@@ -60,6 +60,7 @@ export default function HomePage() {
   const [fadeSplashScreen, setFadeSplashScreen] = useState(false);
   const [fadeLoader, setFadeLoader] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [appReady, setAppReady] = useState(false);
   const sampleEventSourceRef = useRef<EventSource | null>(null);
   const sampleLoadPendingRef = useRef(false);
   const sampleProgressIdRef = useRef<string | null>(null);
@@ -72,7 +73,10 @@ export default function HomePage() {
     setShowSplashScreen(true);
     const loaderTimer = window.setTimeout(() => setFadeLoader(true), 825);
     const fadeTimer = window.setTimeout(() => setFadeSplashScreen(true), 1125);
-    const hideTimer = window.setTimeout(() => setShowSplashScreen(false), 1500);
+    const hideTimer = window.setTimeout(() => {
+      setShowSplashScreen(false);
+      setAppReady(true);
+    }, 1500);
     return () => {
       window.clearTimeout(loaderTimer);
       window.clearTimeout(fadeTimer);
@@ -1379,7 +1383,11 @@ export default function HomePage() {
 
   return (
     <>
-      <div className="flex h-screen w-full overflow-hidden bg-slate-50 text-slate-900">
+      {!appReady ? (
+        <LoadingScreen />
+      ) : (
+        <>
+          <div className="flex h-screen w-full overflow-hidden bg-slate-50 text-slate-900">
         {/* Left Sidebar */}
         <CollapsibleSidebar
           side="left"
@@ -1819,6 +1827,8 @@ export default function HomePage() {
             <LoadingScreen />
           </div>
         </div>
+          )}
+        </>
       )}
     </>
   );
