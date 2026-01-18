@@ -1272,7 +1272,8 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                 .sort((a, b) => b[1] - a[1]);
               const showAllConcepts = showAllJurorConcepts[juror] ?? false;
               const visibleConceptWeights = showAllConcepts ? conceptWeights : conceptWeights.slice(0, 3);
-              const jurorText = jurorBlocks.find((b) => b.juror === juror)?.text ?? "";
+              const jurorBlock = jurorBlocks.find((b) => b.juror === juror);
+              const jurorText = (jurorBlock?.comments || []).map(c => c.text).join("\n");
               const keyphrases = extractKeyphrases(jurorText);
               const semanticSet = new Set(semanticTerms.map((t) => t.toLowerCase()));
 

@@ -27,6 +27,14 @@ To achieve absolute determinism, the following changes were applied:
 2.  **Deterministic Checkpoints**: Intermediate "Sentences Extracted" views now use a fixed grid layout instead of a random scatter.
 3.  **2D Fallback Stability**: The 2D force simulation hook now initializes all missing positions to the center `[width/2, height/2]` instead of a random cloud.
 
+## Stable Concept Identities
+
+To ensure that concepts can be tracked across different analysis runs (e.g., when adjusting weights or granularities), the system uses **Stable Concept IDs**.
+
+*   **Centroid Hashing**: Each concept's high-dimensional centroid is quantized and hashed. This creates a signature that is independent of the cluster's index.
+*   **Lineage Tracking**: IDs can incorporate parent-child relationships from hierarchical clustering, allowing "Concept A" to remain "Concept A" even as it is split into "Concept A.1" and "Concept A.2".
+*   **Impact**: This enables persistent annotations, summaries, and comparisons between different "cuts" of the same data.
+
 ## Impact on Interpretation
 - **100% Reproducibility**: The same data + the same parameters + the same Solution Seed = the exact same visual pixel-perfect graph.
 - **Faithful Mapping**: Proximity in the 3D space is now a "strict" indicator of semantic similarity, unpolluted by visualization-only offsets.

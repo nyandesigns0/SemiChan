@@ -8,6 +8,8 @@ export interface SentenceRecord {
   juror: string;
   sentence: string;
   stance: Stance;
+  sourceTags: string[];
+  commentId?: string;
   conceptId?: string;
   conceptMembership?: Array<{ conceptId: string; weight: number }>;
   chunkIds?: string[];

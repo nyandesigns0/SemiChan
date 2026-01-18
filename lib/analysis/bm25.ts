@@ -30,7 +30,10 @@ function buildIndexStructures(sentences: string[], ngramVocab: string[]): IdxMap
 
 function computeJurorDocFreq(jurorBlocks: JurorBlock[], ngramVocab: string[]): Map<string, number> {
   const docFreq = new Map<string, number>();
-  const jurorNgramSets = jurorBlocks.map((block) => new Set(extractNgrams(block.text)));
+  const jurorNgramSets = jurorBlocks.map((block) => {
+    const combinedText = (block.comments || []).map(c => c.text).join("\n");
+    return new Set(extractNgrams(combinedText));
+  });
 
   for (const ngram of ngramVocab) {
     let df = 0;

@@ -52,6 +52,12 @@ function SentenceList({ sentences, conceptId }: { sentences: SentenceRecord[], c
                   <Badge variant="secondary" className="bg-slate-100 text-[10px] font-bold uppercase tracking-wider text-slate-600 border-none">
                     {s.juror}
                   </Badge>
+                  {s.sourceTags && s.sourceTags.map(tag => (
+                    <Badge key={tag} variant="outline" className="text-[10px] border-indigo-100 text-indigo-600 font-bold bg-indigo-50/50">
+                      <Tag className="h-2 w-2 mr-1" />
+                      {tag}
+                    </Badge>
+                  ))}
                   {weight !== null && (
                     <Badge variant="outline" className="text-[10px] border-indigo-200 text-indigo-600 font-bold bg-indigo-50/50">
                       {weight}% Match
@@ -116,7 +122,9 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
       .sort((a, b) => b.value - a.value)
       .slice(0, 10);
 
-    const keyphrases = extractKeyphrases(jurorBlocks.find((b) => b.juror === jurorName)?.text ?? "");
+    const jurorBlock = jurorBlocks.find((b) => b.juror === jurorName);
+    const combinedText = (jurorBlock?.comments || []).map(c => c.text).join("\n");
+    const keyphrases = extractKeyphrases(combinedText);
     const semanticTerms = analysis.jurorTopTerms?.[jurorName] || [];
     
     // Create sets for quick lookup

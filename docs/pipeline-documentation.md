@@ -13,62 +13,69 @@ graph TD
     Segmentation --> Splitting[3. Sentence Splitting]
     Segmentation --> JurorBlocks[2.1 Juror Blocks<br/>Source Identifiers]
     
-    Splitting --> StancePath[4. Stance Classification<br/>Praise/Critique/Suggestion]
-    Splitting --> NgramPath[5. N-gram Extraction<br/>Word Pairs & Triplets]
-    Splitting --> EmbedPath[6. Semantic Embeddings<br/>Meaning Vectors]
+    Splitting --> StancePath[4. Stance Classification]
+    Splitting --> NgramPath[5. N-gram Extraction]
+    Splitting --> EmbedPath[6. Semantic Embeddings]
     
-    NgramPath --> BM25[7.1 BM25 Frequency Vectors<br/>Cross-Juror Word Frequencies]
-    EmbedPath --> SemanticVecs[6.1 384-dim Semantic Vectors<br/>Meaning Representation]
+    Images[Designer Images] --> ImageEmbed[6.2 CLIP Image Embeddings]
     
-    SemanticVecs --> Clustering[8. Clustering<br/>K-Means (default) or Hierarchical]
-    Clustering --> Centroids[8.1 Cluster Centroids<br/>Theme Centers]
-    Clustering --> Assignments[8.2 Sentence Assignments<br/>Which Concept Each Sentence Belongs To]
+    NgramPath --> BM25[7.1 BM25 Frequency Vectors]
+    EmbedPath --> SemanticVecs[6.1 384-dim Semantic Vectors]
     
-    Centroids --> Labeling[9. Concept Labeling<br/>Contrastive BM25 Scoring]
+    SemanticVecs --> Clustering[8. Clustering]
+    Clustering --> Centroids[8.1 Cluster Centroids]
+    Clustering --> Assignments[8.2 Sentence Assignments]
+    
+    Centroids --> Labeling[9. Concept Labeling]
     BM25 --> Labeling
-    Labeling --> ConceptNodes[9.1 Concept Nodes<br/>Large Nodes with Labels]
+    Labeling --> ConceptNodes[9.1 Concept Nodes]
     
-    Centroids --> EvidenceRanking[10. Evidence Ranking<br/>Semantic Coherence + BM25 Salience]
+    Centroids --> AnchorProjection[8.5 Anchor Axis Projection]
+    AnchorSeeds[Custom Anchor Seeds] --> AnchorProjection
+    
+    Centroids --> EvidenceRanking[10. Evidence Ranking]
     BM25 --> EvidenceRanking
     Assignments --> EvidenceRanking
     EvidenceRanking --> ConceptNodes
     
-    Centroids --> ConceptSim[12.4 Concept Similarity Calculation<br/>Cosine Similarity]
-    ConceptSim --> ConceptConceptLinks[12.5 Concept-Concept Links<br/>Purple Color<br/>Related Themes]
+    ImageEmbed --> ImageConceptAttachment[9.5 Image-Concept Attachment]
+    Centroids --> ImageConceptAttachment
+    ImageConceptAttachment --> ConceptNodes
     
-    Assignments --> JurorMapping[11. Juror-Concept Mapping<br/>Aggregate Sentence Weights<br/>Normalize per Juror<br/>Supports Soft Membership]
+    Centroids --> ConceptSim[12.4 Concept Similarity Calculation]
+    ConceptSim --> ConceptConceptLinks[12.5 Concept-Concept Links]
+    
+    Assignments --> JurorMapping[11. Juror-Concept Mapping]
     StancePath --> JurorMapping
     JurorBlocks --> JurorMapping
     
-    JurorMapping --> JurorConceptLinks[12.1 Juror-Concept Links<br/>Weight = Normalized Count<br/>Color = Dominant Stance<br/>Green: Praise, Red: Critique<br/>Orange: Suggestion, Gray: Neutral]
+    JurorMapping --> JurorConceptLinks[12.1 Juror-Concept Links]
     
-    Centroids --> Positioning3D[13. 3D Position Calculation<br/>Concepts: PCA Projection<br/>Jurors: Weighted Average of Concept Positions]
+    Centroids --> Positioning3D[13. 3D Position Calculation]
+    AnchorProjection --> Positioning3D
     
     Positioning3D --> ConceptPos[13.1 Concept 3D Positions]
     Positioning3D --> JurorPos[13.2 Juror 3D Positions]
     ConceptPos --> ConceptNodes
-    JurorPos --> JurorNodes[11.1 Juror Nodes<br/>Small Nodes with Top Terms]
+    JurorPos --> JurorNodes[11.1 Juror Nodes]
     
-    Centroids --> JurorHighDim[11.5 High-Dimensional Vectors and Top Terms<br/>Weighted Average of Centroids<br/>Extract Top Terms from Vectors]
+    Centroids --> JurorHighDim[11.5 High-Dimensional Juror Vectors]
     JurorMapping --> JurorHighDim
     JurorHighDim --> JurorNodes
     
-    JurorMapping --> JurorSim[12.2 Juror Similarity Calculation<br/>Cosine Similarity]
-    JurorSim --> JurorJurorLinks[12.3 Juror-Juror Links<br/>Indigo Color<br/>Similar Interests]
+    JurorMapping --> JurorSim[12.2 Juror Similarity Calculation]
+    JurorSim --> JurorJurorLinks[12.3 Juror-Juror Links]
     
-    ConceptNodes --> Assembly[14. Graph Assembly<br/>Combine All Elements]
+    ConceptNodes --> Assembly[14. Graph Assembly]
     JurorNodes --> Assembly
     JurorConceptLinks --> Assembly
     JurorJurorLinks --> Assembly
     ConceptConceptLinks --> Assembly
     
-    Assembly --> Output[Final Graph Visualization<br/>Large Nodes = Concepts<br/>Small Nodes = Jurors<br/>Colored Links = Relationships]
+    Assembly --> Output[Final Graph Visualization]
     
     style ConceptNodes fill:#e0f2fe,stroke:#0284c7,stroke-width:3px
     style JurorNodes fill:#f1f5f9,stroke:#475569,stroke-width:2px
-    style JurorConceptLinks fill:#dcfce7,stroke:#16a34a,stroke-width:2px
-    style JurorJurorLinks fill:#e0e7ff,stroke:#6366f1,stroke-width:2px
-    style ConceptConceptLinks fill:#f3e8ff,stroke:#8b5cf6,stroke-width:2px
     style Output fill:#fef3c7,stroke:#f59e0b,stroke-width:4px
 ```
 
@@ -319,6 +326,24 @@ Unlike standard TF-IDF, this implementation prioritizes n-grams that appear acro
 
 ### Explanation
 The labeler compares "what is said here" vs "what is said everywhere else." This ensures that if every juror mentions "the building," it doesn't become a label for every concept. A centroid-nearest fallback keeps even very small or sparse clusters labeled with meaningful phrases instead of the `"Concept"` default.
+
+---
+
+## Step 8.5: Anchor Axis Projection (Optional)
+**Plain Language:** Custom themes (like "Sustainability" vs "Aesthetics") can be used as navigation rails to organize the graph.
+
+**Technical Detail:** The system allows users to define "Anchor Axes" by providing positive and negative seed phrases (e.g., "energy efficiency" vs "visual appeal"). These phrases are embedded using the same transformer model as the sentences. A unit vector represents the axis: $V_{axis} = Normalize(Mean(V_{pos}) - Mean(V_{neg}))$. Every concept centroid and juror vector is then projected onto this axis using cosine similarity. These projection scores can be used to override PCA positions for one or more dimensions in the final 3D visualization.
+
+**Location:** `lib/analysis/anchor-axes.ts` (`computeAxisVector`, `projectToAnchorAxis`)
+
+---
+
+## Step 9.5: Multimodal Image-Concept Attachment (Designer Pipeline)
+**Plain Language:** Pictures from designer portfolios are automatically linked to the themes they represent.
+
+**Technical Detail:** For the Designer Analysis pipeline, images are processed using the `Xenova/clip-vit-base-patch32` CLIP model. This generates 384-dimensional embeddings in the same semantic space as the text embeddings. Each image is then checked against every concept centroid; if the cosine similarity exceeds a user-defined threshold, the image is attached to that concept. These attachments appear as visual evidence in the 3D graph and inspector panel.
+
+**Location:** `lib/analysis/image-embeddings.ts` (`embedImage`), `lib/graph/designer-graph-builder.ts` (`attachImagesToConcepts`)
 
 ---
 

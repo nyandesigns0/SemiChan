@@ -59,7 +59,7 @@ export function segmentByJuror(raw: string): JurorBlock[] {
   flush();
 
   // Merge tiny blocks into Unattributed (often headers)
-  const cleaned: JurorBlock[] = [];
+  const cleaned: { juror: string; text: string }[] = [];
   for (const b of blocks) {
     const t = b.text.trim();
     if (t.length < 60 && b.juror !== "Unattributed") {
@@ -77,6 +77,13 @@ export function segmentByJuror(raw: string): JurorBlock[] {
   for (const b of cleaned) {
     map.set(b.juror, [...(map.get(b.juror) ?? []), b.text]);
   }
-  return [...map.entries()].map(([juror, texts]) => ({ juror, text: texts.join("\n\n") }));
+  return [...map.entries()].map(([juror, texts]) => ({ 
+    juror, 
+    comments: texts.map(text => ({
+      id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2),
+      text,
+      tags: []
+    }))
+  }));
 }
 

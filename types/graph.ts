@@ -19,6 +19,7 @@ export interface GraphNode extends SimulationNodeDatum {
   parentConceptId?: string;
   /** Child detail concept IDs for primary nodes */
   childConceptIds?: string[];
+  sourceTags?: string[];
 }
 
 export interface GraphLink extends SimulationLinkDatum<GraphNode> {
@@ -31,4 +32,5 @@ export interface GraphLink extends SimulationLinkDatum<GraphNode> {
   evidenceCount?: number;
   kind: "jurorConcept" | "jurorJuror" | "conceptConcept" | "jurorDesignerConcept";
   structuralRole?: "bridge" | "cluster-internal" | "hub" | "peripheral";
+  sourceTags?: string[];
 }

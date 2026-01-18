@@ -25,6 +25,7 @@ export function minimizeAnalysis(analysis: AnalysisResult): MinimalAnalysisResul
     layer: node.layer,
     parentConceptId: node.parentConceptId,
     childConceptIds: node.childConceptIds,
+    sourceTags: node.sourceTags,
     // x, y, z, fx, fy, fz omitted - will be recomputed
   }));
 
@@ -383,15 +384,19 @@ export function expandMinimalAnalysis(
   let sentenceIndex = 0;
   
   for (const block of jurorBlocks) {
-    const blockSentences = sentenceSplit(block.text);
-    for (const sentenceText of blockSentences) {
-      sentences.push({
-        id: `sentence-${sentenceIndex++}`,
-        juror: block.juror,
-        sentence: sentenceText,
-        stance: stanceOfSentence(sentenceText),
-        // conceptId and conceptMembership will be empty - would need full analysis to reconstruct
-      });
+    const comments = block.comments || [];
+    for (const comment of comments) {
+      const blockSentences = sentenceSplit(comment.text);
+      for (const sentenceText of blockSentences) {
+        sentences.push({
+          id: `sentence-${sentenceIndex++}`,
+          juror: block.juror,
+          sentence: sentenceText,
+          stance: stanceOfSentence(sentenceText),
+          sourceTags: comment.tags || [],
+          // conceptId and conceptMembership will be empty - would need full analysis to reconstruct
+        });
+      }
     }
   }
 
@@ -415,6 +420,7 @@ export function expandMinimalAnalysis(
       layer: minNode.layer,
       parentConceptId: minNode.parentConceptId,
       childConceptIds: minNode.childConceptIds,
+      sourceTags: (minNode as any).sourceTags,
       x: position.x,
       y: position.y,
       z: position.z,

@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronUp, LayoutGrid, Circle, Link2, Users } from "lucide-react";
+import { ChevronDown, ChevronUp, LayoutGrid, Circle, Link2, Users, Tag } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils/cn";
 
 interface GraphFiltersAccordionProps {
@@ -30,6 +31,12 @@ interface GraphFiltersAccordionProps {
   onShowCritiqueChange: (value: boolean) => void;
   onShowSuggestionChange: (value: boolean) => void;
   onShowNeutralChange: (value: boolean) => void;
+  
+  // Tag filtering
+  availableTags: string[];
+  visibleTags: Set<string>;
+  onToggleTag: (tag: string) => void;
+  onToggleAllTags: (visible: boolean) => void;
 }
 
 export function GraphFiltersAccordion({
@@ -55,6 +62,11 @@ export function GraphFiltersAccordion({
   onShowCritiqueChange,
   onShowSuggestionChange,
   onShowNeutralChange,
+  
+  availableTags,
+  visibleTags,
+  onToggleTag,
+  onToggleAllTags,
 }: GraphFiltersAccordionProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -160,6 +172,57 @@ export function GraphFiltersAccordion({
                     <Switch checked={filter.checked} onCheckedChange={filter.onChange} />
                   </div>
                 ))}
+              </div>
+            </div>
+
+            <Separator className="bg-slate-100" />
+
+            {/* Tag Filters Section */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2 text-slate-500">
+                  <Tag className="h-3 w-3" />
+                  <span className="text-[10px] font-bold uppercase tracking-tight">Trace Tags</span>
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => onToggleAllTags(true)}
+                    className="text-[9px] font-bold text-indigo-500 hover:text-indigo-600 uppercase"
+                  >
+                    All
+                  </button>
+                  <button 
+                    onClick={() => onToggleAllTags(false)}
+                    className="text-[9px] font-bold text-slate-400 hover:text-slate-500 uppercase"
+                  >
+                    None
+                  </button>
+                </div>
+              </div>
+              
+              <div className="flex flex-wrap gap-1.5 px-1 max-h-[120px] overflow-y-auto pr-2 custom-scrollbar">
+                {availableTags.length === 0 ? (
+                  <p className="text-[10px] text-slate-400 italic">No tags in current analysis.</p>
+                ) : (
+                  availableTags.map((tag) => {
+                    const isVisible = visibleTags.has(tag);
+                    return (
+                      <Badge
+                        key={tag}
+                        variant={isVisible ? "secondary" : "outline"}
+                        className={cn(
+                          "cursor-pointer transition-all border-none py-1 px-2 text-[10px] font-bold",
+                          isVisible 
+                            ? "bg-indigo-50 text-indigo-700 shadow-sm" 
+                            : "bg-slate-50 text-slate-400 opacity-60 grayscale hover:opacity-100"
+                        )}
+                        onClick={() => onToggleTag(tag)}
+                      >
+                        {tag}
+                      </Badge>
+                    );
+                  })
+                )}
               </div>
             </div>
 

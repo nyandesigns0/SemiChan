@@ -83,6 +83,7 @@ interface GraphCanvas3DProps {
   showConceptConceptLinks?: boolean;
   onShowConceptConceptLinksChange?: (show: boolean) => void;
   onOpenUploadSidebar?: () => void;
+  visibleTags?: Set<string>;
 }
 
 // Camera controller component to handle reset
@@ -710,6 +711,7 @@ function SceneContent({
   focusScale = 1,
   autoRotateDisabled = false,
   onAutoRotateDisabled,
+  visibleTags = new Set(),
 }: {
   nodes: GraphNode[];
   links: GraphLink[];
@@ -736,6 +738,7 @@ function SceneContent({
   focusScale?: number;
   autoRotateDisabled?: boolean;
   onAutoRotateDisabled?: () => void;
+  visibleTags?: Set<string>;
 }) {
   const scaledNodes = useMemo(() => {
     return nodes.map((node) => ({
@@ -767,9 +770,21 @@ function SceneContent({
       if (revealedNodeIds && revealedNodeIds.size === 0) {
         return false;
       }
+      
+      // Tag filtering: If node has tags, at least one must be in visibleTags
+      if (visibleTags.size > 0 && node.sourceTags && node.sourceTags.length > 0) {
+        const hasVisibleTag = node.sourceTags.some(t => visibleTags.has(t));
+        if (!hasVisibleTag) return false;
+      } else if (visibleTags.size > 0 && (!node.sourceTags || node.sourceTags.length === 0)) {
+        // Nodes without tags are hidden when filtering is active, unless they are structural (e.g. concept centroids)
+        // Actually, concept centroids DO have sourceTags aggregated now.
+        // If a node has no tags, it means it's not connected to any tagged comment.
+        return false;
+      }
+
       return true;
     });
-  }, [scaledNodes, expandedPrimaryConcepts, revealedNodeIds]);
+  }, [scaledNodes, expandedPrimaryConcepts, revealedNodeIds, visibleTags]);
 
   // Filter links based on expansion
   const visibleLinks = useMemo(() => {
@@ -780,12 +795,21 @@ function SceneContent({
       const source = nodeMap.get(sourceId);
       const target = nodeMap.get(targetId);
       
-      if (source?.layer === "detail" && !expandedPrimaryConcepts.has(source.parentConceptId || "")) return false;
-      if (target?.layer === "detail" && !expandedPrimaryConcepts.has(target.parentConceptId || "")) return false;
+      if (!source || !target) return false;
+      if (source.layer === "detail" && !expandedPrimaryConcepts.has(source.parentConceptId || "")) return false;
+      if (target.layer === "detail" && !expandedPrimaryConcepts.has(target.parentConceptId || "")) return false;
       
+      // Tag filtering for links
+      if (visibleTags.size > 0 && link.sourceTags && link.sourceTags.length > 0) {
+        const hasVisibleTag = link.sourceTags.some(t => visibleTags.has(t));
+        if (!hasVisibleTag) return false;
+      } else if (visibleTags.size > 0 && (!link.sourceTags || link.sourceTags.length === 0)) {
+        return false;
+      }
+
       return true;
     });
-  }, [links, nodeMap, expandedPrimaryConcepts, revealLinks]);
+  }, [links, nodeMap, expandedPrimaryConcepts, revealLinks, visibleTags]);
 
   const linksByNode = useMemo(() => {
     const map = new Map<string, GraphLink[]>();
@@ -1010,6 +1034,7 @@ export function GraphCanvas3D({
   showConceptConceptLinks,
   onShowConceptConceptLinksChange,
   onOpenUploadSidebar,
+  visibleTags,
 }: GraphCanvas3DProps) {
   const controlsRef = useRef<OrbitControlsType>(null);
   const [showGrid, setShowGrid] = useState(false);
@@ -1273,10 +1298,11 @@ export function GraphCanvas3D({
                 revealedNodeIds={revealedNodeIds}
                 revealLinks={revealLinks}
                 revealedAxisCount={revealedAxisCount}
-                focusScale={focusScale}
-                autoRotateDisabled={autoRotateDisabled}
-                onAutoRotateDisabled={onAutoRotateDisabled}
-              />
+            focusScale={focusScale}
+            autoRotateDisabled={autoRotateDisabled}
+            onAutoRotateDisabled={onAutoRotateDisabled}
+            visibleTags={visibleTags}
+          />
             )}
           </Suspense>
         </Canvas>

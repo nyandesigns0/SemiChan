@@ -141,9 +141,28 @@ export default function HomePage() {
   const [granularityPercent, setGranularityPercent] = useState(60);
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   const [search, setSearch] = useState("");
-
   // Selection
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  // Recalculate juror blocks when they are modified
+  const handleAddJurorBlock = useCallback((block: JurorBlock) => {
+    setJurorBlocks((prev) => [...prev, block]);
+  }, []);
+
+  const handleUpdateJurorBlock = useCallback((index: number, block: JurorBlock) => {
+    setJurorBlocks((prev) => {
+      const next = [...prev];
+      next[index] = block;
+      return next;
+    });
+  }, []);
+
+  const handleRemoveJurorBlock = useCallback((index: number) => {
+    setJurorBlocks((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const handleClearJurorBlocks = useCallback(() => {
+    setJurorBlocks([]);
+  }, []);
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
   const [expandedPrimaryConcepts, setExpandedPrimaryConcepts] = useState<Set<string>>(new Set());
 
@@ -172,6 +191,38 @@ export default function HomePage() {
   const [designerKConcepts, setDesignerKConcepts] = useState(6);
   const [alignmentLinks, setAlignmentLinks] = useState<GraphLink[]>([]);
   const [aligning, setAligning] = useState(false);
+
+  const [visibleTags, setVisibleTags] = useState<Set<string>>(new Set());
+
+  const availableTags = useMemo(() => {
+    if (!analysis) return [];
+    const tags = new Set<string>();
+    analysis.nodes.forEach(n => {
+      if (n.sourceTags) n.sourceTags.forEach(t => tags.add(t));
+    });
+    return Array.from(tags).sort();
+  }, [analysis]);
+
+  // Sync visibleTags when analysis changes
+  useEffect(() => {
+    if (availableTags.length > 0 && visibleTags.size === 0) {
+      setVisibleTags(new Set(availableTags));
+    }
+  }, [availableTags]);
+
+  const handleToggleTag = useCallback((tag: string) => {
+    setVisibleTags(prev => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag);
+      else next.add(tag);
+      return next;
+    });
+  }, []);
+
+  const handleToggleAllTags = useCallback((visible: boolean) => {
+    if (visible) setVisibleTags(new Set(availableTags));
+    else setVisibleTags(new Set());
+  }, [availableTags]);
 
   // Use the actual number of dimensions from the analysis if available, otherwise the manual setting
   const appliedNumDimensions = useMemo(() => {
@@ -383,7 +434,6 @@ export default function HomePage() {
   // Raw data export context for analysis report
   const rawDataExportContext = useMemo(() => {
     return {
-      rawText,
       jurorBlocks,
       analysisParams: {
         kConcepts,
@@ -494,73 +544,14 @@ export default function HomePage() {
     exportTimestamp,
   ]);
 
-  // Call segment API when rawText changes
+  // No longer automatic segmentation. Juror blocks are managed individually.
   useEffect(() => {
-    const segmentText = async () => {
-      if (restoringReportRef.current) return;
-      
-      // Skip API call if text is empty
-      if (!rawText || !rawText.trim()) {
-        setJurorBlocks([]);
-        return;
-      }
-      
-      const segmentRunId = crypto.randomUUID();
-      // Set initial blocks immediately for quick feedback
-      setJurorBlocks(segmentByJuror(rawText));
-
-      if (sampleLoadPendingRef.current) {
-        setSampleProgress((prev) => Math.max(prev, 20));
-        setSampleStep("Chunking feedback");
-      }
-      
-      addLog("api_request", "Segmenting input text...", { phase: "segment", runId: segmentRunId });
-      try {
-        const response = await fetch("/api/segment", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: rawText }),
-        });
-        if (response.ok) {
-          const data = await response.json();
-          addLog("api_response", `Text segmented into ${data.blocks.length} juror blocks`, { phase: "segment", runId: segmentRunId });
-          setJurorBlocks(data.blocks);
-          if (sampleLoadPendingRef.current) {
-            setSampleProgress((prev) => Math.max(prev, 35));
-            setSampleStep("Preparing analysis");
-          }
-        } else {
-          const errBody = await response.json().catch(() => ({}));
-          addLog(
-            "api_error",
-            `Segmentation failed: ${response.status} ${errBody?.error || response.statusText}`,
-            { phase: "segment", runId: segmentRunId }
-          );
-          if (sampleLoadPendingRef.current) {
-            setSampleLoading(false);
-            setSampleLoadPending(false);
-            sampleLoadPendingRef.current = false;
-            setSampleStep("Segmentation failed");
-            setSamplePhase("idle");
-          }
-        }
-      } catch (error) {
-        console.error("Error segmenting text:", error);
-        addLog(
-          "api_error",
-          `Network error during segmentation: ${error instanceof Error ? error.message : String(error)}`,
-          { phase: "segment", runId: segmentRunId }
-        );
-        if (sampleLoadPendingRef.current) {
-          setSampleLoading(false);
-          setSampleLoadPending(false);
-          sampleLoadPendingRef.current = false;
-          setSampleStep("Segmentation failed");
-        }
-      }
-    };
-    segmentText();
-  }, [rawText, addLog]);
+    // This effect is kept for sample loading and report restoration
+    if (restoringReportRef.current) return;
+    
+    // If jurorBlocks is empty but rawText is not (e.g. from sample load), we might want to segment once
+    // but the plan says to use jurorBlocks as the source of truth.
+  }, [jurorBlocks.length]);
 
   // Call analyze API when blocks or params change
   useEffect(() => {
@@ -1251,7 +1242,19 @@ export default function HomePage() {
     setSampleStep("Cleaning text");
     setSampleProgressId(id);
     sampleProgressIdRef.current = id;
+    
+    // Set juror blocks directly from sample text
+    const legacyBlocks = segmentByJuror(DEFAULT_SAMPLE);
+    const taggedBlocks: JurorBlock[] = legacyBlocks.map((lb, i) => ({
+      juror: lb.juror,
+      comments: lb.comments.map((comment) => ({
+        ...comment,
+        tags: i % 2 === 0 ? ["Review Panel A", "Session 1"] : ["Review Panel B", "Expert Critique"],
+      })),
+    }));
+    setJurorBlocks(taggedBlocks);
     setRawText(DEFAULT_SAMPLE);
+    
     setIngestError(null);
     setSamplePhase("loading");
   }, []);
@@ -1674,8 +1677,9 @@ export default function HomePage() {
                   onShowJurorJurorLinksChange={setShowJurorJurorLinks}
                   showConceptConceptLinks={showConceptConceptLinks}
                   onShowConceptConceptLinksChange={setShowConceptConceptLinks}
-                  onOpenUploadSidebar={handleOpenUploadSidebar}
-                />
+        onOpenUploadSidebar={handleOpenUploadSidebar}
+        visibleTags={visibleTags}
+      />
               </div>
 
               {/* Floating Details Panel */}
@@ -1757,6 +1761,10 @@ export default function HomePage() {
             onShowCritiqueChange={setShowCritique}
             onShowSuggestionChange={setShowSuggestion}
             onShowNeutralChange={setShowNeutral}
+            availableTags={availableTags}
+            visibleTags={visibleTags}
+            onToggleTag={handleToggleTag}
+            onToggleAllTags={handleToggleAllTags}
           />
           <SearchBarAccordion value={search} onChange={setSearch} />
           <AlignmentControls
@@ -1773,9 +1781,10 @@ export default function HomePage() {
         open={ingestModalOpen}
         onOpenChange={setIngestModalOpen}
         mode="juror"
-        rawText={rawText}
-        onTextChange={setRawText}
         jurorBlocks={jurorBlocks}
+        onAddJurorBlock={handleAddJurorBlock}
+        onRemoveJurorBlock={handleRemoveJurorBlock}
+        onClearJurorBlocks={handleClearJurorBlocks}
       />
       <IngestModal
         open={designerModalOpen}

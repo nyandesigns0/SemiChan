@@ -172,10 +172,19 @@ export async function buildAnalysis(
   progress(15, "Preparing sentences");
   
   for (const b of jurorBlocks) {
-    const sents = sentenceSplit(b.text);
-    for (let i = 0; i < sents.length; i++) {
-      const id = `${b.juror}::${i}`;
-      sentences.push({ id, juror: b.juror, sentence: sents[i], stance: stanceOfSentence(sents[i]) });
+    for (const comment of b.comments) {
+      const sents = sentenceSplit(comment.text);
+      for (let i = 0; i < sents.length; i++) {
+        const id = `${b.juror}::${comment.id}::${i}`;
+        sentences.push({ 
+          id, 
+          juror: b.juror, 
+          sentence: sents[i], 
+          stance: stanceOfSentence(sents[i]),
+          sourceTags: comment.tags,
+          commentId: comment.id
+        });
+      }
     }
   }
 
@@ -310,6 +319,7 @@ export async function buildAnalysis(
       juror: baseSentence?.juror ?? "Unattributed",
       sentence: u.text,
       stance: baseSentence?.stance ?? "neutral",
+      sourceTag: baseSentence?.sourceTag,
     };
   });
 
@@ -1367,10 +1377,25 @@ export async function buildAnalysis(
     resolvedSeed
   );
 
+  const getUniqueTags = (sentenceIndices: number[]): string[] => {
+    const tags = new Set<string>();
+    sentenceIndices.forEach((idx) => {
+      const record = effectiveSentences[idx];
+      if (record?.sourceTags) {
+        record.sourceTags.forEach((t) => tags.add(t));
+      }
+    });
+    return Array.from(tags).sort();
+  };
+
   // Nodes with 3D positions
   const nodes: GraphNode[] = [];
   for (const j of jurorList) {
     const pos = positions3D.get(`juror:${j}`) ?? { x: 0, y: 0, z: 0 };
+    const jurorSentenceIndices = effectiveSentences
+      .map((s, idx) => (s.juror === j ? idx : -1))
+      .filter((idx) => idx !== -1);
+    
     nodes.push({ 
       id: `juror:${j}`, 
       type: "juror", 
@@ -1381,6 +1406,7 @@ export async function buildAnalysis(
       y: pos.y,
       z: pos.z,
       pcValues: jurorPcValues.get(`juror:${j}`),
+      sourceTags: getUniqueTags(jurorSentenceIndices),
     });
   }
 
@@ -1392,6 +1418,7 @@ export async function buildAnalysis(
     c.size = Math.min(6 + Math.log2(weight + 1) * 8.4, 48.0);
     c.weight = weight;
 
+    const clusterSentenceIndices = Array.from(clusterSentenceMap.get(primaryConceptIds.indexOf(c.id)) ?? []);
     const jurorDistribution = jurorList
       .map(j => ({ juror: j, weight: jurorVectors[j]?.[c.id] ?? 0 }))
       .filter(d => d.weight > 0);
@@ -1412,17 +1439,20 @@ export async function buildAnalysis(
       z: pos.z,
       pcValues: conceptPcValues.get(c.id),
       layer: "primary",
-      childConceptIds: conceptHierarchy[c.id]
+      childConceptIds: conceptHierarchy[c.id],
+      sourceTags: getUniqueTags(clusterSentenceIndices),
     });
   }
 
   // Build Detail Concept Nodes
   if (useTwoLayer) {
-    for (const c of detailConcepts) {
+    for (let di = 0; di < detailConcepts.length; di++) {
+      const c = detailConcepts[di];
       const weight = detailConceptCounts[c.id] ?? 0;
       c.size = Math.min(4 + Math.log2(weight + 1) * 6.0, 32.0);
       c.weight = weight;
 
+      const clusterSentenceIndices = Array.from(detailClusterSentenceMap.get(di) ?? []);
       const jurorDistribution = jurorList
         .map(j => ({ juror: j, weight: jurorVectorsDetail[j]?.[c.id] ?? 0 }))
         .filter(d => d.weight > 0);
@@ -1448,7 +1478,8 @@ export async function buildAnalysis(
         y: (parentNode?.y || 0) + (Math.random() - 0.5) * offset,
         z: (parentNode?.z || 0) + (Math.random() - 0.5) * offset,
         layer: "detail",
-        parentConceptId: parentId
+        parentConceptId: parentId,
+        sourceTags: getUniqueTags(clusterSentenceIndices),
       });
     }
   }
@@ -1489,6 +1520,7 @@ export async function buildAnalysis(
         stance: dominantStance,
         evidenceIds: linkSentences.map(s => s.id),
         kind: "jurorConcept",
+        sourceTags: Array.from(new Set(linkSentences.flatMap(s => s.sourceTags || []))).sort(),
       });
     }
   }
@@ -1528,6 +1560,7 @@ export async function buildAnalysis(
           stance: dominantStance,
           evidenceIds: linkSentences.map(s => s.id),
           kind: "jurorConcept",
+          sourceTags: Array.from(new Set(linkSentences.flatMap(s => s.sourceTags || []))).sort(),
         });
       }
     }

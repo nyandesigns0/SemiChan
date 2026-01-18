@@ -24,8 +24,8 @@ Completed: 2024 (implementation and cleanup)
    - Provides fallback values for missing variables
 
 3. **API Routes**
-   - `app/api/analyze/axis-labels/route.ts` - Uses axis prompts
-   - `app/api/synthesize/route.ts` - Uses concept prompts
+   - `app/api/analyze/axis-synthesis/route.ts` - Uses axis prompts
+   - `app/api/analyze/concept-synthesis/route.ts` - Uses concept prompts
 
 ## Variable System
 
@@ -53,7 +53,7 @@ Variables can be provided in two ways:
 
 ## Axis Labeling Variables
 
-Used in `app/api/analyze/axis-labels/route.ts`:
+Used in `app/api/analyze/axis-synthesis/route.ts`:
 
 - `{{AXIS_ID}}` - Axis index/key identifier
 - `{{AXIS_VARIANCE_PCT}}` - Explained variance percentage for the axis
@@ -151,8 +151,8 @@ Prompts are loaded once and cached in memory for performance. The cache is store
 
 - `lib/prompts/ai-prompts.json` - Created (prompt templates)
 - `lib/prompts/prompt-processor.ts` - Created (processor utilities)
-- `app/api/analyze/axis-labels/route.ts` - Updated (uses new system)
-- `app/api/synthesize/route.ts` - Updated (uses new system)
+- `app/api/analyze/axis-synthesis/route.ts` - Updated (uses new system)
+- `app/api/analyze/concept-synthesis/route.ts` - Updated (uses new system)
 
 ## Related Documentation
 

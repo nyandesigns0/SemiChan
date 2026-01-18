@@ -8,7 +8,7 @@
 - `docs/` captures deeper architecture and pipeline notes; keep updates in sync with feature changes.
 - Layer responsibilities: presentation in `components/`, application routing + API in `app/`, domain logic in `lib/`, infrastructure types/constants/utils in `types/`, `constants/`, `lib/utils/`.
 - Feature UI folders map to `controls/`, `graph/`, `ingest/`, `inspector/`, plus reusable primitives in `components/ui/`.
-- API routes live under `app/api/` (segment, analyze, analyze/axis-labels, synthesize, export-pdf).
+- API routes live under `app/api/` (segment, analyze, analyze/axis-synthesis, analyze/concept-synthesis, analyze-designer, export-pdf).
 
 ## Build, Test, and Development Commands
 - `npm run dev`: start the local dev server at `http://localhost:3000`.
@@ -22,7 +22,7 @@
 - State layers: UI state (selection/filters), analysis result cache, configuration state, API loading/errors.
 
 ## Analysis Pipeline (Server)
-- Stages: text normalization + segmentation -> embeddings + BM25 vectors -> clustering -> graph assembly -> PCA projection -> labeling + evidence ranking.
+- Stages: text normalization + segmentation -> semantic & image embeddings + BM25 vectors -> clustering -> graph assembly -> PCA or Anchor Axis projection -> labeling + evidence ranking.
 - Determinism: seeded PRNG for K-Means, stable PCA init, no jitter for positions.
 - Strategy pattern: switch clustering between K-Means and hierarchical via shared interfaces in `lib/analysis/`.
 

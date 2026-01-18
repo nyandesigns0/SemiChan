@@ -3,9 +3,15 @@ import type { GraphNode, GraphLink } from "./graph";
 
 export type Stance = "praise" | "critique" | "suggestion" | "neutral";
 
+export interface JurorComment {
+  id: string;
+  text: string;
+  tags: string[];
+}
+
 export interface JurorBlock {
   juror: string;
-  text: string;
+  comments: JurorComment[];
 }
 
 export interface DesignerBlock {

@@ -18,6 +18,11 @@ At the heart of SemiChan is the **Hybrid Fingerprint**. Every sentence a juror s
 *   **Example:** It tracks the specific use of terms like "sun path," "CLT construction," or "R-value."
 *   **In the Graph:** High frequency weight pulls jurors together based on **shared vocabulary**.
 
+### 3. Anchor Axis Projection (The "Human Rail")
+*   **What it is:** A user-defined dimension based on seed phrases (e.g., "Sustainability" vs "Aesthetics").
+*   **What it captures:** Specific conceptual spectrums of interest to the researcher.
+*   **Interpretation:** Allows moving beyond mathematical variance (PCA) to structured, hypothesis-driven exploration.
+
 ---
 
 ## Understanding "Overlap" and Divergence
@@ -166,6 +171,7 @@ While the roots tell you **who** is talking, the colors of the **link lines** an
 To help you navigate the 3D space, we use distinct geometries for different entity types:
 
 *   **Spheres (Concepts):** Represent semantic clusters and themes. Their size indicates the total volume of feedback associated with that idea.
-*   **Dodecahedrons (Jurors):** Represent individual people. They are shaped like complex geometric "crystals" to signify unique human perspectives. 
+*   **Dodecahedrons (Jurors):** Represent individual experts or reviewers. They are shaped like complex geometric "crystals" to signify unique human perspectives. 
+*   **Cubes (Designers):** Represent the authors of the work being reviewed. Their presence allows for cross-analysis between designer intent and juror perception.
 
 ---

@@ -103,7 +103,10 @@ function persistMetadataList(metadataList: ReportMetadata[]): void {
 
 function extractMetadata(report: SavedReport): ReportMetadata {
   // Compute total text length from jurorBlocks (replaces rawText)
-  const totalTextLength = report.jurorBlocks.reduce((sum, block) => sum + (block.text?.length || 0), 0);
+  const totalTextLength = report.jurorBlocks.reduce((sum, block) => {
+    const blockLength = (block.comments || []).reduce((cSum, c) => cSum + (c.text?.length || 0), 0);
+    return sum + blockLength;
+  }, 0);
   
   return {
     id: report.id,
@@ -257,7 +260,7 @@ export function getAllReports(): SavedReport[] {
     return {
       ...report,
       analysis: expandedAnalysis,
-      rawText: report.rawText ?? report.jurorBlocks.map(b => b.text).join("\n\n"),
+      rawText: report.rawText ?? report.jurorBlocks.map(b => (b.comments || []).map(c => c.text).join("\n")).join("\n\n"),
     };
   }).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
@@ -277,7 +280,7 @@ export function getReport(id: string): SavedReport | undefined {
   return {
     ...report,
     analysis: expandedAnalysis,
-    rawText: report.rawText ?? report.jurorBlocks.map(b => b.text).join("\n\n"),
+    rawText: report.rawText ?? report.jurorBlocks.map(b => (b.comments || []).map(c => c.text).join("\n")).join("\n\n"),
   };
 }
 

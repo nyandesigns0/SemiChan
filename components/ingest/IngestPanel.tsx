@@ -9,14 +9,12 @@ import type { JurorBlock } from "@/types/nlp";
 import { JurorBlocksView } from "./JurorBlocksView";
 
 interface IngestPanelProps {
-  rawText: string;
-  onTextChange: (text: string) => void;
-  jurorBlocks: JurorBlock[];
   onOpenModal: () => void;
   ingestError?: string | null;
+  jurorBlocks: JurorBlock[];
 }
 
-export function IngestPanel({ rawText, onTextChange, jurorBlocks, onOpenModal, ingestError }: IngestPanelProps) {
+export function IngestPanel({ onOpenModal, ingestError, jurorBlocks }: IngestPanelProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showJurorBlocks, setShowJurorBlocks] = useState(false);
 

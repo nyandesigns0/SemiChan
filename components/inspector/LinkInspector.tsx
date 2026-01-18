@@ -1,6 +1,6 @@
 "use client";
 
-import { Link2, Info, MessageSquare } from "lucide-react";
+import { Link2, Info, MessageSquare, Tag } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -82,6 +82,12 @@ export function LinkInspector({ link, evidence }: LinkInspectorProps) {
                       <Badge variant="secondary" className="bg-white text-[9px] font-bold uppercase tracking-wider text-slate-500 border-slate-200">
                         {ev.juror}
                       </Badge>
+                      {ev.sourceTags && ev.sourceTags.map(tag => (
+                        <Badge key={tag} variant="outline" className="text-[9px] border-indigo-100 text-indigo-600 font-bold bg-indigo-50/50">
+                          <Tag className="h-2 w-2 mr-1" />
+                          {tag}
+                        </Badge>
+                      ))}
                       <Badge
                         variant="outline"
                         className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5"

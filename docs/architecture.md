@@ -210,10 +210,14 @@ app/api/
 │   └── route.ts              # POST - Juror text segmentation
 ├── analyze/
 │   ├── route.ts              # POST - Main analysis pipeline
-│   └── axis-labels/
-│       └── route.ts          # POST - AI-enhanced axis labeling
-├── synthesize/
-│   └── route.ts              # POST - Concept summary generation
+│   ├── axis-synthesis/
+│   │   └── route.ts          # POST - AI-enhanced axis labeling
+│   ├── concept-synthesis/
+│   │   └── route.ts          # POST - Concept summary generation
+│   └── progress/
+│       └── route.ts          # GET/POST - Analysis progress tracking
+├── analyze-designer/
+│   └── route.ts              # POST - Designer-specific analysis
 └── export-pdf/
     └── route.ts              # POST - PDF report generation
 ```
@@ -231,17 +235,25 @@ app/api/
    - Returns complete `AnalysisResult` object
    - Supports extensive configuration options
 
-3. **`/api/analyze/axis-labels`** - AI Enhancement
+3. **`/api/analyze/axis-synthesis`** - AI Enhancement
    - Generates human-readable axis labels using OpenAI API
    - Optional enhancement to PCA axes
    - Requires API key configuration
 
-4. **`/api/synthesize`** - Concept Summarization
+4. **`/api/analyze/concept-synthesis`** - Concept Summarization
    - Generates AI summaries for concepts
    - Uses OpenAI API for natural language generation
    - Caches results to minimize API calls
 
-5. **`/api/export-pdf`** - Document Generation
+5. **`/api/analyze/progress`** - Analysis Progress
+   - Provides real-time progress updates for long-running analysis tasks
+   - Uses a server-side progress store
+
+6. **`/api/analyze-designer`** - Designer Analysis
+   - Specialized pipeline for analyzing designer feedback and portfolios
+   - Supports image embeddings and multimodal concept discovery
+
+7. **`/api/export-pdf`** - Document Generation
    - Generates PDF reports using Puppeteer
    - Serverless-compatible with Chromium binary
    - Renders React components to PDF
@@ -515,9 +527,36 @@ Required environment variables:
 - Semantic embeddings provide a stable universal coordinate system.
 - BM25 is excellent for labeling but can distort geometry with "mega-concepts".
 - Interpretability improves when geometry remains stable while overlays change.
-- Preparation for future multimodal (image) support.
+- Native support for multimodal (image) discovery via CLIP embeddings.
 
-### 4. Hierarchical Clustering as Default
+### 4. Multimodal Analysis (Designer Pipeline)
+
+**Decision**: Use CLIP (Contrastive Language-Image Pre-training) for image embeddings and Designer-specific clustering.
+
+**Rationale**:
+- Allows architectural images (renderings, diagrams) to be mapped into the same semantic space as text.
+- Designers can be linked to concepts not just through their words, but through their visual portfolio.
+- Threshold-based image-concept attachment ensures relevance.
+
+### 5. Anchor Axis Projection
+
+**Decision**: Allow user-defined "Anchor Axes" for custom semantic projection.
+
+**Rationale**:
+- PCA is excellent for variance but hard to interpret.
+- Anchor axes (e.g., "Traditional" vs "Modern") provide immediate human-readable context.
+- Concepts and jurors can be projected onto these axes for comparative analysis.
+
+### 6. Local-First Report Persistence
+
+**Decision**: Use LZ-compressed LocalStorage with payload minimization.
+
+**Rationale**:
+- Privacy-conscious (data stays on client).
+- "Minimization" stores only raw text, assignments, and parameters, reconstructing the full graph in-memory.
+- LZ-compression and metadata caching enable fast listing of dozens of reports within browser storage limits.
+
+### 7. Hierarchical Clustering as Default
 
 **Decision**: Use K-Means clustering as the default method
 

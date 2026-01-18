@@ -54,7 +54,6 @@ export interface ExportLogEntry {
 }
 
 export interface RawDataExportContext {
-  rawText: string;
   jurorBlocks: JurorBlock[];
   analysisParams: ExportAnalysisParams;
   logs: ExportLogEntry[];
