@@ -29,7 +29,7 @@ function createPRNG(seed: string) {
 interface Node3DProps {
   node: GraphNode;
   isSelected: boolean;
-  opacity: number; // 0 = grayed out, 0.7 = connected, 1.0 = selected/visible
+  opacity: number; // 0 = grayed out, 1.0 = selected/visible/revealed
   onClick: (node: GraphNode, event?: MouseEvent) => void;
   onDoubleClick: (node: GraphNode) => void;
   isExpanded?: boolean;

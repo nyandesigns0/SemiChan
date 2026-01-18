@@ -15,7 +15,7 @@ interface Link3DProps {
   link: GraphLink;
   nodes: Map<string, GraphNode>;
   isSelected: boolean;
-  opacity: number; // 0 = grayed out, 0.7 = connected, 1.0 = selected/visible
+  opacity: number; // 0 = grayed out, 1.0 = selected/visible/revealed
   onClick: (link: GraphLink, event?: MouseEvent) => void;
   allLinks?: GraphLink[];
 }

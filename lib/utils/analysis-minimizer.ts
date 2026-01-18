@@ -440,8 +440,8 @@ export function expandMinimalAnalysis(
     varianceThreshold: minimal.varianceThreshold || 0.9,
     showAxes: true,
     showGraph: true,
-    enableAxisLabelAI: false,
-    autoSynthesize: false,
+    enableAxisLabelAI: true,
+    autoSynthesize: true,
   };
   
   const links = reconstructLinksFromMinimal(minimal, linkParams, sentences);

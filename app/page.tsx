@@ -182,7 +182,7 @@ export default function HomePage() {
 
   // AI controls
   const [enableAxisLabelAI, setEnableAxisLabelAI] = useState(true);
-  const [autoSynthesize, setAutoSynthesize] = useState(false);
+  const [autoSynthesize, setAutoSynthesize] = useState(true);
   
   // Pipeline checkpoint state
   const [checkpointIndex, setCheckpointIndex] = useState(-1);
@@ -850,7 +850,7 @@ export default function HomePage() {
     };
   }, []);
 
-  // Apply filters and calculate visibility maps (opacity: 0 = grayed out, 0.7 = connected, 1.0 = selected/visible)
+  // Apply filters and calculate visibility maps (opacity: 0 = grayed out, 1.0 = selected/visible/revealed)
   const { filteredNodes, filteredLinks, nodeVisibility, linkVisibility } = useMemo(() => {
     if (!analysis) {
       return {
@@ -874,7 +874,7 @@ export default function HomePage() {
     const nodes = analysis.nodes.filter(nodeOk);
     const links = analysis.links.filter((l) => l.weight >= minEdgeWeight);
 
-    // Calculate visibility maps (opacity values: 0 = grayed out, 0.7 = connected, 1.0 = selected/visible)
+    // Calculate visibility maps (opacity values: 0 = grayed out, 1.0 = selected/visible/revealed)
     const linkVisibility = new Map<string, number>();
     const nodeVisibility = new Map<string, number>();
 
@@ -935,14 +935,14 @@ export default function HomePage() {
         const network = getNodeNetwork(nodeId, analysis.nodes, analysis.links);
         
         for (const nId of network.nodeIds) {
-          // If not already set to 1.0 and passes filters, set to 0.7
+          // If not already set to 1.0 and passes filters, set to 1.0 (revealed neighbors)
           if (!adaptiveSelectedNodeIds.has(nId) && nodePassesFilters(nId)) {
-            nodeVisibility.set(nId, 0.7);
+            nodeVisibility.set(nId, 1.0);
           }
         }
         for (const lId of network.linkIds) {
           if (!adaptiveSelectedLinkIds.has(lId) && linkPassesFilters(lId)) {
-            linkVisibility.set(lId, 0.7);
+            linkVisibility.set(lId, 1.0);
           }
         }
       }
@@ -954,12 +954,12 @@ export default function HomePage() {
         
         for (const nId of network.nodeIds) {
           if (!adaptiveSelectedNodeIds.has(nId) && nodePassesFilters(nId)) {
-            nodeVisibility.set(nId, 0.7);
+            nodeVisibility.set(nId, 1.0);
           }
         }
         for (const lId of network.linkIds) {
           if (!adaptiveSelectedLinkIds.has(lId) && linkPassesFilters(lId)) {
-            linkVisibility.set(lId, 0.7);
+            linkVisibility.set(lId, 1.0);
           }
         }
       }
