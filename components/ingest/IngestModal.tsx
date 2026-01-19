@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ImagePlus, Type, Upload, Plus, Trash2, Tag as TagIcon, Info, Users, ChevronRight, MessageSquare } from "lucide-react";
+import { ImagePlus, Type, Upload, Plus, Trash2, Tag as TagIcon, Info, Users, ChevronRight, MessageSquare, Pencil, ChevronDown } from "lucide-react";
 import { parsePdf } from "@/lib/pdf/pdf-parser";
 import { normalizeWhitespace } from "@/lib/utils/text-utils";
+import { cn } from "@/lib/utils/cn";
 import { segmentByJuror } from "@/lib/segmentation/juror-segmenter";
+import { sentenceSplit } from "@/lib/nlp/sentence-splitter";
 import { handleFileUpload, loadImageFromUrl, validateImageUrl } from "@/lib/utils/image-upload";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -47,7 +49,7 @@ export function IngestModal({
   onAddDesignerBlock,
 }: IngestModalProps) {
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState(mode === "designer" ? "text" : "manual");
+  const [activeTab, setActiveTab] = useState(mode === "designer" ? "text" : "upload");
   
   // Designer state
   const [designerName, setDesignerName] = useState("");
@@ -60,8 +62,16 @@ export function IngestModal({
   const [pendingComments, setPendingComments] = useState<JurorComment[]>([]);
   const [commentText, setCommentText] = useState("");
   const [commentTags, setCommentTags] = useState<string[]>([]);
+  const [expandedJurorIndex, setExpandedJurorIndex] = useState<number | null>(null);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   const jurorCount = jurorBlocks.length;
+  const totalComments = useMemo(() => jurorBlocks.reduce((sum, b) => sum + b.comments.length, 0), [jurorBlocks]);
+  const totalTags = useMemo(() => new Set(jurorBlocks.flatMap(b => b.comments.flatMap(c => c.tags))).size, [jurorBlocks]);
+  const totalSentences = useMemo(() => jurorBlocks.reduce((sum, b) => 
+    sum + b.comments.reduce((cSum, c) => cSum + sentenceSplit(c.text).length, 0), 
+  0), [jurorBlocks]);
+
   const canSaveDesigner = designerText.trim().length > 0 || images.length > 0;
   const canAddComment = commentText.trim().length > 0;
   const canSaveJuror = jurorName.trim().length > 0 && (pendingComments.length > 0 || canAddComment);
@@ -70,7 +80,7 @@ export function IngestModal({
 
   useEffect(() => {
     if (open) {
-      setActiveTab(mode === "designer" ? "text" : "manual");
+      setActiveTab(mode === "designer" ? "text" : "upload");
     }
   }, [mode, open]);
 
@@ -87,6 +97,7 @@ export function IngestModal({
     setPendingComments([]);
     setCommentText("");
     setCommentTags([]);
+    setEditingIndex(null);
   };
 
   const handleClose = () => {
@@ -152,12 +163,30 @@ export function IngestModal({
     }
 
     if (jurorName.trim() && finalComments.length > 0) {
-      onAddJurorBlock?.({
-        juror: jurorName.trim(),
-        comments: finalComments,
-      });
+      if (editingIndex !== null) {
+        onUpdateJurorBlock?.(editingIndex, {
+          juror: jurorName.trim(),
+          comments: finalComments,
+        });
+      } else {
+        onAddJurorBlock?.({
+          juror: jurorName.trim(),
+          comments: finalComments,
+        });
+      }
       resetJuror();
     }
+  };
+
+  const handleEditJuror = (index: number) => {
+    const block = jurorBlocks[index];
+    setJurorName(block.juror);
+    setPendingComments(block.comments);
+    setCommentText("");
+    setCommentTags([]);
+    setEditingIndex(index);
+    // Switch to manual tab if not already there
+    setActiveTab("manual");
   };
 
   const saveDesigner = () => {
@@ -282,20 +311,33 @@ export function IngestModal({
     }
 
     return (
-      <Tabs defaultValue="manual" value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+      <Tabs defaultValue="upload" value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
         <TabsList className="w-full mb-4 grid grid-cols-2 shrink-0">
-          <TabsTrigger value="manual" className="rounded-lg">
-            <Users className="mr-2 h-4 w-4" />
-            Juror List
-          </TabsTrigger>
           <TabsTrigger value="upload" className="rounded-lg">
             <Upload className="mr-2 h-4 w-4" />
             Upload PDF/Text
           </TabsTrigger>
+          <TabsTrigger value="manual" className="rounded-lg">
+            <Users className="mr-2 h-4 w-4" />
+            Juror List
+          </TabsTrigger>
         </TabsList>
 
+        <TabsContent value="upload" className="flex-1 flex flex-col min-h-0 mt-0">
+          <div className="mb-4 flex items-start gap-3 p-4 bg-amber-50 border border-amber-100 rounded-2xl shrink-0">
+            <Info className="h-4 w-4 text-amber-500 mt-0.5" />
+            <p className="text-xs text-amber-700 leading-relaxed font-medium">
+              Uploading a file will automatically attempt to segment the text into individual juror blocks. 
+              Review the results in the <strong>Juror List</strong> tab after processing.
+            </p>
+          </div>
+          <div className="flex-1 min-h-0 flex flex-col">
+            <FileUploaderWithDrop onFileSelect={handleFile} loading={loading} className="flex-1" />
+          </div>
+        </TabsContent>
+
         <TabsContent value="manual" className="flex-1 flex flex-col min-h-0 mt-0">
-          <div className="flex-1 grid grid-cols-[1fr,320px] gap-6 min-h-0">
+          <div className="flex-1 grid grid-cols-2 gap-8 min-h-0">
             {/* Left side: Add/Edit Juror */}
             <div className="flex flex-col space-y-4 min-h-0">
               <div className="flex items-center justify-between shrink-0">
@@ -303,52 +345,34 @@ export function IngestModal({
                   <Plus className="h-4 w-4 text-indigo-500" />
                   Add Juror & Comments
                 </Label>
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={resetJuror}
-                    className="text-[10px] uppercase font-black h-8 px-3 rounded-lg border-slate-200 text-slate-600 hover:text-slate-900"
-                  >
-                    Reset
-                  </Button>
-                  <Button 
-                    onClick={saveJuror}
-                    disabled={!canSaveJuror}
-                    size="sm"
-                    className="text-[10px] uppercase font-black h-8 px-3 rounded-lg bg-slate-900 hover:bg-slate-800 text-white shadow-sm"
-                  >
-                    Save Juror Entry
-                  </Button>
-                </div>
               </div>
 
-              <div className="space-y-4 overflow-y-auto pr-2 custom-scrollbar pb-4">
-                <div className="space-y-2">
+              <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar pb-4 space-y-6">
+                <div className="space-y-3">
                   <Label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Juror Name</Label>
                   <Input
                     value={jurorName}
                     onChange={(e) => setJurorName(e.target.value)}
                     placeholder="e.g. Sarah Broadstock"
-                    className="h-10 rounded-xl border-slate-200"
+                    className="h-11 text-sm rounded-xl border-slate-200 shadow-sm focus:ring-4 focus:ring-indigo-500/10"
                   />
                 </div>
 
-                <div className="rounded-2xl border border-indigo-100 bg-indigo-50/30 p-4 space-y-4">
-                  <div className="space-y-2">
+                <div className="rounded-2xl border border-indigo-100 bg-indigo-50/30 p-5 space-y-5 shadow-sm">
+                  <div className="space-y-3">
                     <Label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center justify-between">
                       Add a Tagged Comment
-                      <span className="text-indigo-400 font-normal normal-case italic">A comment can be a sentence or paragraph</span>
+                      <span className="text-indigo-400 font-normal normal-case italic text-[10px]">A comment can be a sentence or paragraph</span>
                     </Label>
                     <Textarea
                       value={commentText}
                       onChange={(e) => setCommentText(e.target.value)}
-                      className="min-h-[100px] rounded-xl font-mono text-sm resize-none bg-white border-indigo-100 focus:border-indigo-300"
+                      className="min-h-[120px] text-sm rounded-xl font-sans leading-relaxed bg-white border-indigo-100 focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/10 transition-all p-3"
                       placeholder="Enter comment text..."
                     />
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <Label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Trace Tags</Label>
                     <TagInput 
                       tags={commentTags} 
@@ -361,7 +385,7 @@ export function IngestModal({
                     variant="outline"
                     onClick={addComment}
                     disabled={!canAddComment}
-                    className="w-full rounded-xl bg-white border-indigo-200 text-indigo-600 hover:bg-indigo-50 font-bold h-10 shadow-sm"
+                    className="w-full rounded-xl bg-white border-indigo-200 text-indigo-600 hover:bg-indigo-50 font-bold h-11 text-sm shadow-sm transition-all"
                   >
                     <Plus className="mr-2 h-4 w-4" />
                     Add Comment to {jurorName || 'Juror'}
@@ -379,28 +403,45 @@ export function IngestModal({
                           <div className="flex items-start justify-between mb-1.5">
                             <div className="flex flex-wrap gap-1">
                               {comment.tags.length > 0 ? comment.tags.map(t => (
-                                <Badge key={t} variant="secondary" className="text-[9px] px-1.5 py-0 bg-slate-100 text-slate-600 border-none rounded-lg">
+                                <Badge key={t} variant="secondary" className="text-[9px] px-1.5 py-0 bg-slate-100 text-slate-600 border-none rounded-lg font-bold uppercase">
                                   {t}
                                 </Badge>
                               )) : (
-                                <span className="text-[9px] text-slate-400 italic">No tags</span>
+                                <span className="text-[10px] text-slate-400 italic">No tags</span>
                               )}
                             </div>
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => removePendingComment(comment.id)}
-                              className="h-6 w-6 p-0 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="h-7 w-7 p-0 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                             >
-                              <Trash2 className="h-3 w-3" />
+                              <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           </div>
-                          <p className="text-[11px] text-slate-600 line-clamp-3 leading-relaxed italic">"{comment.text}"</p>
+                          <p className="text-[11px] text-slate-600 leading-relaxed italic">"{comment.text}"</p>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 flex gap-3 shrink-0">
+                <Button 
+                  variant="outline" 
+                  onClick={resetJuror}
+                  className="flex-1 rounded-xl border-slate-200 text-slate-600 hover:text-slate-900 font-bold h-10 uppercase text-[10px] tracking-widest transition-all"
+                >
+                  Reset
+                </Button>
+                <Button 
+                  onClick={saveJuror}
+                  disabled={!canSaveJuror}
+                  className="flex-[2] rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold h-10 shadow-lg shadow-slate-200 uppercase text-[10px] tracking-widest transition-all"
+                >
+                  {editingIndex !== null ? "Update Juror Entry" : "Save Juror Entry"}
+                </Button>
               </div>
             </div>
 
@@ -411,9 +452,26 @@ export function IngestModal({
                   <Users className="h-4 w-4 text-emerald-500" />
                   Juror Summary
                 </Label>
-                <Badge variant="outline" className="rounded-lg bg-slate-50">
-                  {jurorCount} Jurors
-                </Badge>
+                <div className="flex flex-wrap items-center gap-1.5 justify-end">
+                  <Badge variant="outline" className="rounded-lg bg-slate-50 border-slate-200 text-[10px] font-bold text-slate-500 px-2 py-0.5 uppercase tracking-tight">
+                    {jurorCount} Jurors
+                  </Badge>
+                  {totalComments > 0 && (
+                    <Badge variant="outline" className="rounded-lg bg-indigo-50 border-indigo-100 text-[10px] font-bold text-indigo-500 px-2 py-0.5 uppercase tracking-tight">
+                      {totalComments} Comments
+                    </Badge>
+                  )}
+                  {totalSentences > 0 && (
+                    <Badge variant="outline" className="rounded-lg bg-emerald-50 border-emerald-100 text-[10px] font-bold text-emerald-500 px-2 py-0.5 uppercase tracking-tight">
+                      {totalSentences} Sentences
+                    </Badge>
+                  )}
+                  {totalTags > 0 && (
+                    <Badge variant="outline" className="rounded-lg bg-amber-50 border-amber-100 text-[10px] font-bold text-amber-600 px-2 py-0.5 uppercase tracking-tight">
+                      {totalTags} Tags
+                    </Badge>
+                  )}
+                </div>
               </div>
 
               <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
@@ -426,34 +484,126 @@ export function IngestModal({
                   </div>
                 ) : (
                   <div className="space-y-3 pb-4">
-                    {jurorBlocks.map((block, idx) => (
-                      <div key={`${block.juror}-${idx}`} className="group rounded-xl border border-slate-100 bg-slate-50/50 p-3 hover:bg-white hover:border-slate-200 transition-all shadow-sm">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-black text-slate-900 truncate">{block.juror}</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => onRemoveJurorBlock?.(idx)}
-                            className="h-6 w-6 p-0 text-slate-300 hover:text-red-500"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                        <div className="space-y-1.5">
-                          {block.comments.slice(0, 2).map((c, ci) => (
-                            <div key={ci} className="flex items-start gap-1.5">
-                              <ChevronRight className="h-2.5 w-2.5 text-slate-300 mt-0.5 shrink-0" />
-                              <p className="text-[10px] text-slate-500 line-clamp-1 italic">{c.text}</p>
+                    {jurorBlocks.map((block, idx) => {
+                      const isExpanded = expandedJurorIndex === idx;
+                      const uniqueTags = Array.from(new Set(block.comments.flatMap(c => c.tags)));
+                      const totalChars = block.comments.reduce((sum, c) => sum + c.text.length, 0);
+
+                      return (
+                        <div 
+                          key={`${block.juror}-${idx}`} 
+                          className={cn(
+                            "group rounded-2xl border transition-all shadow-sm overflow-hidden cursor-default",
+                            isExpanded 
+                              ? "border-indigo-400 bg-white ring-4 ring-indigo-500/5 shadow-lg" 
+                              : "border-slate-200 bg-slate-50/50 hover:bg-white hover:border-indigo-300 hover:shadow-md"
+                          )}
+                        >
+                          <div className="p-5 flex items-center justify-between gap-5">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-base font-black text-slate-900 truncate tracking-tight">{block.juror}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedJurorIndex(isExpanded ? null : idx);
+                                  }}
+                                  className={cn(
+                                    "flex items-center justify-center rounded-full transition-all",
+                                    isExpanded
+                                      ? "h-7 w-7 bg-indigo-500/10 text-indigo-600"
+                                      : "h-7 w-7 text-slate-400 hover:text-indigo-500"
+                                  )}
+                                  aria-label={isExpanded ? "Collapse juror card" : "Expand juror card"}
+                                  title={isExpanded ? "Collapse juror card" : "Expand juror card"}
+                                >
+                                  {isExpanded ? (
+                                    <ChevronDown className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4" />
+                                  )}
+                                </button>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
+                                <div className="flex items-center gap-1.5 text-slate-600">
+                                  <div className="p-1 rounded-lg bg-slate-100 group-hover:bg-slate-200 transition-colors">
+                                    <MessageSquare className="h-3.5 w-3.5 text-slate-700" />
+                                  </div>
+                                  <span className="text-[11px] font-bold uppercase tracking-wider">
+                                    {block.comments.length} {block.comments.length === 1 ? 'Comment' : 'Comments'}
+                                  </span>
+                                </div>
+                                {uniqueTags.length > 0 && (
+                                  <div className="flex items-center gap-1.5 text-indigo-600">
+                                    <div className="p-1 rounded-lg bg-indigo-50 group-hover:bg-indigo-100 transition-colors">
+                                      <TagIcon className="h-3.5 w-3.5 text-indigo-600" />
+                                    </div>
+                                    <span className="text-[11px] font-bold uppercase tracking-wider">
+                                      {uniqueTags.length} {uniqueTags.length === 1 ? 'Tag' : 'Tags'}
+                                    </span>
+                                  </div>
+                                )}
+                                <div className="text-[10px] font-bold text-slate-400 bg-slate-100/80 px-2.5 py-0.5 rounded-full uppercase tracking-tight">
+                                  {totalChars.toLocaleString()} chars
+                                </div>
+                              </div>
                             </div>
-                          ))}
-                          {block.comments.length > 2 && (
-                            <p className="text-[9px] text-indigo-400 font-bold pl-4">
-                              + {block.comments.length - 2} more comments
-                            </p>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation(); // Prevents expansion toggle when editing
+                                  handleEditJuror(idx);
+                                }}
+                                className="h-10 w-10 p-0 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-200 transition-all shadow-sm hover:shadow-md"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation(); // Prevents expansion toggle when deleting
+                                  onRemoveJurorBlock?.(idx);
+                                }}
+                                className="h-10 w-10 p-0 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all shadow-sm hover:shadow-md"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                          
+                          {isExpanded && (
+                            <div 
+                              className="border-t border-indigo-100 bg-indigo-50/20 p-4 space-y-4"
+                              onClick={(e) => e.stopPropagation()} // Clicking comments does not collapse the card
+                            >
+                              {block.comments.map((c, ci) => (
+                                <div key={ci} className="space-y-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm text-slate-800 leading-relaxed font-medium bg-white p-3 rounded-xl border border-indigo-100 shadow-sm">
+                                      "{c.text}"
+                                    </p>
+                                    {c.tags.length > 0 && (
+                                      <div className="flex flex-wrap gap-1.5 mt-2">
+                                          {c.tags.map(t => (
+                                            <Badge key={t} variant="secondary" className="text-[10px] px-2.5 py-0.5 bg-indigo-100 hover:bg-indigo-200 border border-indigo-200 text-indigo-800 rounded-lg font-bold uppercase tracking-widest transition-colors shadow-sm">
+                                              {t}
+                                            </Badge>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  {ci < block.comments.length - 1 && <Separator className="bg-indigo-200/30" />}
+                                </div>
+                              ))}
+                            </div>
                           )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -479,19 +629,6 @@ export function IngestModal({
             </div>
           </div>
         </TabsContent>
-
-        <TabsContent value="upload" className="flex-1 flex flex-col min-h-0 mt-0">
-          <div className="mb-4 flex items-start gap-3 p-4 bg-amber-50 border border-amber-100 rounded-2xl shrink-0">
-            <Info className="h-4 w-4 text-amber-500 mt-0.5" />
-            <p className="text-xs text-amber-700 leading-relaxed font-medium">
-              Uploading a file will automatically attempt to segment the text into individual juror blocks. 
-              Review the results in the <strong>Juror List</strong> tab after processing.
-            </p>
-          </div>
-          <div className="flex-1 min-h-0 flex flex-col">
-            <FileUploaderWithDrop onFileSelect={handleFile} loading={loading} className="flex-1" />
-          </div>
-        </TabsContent>
       </Tabs>
     );
   }, [
@@ -511,6 +648,10 @@ export function IngestModal({
     commentText,
     commentTags,
     jurorBlocks,
+    expandedJurorIndex,
+    totalComments,
+    totalSentences,
+    totalTags,
     canSaveJuror,
     canAddComment,
     onOpenChange,
@@ -518,7 +659,7 @@ export function IngestModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] min-w-[1000px] min-h-[75vh] flex flex-col p-0 gap-0 border-none rounded-3xl overflow-hidden shadow-2xl">
+      <DialogContent className="max-w-5xl max-h-[90vh] min-w-[1200px] min-h-[75vh] flex flex-col p-0 gap-0 border-none rounded-3xl overflow-hidden shadow-2xl">
         <DialogHeader className="px-8 pt-8 pb-6 border-b border-slate-100 bg-white shrink-0">
           <div className="flex items-center gap-3">
             <div className="rounded-2xl bg-slate-900 p-2.5 text-white shadow-xl">

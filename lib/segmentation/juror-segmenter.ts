@@ -4,18 +4,18 @@ import { saveGlobalTags } from "@/lib/utils/tag-storage";
 
 export function looksLikeName(line: string): boolean {
   const s = line.trim();
-  if (s.length < 6 || s.length > 60) return false;
-  // Accept: First Last, First M. Last, multi-part surnames, diacritics simplified.
+  if (s.length < 3 || s.length > 60) return false;
+  // Accept: First Last, First M. Last, multi-part surnames, single names (e.g. Buildner).
   // Reject: lines with too many lowercase words or ending with punctuation.
   if (/[.!?:]$/.test(s)) return false;
-  if (/(selected jurors|jury|comments|competition|buildner)/i.test(s)) return false;
+  if (/(selected jurors|jury|comments|competition)/i.test(s)) return false;
 
   const words = s.split(/\s+/).filter(Boolean);
-  if (words.length < 2 || words.length > 5) return false;
-  const caps = words.filter((w) => /^[A-Z][A-Za-z'.-]+$/.test(w)).length;
+  if (words.length < 1 || words.length > 5) return false;
+  const caps = words.filter((w) => /^[A-Z][A-Za-z'.-]*$/.test(w)).length;
   // Middle initial
   const initials = words.filter((w) => /^[A-Z]\.$/.test(w)).length;
-  return caps + initials >= Math.min(2, words.length);
+  return caps + initials >= Math.min(1, words.length);
 }
 
 /**

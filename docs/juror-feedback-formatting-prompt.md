@@ -73,7 +73,7 @@ The overall flow is nice but color adjustments needed. #color
 
 ## Processing Instructions
 
-1. **Identify Jurors**: Scan the text for names (properly capitalized first/last names)
+1. **Identify Jurors**: Scan the text for names (properly capitalized names, supports single-word names like "Buildner" or full names like "John Smith")
 2. **Extract Comments**: Associate each piece of feedback with the correct juror
 3. **Add Structure**: Format into the header-body pattern
 4. **Apply Tags**: Add relevant tags based on content themes

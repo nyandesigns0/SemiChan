@@ -1281,23 +1281,6 @@ export default function HomePage() {
     setTurntableSpeed(clamped);
   }, []);
 
-  const handleOpenUploadSidebar = useCallback(() => {
-    // Open the left sidebar
-    setLeftSidebarOpen(true);
-    
-    // Scroll to DataInputPanel after sidebar animation
-    setTimeout(() => {
-      if (dataInputPanelRef.current) {
-        dataInputPanelRef.current.scrollIntoView({ 
-          behavior: "smooth", 
-          block: "start" 
-        });
-      }
-    }, 550); // Wait for sidebar animation (500ms) + small buffer
-    
-    addLog("info", "User opened upload sidebar from welcome screen", { phase: "general" });
-  }, [addLog]);
-
   const handleReportSaved = useCallback((report: SavedReport) => {
     setReportRefreshToken((prev) => prev + 1);
     setInspectorTab("reports");
@@ -1308,9 +1291,9 @@ export default function HomePage() {
     restoringReportRef.current = true;
     const params = report.parameters;
 
-    setAnalysis(report.analysis);
+    setAnalysis(report.analysis as AnalysisResult);
     setJurorBlocks(report.jurorBlocks);
-    setRawText(report.rawText);
+    setRawText(report.rawText || "");
     setIngestError(null);
     setAnchorAxes(report.analysis.anchorAxes ?? []);
     setSelectedAnchorAxisId(report.analysis.anchorAxes?.[0]?.id ?? null);
@@ -1677,7 +1660,7 @@ export default function HomePage() {
                   onShowJurorJurorLinksChange={setShowJurorJurorLinks}
                   showConceptConceptLinks={showConceptConceptLinks}
                   onShowConceptConceptLinksChange={setShowConceptConceptLinks}
-        onOpenUploadSidebar={handleOpenUploadSidebar}
+        onOpenUploadSidebar={() => setIngestModalOpen(true)}
         visibleTags={visibleTags}
       />
               </div>
