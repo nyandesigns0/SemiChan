@@ -39,7 +39,10 @@ export async function POST(request: NextRequest) {
       posContext: { keywords: string[], sentences: string[] },
       modelName: string
     ): Promise<{ negative: string; positive: string; name?: string; usage: any }> => {
-      const axisIndex = Number.parseInt(axisIdx, 10);
+      // Map aliases back to numeric indices
+      const aliasMap: Record<string, number> = { 'x': 0, 'y': 1, 'z': 2 };
+      const axisIndex = aliasMap[axisIdx.toLowerCase()] ?? Number.parseInt(axisIdx, 10);
+      
       const explainedVariance = Number.isFinite(axisIndex)
         ? varianceStats?.explainedVariances?.[axisIndex]
         : undefined;
@@ -50,6 +53,20 @@ export async function POST(request: NextRequest) {
       const negativeSentences = negContext.sentences.slice(0, 4);
       const positiveSentences = posContext.sentences.slice(0, 4);
 
+      // Find top concepts near each pole
+      const getTopConceptsNearPole = (dim: number, direction: 'neg' | 'pos', limit: number = 3) => {
+        if (!analysis?.nodes) return [];
+        return analysis.nodes
+          .filter(n => n.type === 'concept' && n.pcValues && n.pcValues[dim] !== undefined)
+          .map(n => ({ label: n.label, score: n.pcValues![dim] }))
+          .sort((a, b) => direction === 'neg' ? a.score - b.score : b.score - a.score)
+          .slice(0, limit)
+          .map(n => n.label);
+      };
+
+      const negTopConcepts = Number.isFinite(axisIndex) ? getTopConceptsNearPole(axisIndex, 'neg') : [];
+      const posTopConcepts = Number.isFinite(axisIndex) ? getTopConceptsNearPole(axisIndex, 'pos') : [];
+
       const variables = {
         AXIS_ID: axisIdx,
         AXIS_VARIANCE_PCT: { value: varianceRatio, format: "percentage", fallback: "N/A" },
@@ -59,8 +76,8 @@ export async function POST(request: NextRequest) {
         POS_POLE_KEYWORDS: { value: posContext.keywords, format: "list", fallback: "None" },
         NEG_POLE_ANCHOR_SENTENCES: { value: negativeSentences, format: "lines", fallback: "None" },
         POS_POLE_ANCHOR_SENTENCES: { value: positiveSentences, format: "lines", fallback: "None" },
-        NEG_TOP_CONCEPTS: { value: [], format: "list", fallback: "None" },
-        POS_TOP_CONCEPTS: { value: [], format: "list", fallback: "None" },
+        NEG_TOP_CONCEPTS: { value: negTopConcepts, format: "list", fallback: "None" },
+        POS_TOP_CONCEPTS: { value: posTopConcepts, format: "list", fallback: "None" },
         CORPUS_DOMAIN: corpusDomain,
         STYLE_PRESET: stylePreset
       };

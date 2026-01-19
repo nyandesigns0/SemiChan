@@ -33,13 +33,36 @@ export interface Concept {
   id: string; 
   stableId?: string;
   label: string; 
+  title?: string;
+  labelSource?: ConceptLabelSource;
+  isFallback?: boolean;
   shortLabel?: string;
   summary?: string;
   size: number; 
   topTerms: string[];
   keyphrases?: string[];
   representativeSentences?: string[];
-  weight?: number; // Optional total weight
+  weight?: number; // Optional total weight (soft mass)
+  count?: number; // Optional total count (hard count)
+  labelQuality?: {
+    score: number;
+    passed: boolean;
+    violations: string[];
+    needsReview: boolean;
+  };
+}
+
+export type ConceptLabelSource = "llm" | "template" | "seed";
+
+export interface ConceptCountPolicyResult {
+  adjustedK: number;
+  requiresHierarchy: boolean;
+  reasoning: string;
+}
+
+export interface SemanticMergeSummary {
+  mergedCount: number;
+  details: Array<{ from: number; to: number; similarity: number }>;
 }
 
 export interface ConceptSet {
@@ -73,6 +96,8 @@ export interface AnalysisResult {
   sentences: SentenceRecord[];
   jurorVectors: Record<string, Record<string, number>>; // juror -> conceptId -> weight (Primary)
   jurorVectorsDetail?: Record<string, Record<string, number>>; // juror -> conceptId -> weight (Detail)
+  jurorCounts?: Record<string, Record<string, number>>; // juror -> conceptId -> count (Primary)
+  jurorCountsDetail?: Record<string, Record<string, number>>; // juror -> conceptId -> count (Detail)
   nodes: GraphNode[];
   links: GraphLink[];
   stats: {
@@ -98,6 +123,10 @@ export interface AnalysisResult {
   appliedNumDimensions?: number;
   dimensionMode?: "manual" | "elbow" | "threshold";
   varianceThreshold?: number;
+  layoutNumDimensions?: number;        // Dimensions used for 3D geometry
+  scanLimitUsed?: number;              // Max dimensions scanned (threshold mode)
+  thresholdNotReached?: boolean;       // True if variance threshold not met
+  maxVarianceAchieved?: number;        // Best cumulative variance achieved
   jurorTopTerms?: Record<string, string[]>; // juror name -> top terms array
   axisLabels?: Record<string, { 
     negative: string; 
@@ -119,6 +148,12 @@ export interface AnalysisResult {
     concepts: Record<string, Record<string, number>>;
     jurors: Record<string, Record<string, number>>;
   };
+  finalKUsed?: number;
+  autoKRecommended?: number;
+  policyAdjustedK?: number;
+  conceptCountPolicy?: ConceptCountPolicyResult;
+  semanticMerge?: SemanticMergeSummary;
+  analysisBuildId?: string;
   chunks?: ContextualUnit[];
   chunkAssignments?: string[];
   autoSeed?: boolean;
@@ -162,6 +197,7 @@ export interface AnalysisResult {
     primary?: { splitCount: number; originalSizes: number[]; newSizes: number[] };
     detail?: { splitCount: number; originalSizes: number[]; newSizes: number[] };
   };
+  reportHealth?: import("@/lib/analysis/report-health").ReportHealth;
 }
 
 export interface SavedReportMetadata {
@@ -196,6 +232,8 @@ export interface MinimalAnalysisResult {
   // sentences omitted - redundant (text in jurorBlocks), counts preserved in stats
   jurorVectors: Record<string, Record<string, number>>; // juror -> conceptId -> weight (Primary)
   jurorVectorsDetail?: Record<string, Record<string, number>>; // juror -> conceptId -> weight (Detail)
+  jurorCounts?: Record<string, Record<string, number>>; // juror -> conceptId -> count (Primary)
+  jurorCountsDetail?: Record<string, Record<string, number>>; // juror -> conceptId -> count (Detail)
   // nodes omitted - positions recomputed, only essential fields preserved in minimalNodes
   minimalNodes?: Array<{
     id: string;
@@ -225,6 +263,10 @@ export interface MinimalAnalysisResult {
   appliedNumDimensions?: number;
   dimensionMode?: "manual" | "elbow" | "threshold";
   varianceThreshold?: number;
+  layoutNumDimensions?: number;        // Dimensions used for 3D geometry
+  scanLimitUsed?: number;              // Max dimensions scanned (threshold mode)
+  thresholdNotReached?: boolean;       // True if variance threshold not met
+  maxVarianceAchieved?: number;        // Best cumulative variance achieved
   // jurorTopTerms omitted - can be recomputed
   axisLabels?: Record<string, { 
     negative: string; 
@@ -246,6 +288,12 @@ export interface MinimalAnalysisResult {
     concepts: Record<string, Record<string, number>>;
     jurors: Record<string, Record<string, number>>;
   };
+  finalKUsed?: number;
+  autoKRecommended?: number;
+  policyAdjustedK?: number;
+  conceptCountPolicy?: ConceptCountPolicyResult;
+  semanticMerge?: SemanticMergeSummary;
+  analysisBuildId?: string;
   // chunks omitted - redundant, text in jurorBlocks
   // chunkAssignments omitted - can be recomputed
   autoSeed?: boolean;
@@ -274,6 +322,7 @@ export interface MinimalAnalysisResult {
     primary?: { splitCount: number; originalSizes: number[]; newSizes: number[] };
     detail?: { splitCount: number; originalSizes: number[]; newSizes: number[] };
   };
+  reportHealth?: import("@/lib/analysis/report-health").ReportHealth;
 }
 
 export interface SavedReport {

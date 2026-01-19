@@ -7,15 +7,23 @@ import type { GraphNode } from "@/types/graph";
  * Uses the concept labels directly as axis labels.
  * 
  * @param nodes - Array of graph nodes (should include concept nodes)
- * @param numDimensions - Number of dimensions to label
+ * @param finalNumDimensions - Number of meaningful dimensions to label
+ * @param layoutNumDimensions - Total dimensions used for layout
  * @param conceptPcValues - Map of concept ID to its raw PC values
  * @returns Axis labels record with negative/positive labels for each axis index
  */
 export function labelAxes(
   nodes: GraphNode[],
-  numDimensions: number = 3,
+  finalNumDimensions: number = 3,
+  layoutNumDimensions: number = 3,
   conceptPcValues: Map<string, number[]>
-): Record<string, { negative: string; positive: string; negativeId: string; positiveId: string }> | undefined {
+): Record<string, { 
+  negative: string; 
+  positive: string; 
+  negativeId: string; 
+  positiveId: string;
+  method?: string;
+}> | undefined {
   // Filter to only concept nodes
   const conceptNodes = nodes.filter((node) => node.type === "concept");
 
@@ -24,39 +32,76 @@ export function labelAxes(
     return undefined;
   }
 
-  const result: Record<string, { negative: string; positive: string; negativeId: string; positiveId: string }> = {};
+  const result: Record<string, { 
+    negative: string; 
+    positive: string; 
+    negativeId: string; 
+    positiveId: string;
+    method?: string;
+  }> = {};
+  const usedConceptIds = new Set<string>();
 
-  for (let dim = 0; dim < numDimensions; dim++) {
-    let minNode = conceptNodes[0];
-    let maxNode = conceptNodes[0];
-    let minVal = conceptPcValues.get(minNode.id)?.[dim] ?? 0;
-    let maxVal = minVal;
+  for (let dim = 0; dim < layoutNumDimensions; dim++) {
+    if (dim < finalNumDimensions) {
+      const candidates = conceptNodes
+        .map(node => ({
+          node,
+          val: conceptPcValues.get(node.id)?.[dim] ?? 0,
+          count: (node.meta as any)?.count ?? 0
+        }))
+        .sort((a, b) => a.val - b.val);
 
-    for (const node of conceptNodes) {
-      const pcValues = conceptPcValues.get(node.id);
-      if (!pcValues) continue;
-      
-      const val = pcValues[dim] ?? 0;
-      if (val < minVal) {
-        minVal = val;
-        minNode = node;
+      if (candidates.length < 2) continue;
+
+      // Pick negative extreme
+      let minIdx = 0;
+      while (minIdx < candidates.length - 1 && usedConceptIds.has(candidates[minIdx].node.id)) {
+        minIdx++;
       }
-      if (val > maxVal) {
-        maxVal = val;
-        maxNode = node;
+      let minEntry = candidates[minIdx];
+
+      // Pick positive extreme
+      let maxIdx = candidates.length - 1;
+      while (maxIdx > minIdx && usedConceptIds.has(candidates[maxIdx].node.id)) {
+        maxIdx--;
+      }
+      let maxEntry = candidates[maxIdx];
+
+      // If we couldn't find unused ones, just take the absolute extremes
+      if (minEntry.node.id === maxEntry.node.id) {
+        minEntry = candidates[0];
+        maxEntry = candidates[candidates.length - 1];
+      }
+
+      usedConceptIds.add(minEntry.node.id);
+      usedConceptIds.add(maxEntry.node.id);
+
+      result[dim.toString()] = {
+        negative: minEntry.node.label,
+        positive: maxEntry.node.label,
+        negativeId: minEntry.node.id,
+        positiveId: maxEntry.node.id
+      };
+    } else {
+      // Add neutral labels for extra layout dimensions beyond meaningful ones
+      result[dim.toString()] = {
+        negative: "Low Variance",
+        positive: "Low Variance",
+        negativeId: `placeholder:neg:${dim}`,
+        positiveId: `placeholder:pos:${dim}`,
+        method: "placeholder"
+      };
+      
+      // If it's the 3rd dimension and elbow was 2, give it a better label as requested
+      if (dim === 2 && finalNumDimensions === 2) {
+        result[dim.toString()].negative = "Depth (layout only)";
+        result[dim.toString()].positive = "Depth (layout only)";
       }
     }
-
-    result[dim.toString()] = {
-      negative: minNode.label,
-      positive: maxNode.label,
-      negativeId: minNode.id,
-      positiveId: maxNode.id
-    };
   }
 
-  // Add backward compatibility aliases for x, y, z if numDimensions >= 3
-  if (numDimensions >= 3) {
+  // Add backward compatibility aliases for x, y, z if layoutNumDimensions >= 3
+  if (layoutNumDimensions >= 3) {
     if (result["0"]) result["x"] = result["0"];
     if (result["1"]) result["y"] = result["1"];
     if (result["2"]) result["z"] = result["2"];

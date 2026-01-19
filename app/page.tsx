@@ -89,6 +89,7 @@ export default function HomePage() {
   const [numDimensions, setNumDimensions] = useState(3);
   const [dimensionMode, setDimensionMode] = useState<"manual" | "elbow" | "threshold">("elbow");
   const [varianceThreshold, setVarianceThreshold] = useState(0.9);
+  const [maxScanDimensions, setMaxScanDimensions] = useState(30);
   const [minEdgeWeight, setMinEdgeWeight] = useState(0.02);
   const [similarityThreshold, setSimilarityThreshold] = useState(0.35);
 
@@ -606,6 +607,7 @@ export default function HomePage() {
         numDimensions,
         dimensionMode,
         varianceThreshold,
+        maxScanDimensions,
         model: selectedModel,
         anchorAxes,
       };
@@ -694,7 +696,7 @@ export default function HomePage() {
     };
 
     analyze();
-  }, [jurorBlocks, kConcepts, similarityThreshold, evidenceRankingParams, clusteringMode, autoK, autoUnit, autoWeights, autoKStability, autoKDominanceThreshold, autoKKPenalty, autoKEpsilon, autoMinClusterSize, minClusterSize, autoDominanceCap, autoDominanceCapThreshold, autoSeed, seedCandidates, seedPerturbations, seedCoherenceWeight, seedSeparationWeight, seedStabilityWeight, seedDominancePenaltyWeight, seedMicroClusterPenaltyWeight, seedLabelPenaltyWeight, seedDominanceThreshold, kMinOverride, kMaxOverride, clusterSeed, softMembership, cutType, granularityPercent, numDimensions, selectedModel, dimensionMode, varianceThreshold, anchorAxes, addLog]);
+  }, [jurorBlocks, kConcepts, similarityThreshold, evidenceRankingParams, clusteringMode, autoK, autoUnit, autoWeights, autoKStability, autoKDominanceThreshold, autoKKPenalty, autoKEpsilon, autoMinClusterSize, minClusterSize, autoDominanceCap, autoDominanceCapThreshold, autoSeed, seedCandidates, seedPerturbations, seedCoherenceWeight, seedSeparationWeight, seedStabilityWeight, seedDominancePenaltyWeight, seedMicroClusterPenaltyWeight, seedLabelPenaltyWeight, seedDominanceThreshold, kMinOverride, kMaxOverride, clusterSeed, softMembership, cutType, granularityPercent, numDimensions, selectedModel, dimensionMode, varianceThreshold, maxScanDimensions, anchorAxes, addLog]);
 
   useEffect(() => {
     let ticker: ReturnType<typeof setInterval> | null = null;
@@ -1465,6 +1467,8 @@ export default function HomePage() {
             onDimensionModeChange={setDimensionMode}
             varianceThreshold={varianceThreshold}
             onVarianceThresholdChange={setVarianceThreshold}
+            maxScanDimensions={maxScanDimensions}
+            onMaxScanDimensionsChange={setMaxScanDimensions}
             appliedNumDimensions={appliedNumDimensions}
           />
 

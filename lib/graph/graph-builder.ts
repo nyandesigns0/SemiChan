@@ -1,5 +1,6 @@
+import { execSync } from "child_process";
 import type { JurorBlock } from "@/types/nlp";
-import type { AnalysisResult, SentenceRecord, AnalysisCheckpoint, Concept, ConceptSet, ContextualUnit } from "@/types/analysis";
+import type { AnalysisResult, SentenceRecord, AnalysisCheckpoint, Concept, ConceptSet, ContextualUnit, ConceptLabelSource } from "@/types/analysis";
 import type { AnchorAxis } from "@/types/anchor-axes";
 import type { GraphNode, GraphLink } from "@/types/graph";
 import type { Stance } from "@/types/nlp";
@@ -19,6 +20,12 @@ import { embedAnchorAxes, projectConceptCentroids, projectJurorVectors } from "@
 import type { Dendrogram } from "@/lib/analysis/hierarchical-clustering";
 import { computeStructuralRoles } from "./structural-analysis";
 
+import { DEFAULT_MODEL } from "@/constants/nlp-constants";
+import { synthesizeConceptLabel } from "@/lib/analysis/label-synthesizer";
+import { semanticMergeConcepts } from "@/lib/analysis/semantic-merge";
+import { applyConceptCountPolicy } from "@/lib/analysis/concept-policy";
+import { evaluateReportHealth } from "@/lib/analysis/report-health";
+
 // Core analysis imports
 import { embedSentences } from "@/lib/analysis/sentence-embeddings";
 import { buildBM25 } from "@/lib/analysis/bm25";
@@ -36,10 +43,49 @@ import {
   cutDendrogramTwoLayer
 } from "@/lib/analysis/hierarchical-clustering";
 import { computeSoftMembership } from "@/lib/analysis/soft-membership";
-import { computeCentroids } from "@/lib/analysis/concept-centroids";
+import { computeCentroids, computeJurorWeights } from "@/lib/analysis/concept-centroids";
 import { buildConceptSet } from "@/lib/analysis/concept-sets";
 
 import { evaluateCutQuality, CutQualityParams } from "@/lib/analysis/cut-constraints";
+
+const ANALYSIS_BUILD_HASH = (() => {
+  const envCandidates = [
+    process.env.SEMICHAN_BUILD_ID,
+    process.env.VERCEL_GIT_COMMIT_SHA,
+    process.env.GITHUB_SHA,
+    process.env.SOURCE_VERSION,
+  ];
+  for (const candidate of envCandidates) {
+    if (candidate) return candidate;
+  }
+
+  try {
+    return execSync("git rev-parse --short HEAD", {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim() || "local";
+  } catch {
+    return "local";
+  }
+})();
+
+function createAnalysisBuildId(): string {
+  const timestamp = new Date().toISOString();
+  return `${timestamp}_${ANALYSIS_BUILD_HASH}`;
+}
+
+function deriveConceptLabelSource(
+  algorithmicLabel: string,
+  synthesisResult: { concept_title: string; is_fallback?: boolean }
+): ConceptLabelSource {
+  if (!synthesisResult.is_fallback) return "llm";
+  const attempt = synthesisResult.concept_title?.trim().toLowerCase();
+  const seed = algorithmicLabel?.trim().toLowerCase();
+  if (attempt && seed && attempt === seed) {
+    return "seed";
+  }
+  return "template";
+}
 
 /**
  * Build analysis using semantic clustering with BM25 labeling
@@ -82,6 +128,7 @@ export async function buildAnalysis(
     numDimensions?: number;
     dimensionMode?: "manual" | "elbow" | "threshold";
     varianceThreshold?: number;
+    maxScanDimensions?: number;
     cutQualityParams?: CutQualityParams;
     softMembershipParams?: {
       temperature?: number;
@@ -93,6 +140,11 @@ export async function buildAnalysis(
     detailGranularity?: number;
     applyPopularityDampening?: boolean;
     anchorAxes?: AnchorAxis[];
+    enableLabelQualityGate?: boolean;
+    semanticMergeThreshold?: number;
+    conceptCountPolicyEnabled?: boolean;
+    jurorNormalizationEnabled?: boolean;
+    reportHealthEnabled?: boolean;
     onLog?: (type: "analysis" | "quality" | "hierarchy", message: string, data?: any) => void;
     onProgress?: (payload: { progress: number; step: string }) => void;
   } = {}
@@ -131,6 +183,7 @@ export async function buildAnalysis(
     numDimensions = 3,
     dimensionMode = "manual",
     varianceThreshold = 0.9,
+    maxScanDimensions = 30,
     cutQualityParams = {},
     softMembershipParams = {
       temperature: 1.0,
@@ -142,9 +195,17 @@ export async function buildAnalysis(
     detailGranularity = 30,
     applyPopularityDampening = false,
     anchorAxes = [],
+    enableLabelQualityGate = true,
+    semanticMergeThreshold = 0.85,
+    conceptCountPolicyEnabled = true,
+    jurorNormalizationEnabled = true,
+    reportHealthEnabled = true,
     onLog,
     onProgress,
   } = options;
+  let autoKRecommended: number | undefined;
+  let conceptCountPolicyResult: AnalysisResult["conceptCountPolicy"];
+  let semanticMergeSummary: AnalysisResult["semanticMerge"] = { mergedCount: 0, details: [] };
 
   const log = (type: "analysis" | "quality" | "hierarchy", message: string, data?: any) => {
     console.log(`[${type.toUpperCase()}] ${message}`);
@@ -350,6 +411,75 @@ export async function buildAnalysis(
   const semanticVectors = chunkEmbeddingResult.vectors;
   const sentenceVectors = sentenceEmbeddingResult.vectors;
 
+  const computeNearestSentences = (
+    centroid: Float64Array,
+    sentenceIndices: number[],
+    limit: number = 3
+  ): string[] => {
+    const diagnostics = {
+      total: docs.length,
+      missingVectors: 0,
+      emptySentences: 0,
+      invalidScores: 0,
+    };
+    const candidates: Array<{ idx: number; score: number; sentence: string }> = [];
+
+    for (let idx = 0; idx < docs.length; idx++) {
+      const sentence = docs[idx];
+      if (!sentence || sentence.trim().length === 0) {
+        diagnostics.emptySentences++;
+        continue;
+      }
+      const vec = sentenceVectors[idx];
+      if (!vec) {
+        diagnostics.missingVectors++;
+        continue;
+      }
+      const score = cosine(centroid, vec);
+      if (!Number.isFinite(score)) {
+        diagnostics.invalidScores++;
+        continue;
+      }
+      candidates.push({ idx, score, sentence });
+    }
+
+    candidates.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.idx - b.idx;
+    });
+
+    const selected = candidates.slice(0, limit);
+    let sentences = selected.map((entry) => entry.sentence);
+
+    if (sentences.length < limit && sentenceIndices.length > 0) {
+      const seen = new Set(sentences);
+      for (const idx of sentenceIndices) {
+        const sentence = docs[idx];
+        if (!sentence || sentence.trim().length === 0) continue;
+        if (seen.has(sentence)) continue;
+        sentences.push(sentence);
+        seen.add(sentence);
+        if (sentences.length >= limit) break;
+      }
+    }
+
+    if (sentences.length === 0) {
+      log("analysis", "Nearest sentence search returned no results; using fallback sentences.", diagnostics);
+      const clusterFallback = sentenceIndices
+        .map((idx) => docs[idx])
+        .filter((s) => s && s.trim().length > 0);
+      if (clusterFallback.length > 0) {
+        return clusterFallback.slice(0, Math.min(limit, clusterFallback.length));
+      }
+      const corpusFallback = docs.filter((s) => s && s.trim().length > 0);
+      if (corpusFallback.length > 0) {
+        return corpusFallback.slice(0, Math.min(limit, corpusFallback.length));
+      }
+    }
+
+    return sentences;
+  };
+
   const resolvedCutQualityParams: CutQualityParams = {
     minEffectiveMassPerConcept: 3,
     maxJurorDominance: 0.35,
@@ -488,6 +618,20 @@ export async function buildAnalysis(
       }
       K = recommendedK;
     }
+
+    // Phase 2.2: Dataset-Aware Concept Count Policy
+    if (conceptCountPolicyEnabled) {
+      const policyResult = applyConceptCountPolicy(K, effectiveSentences.length);
+      conceptCountPolicyResult = policyResult;
+      if (policyResult.adjustedK !== K || policyResult.requiresHierarchy) {
+        log("quality", `Policy: ${policyResult.reasoning}`);
+        K = policyResult.adjustedK;
+        if (policyResult.requiresHierarchy) {
+          options.useTwoLayer = true;
+        }
+      }
+    }
+    autoKRecommended = recommendedK;
   }
 
   if (!autoK && autoSeedEnabled) {
@@ -532,6 +676,12 @@ export async function buildAnalysis(
 
   K = Math.max(1, Math.min(K ?? 1, contextualUnits.length));
 
+  // Phase 4.1: Juror Influence Normalization
+  let jurorWeights: number[] | undefined;
+  if (jurorNormalizationEnabled) {
+    jurorWeights = computeJurorWeights(chunkRecords);
+  }
+
   // Clustering
   progress(65, "Clustering concepts");
   let assignments: number[];
@@ -546,7 +696,15 @@ export async function buildAnalysis(
     dendrogram = buildDendrogram(semanticVectors);
     
     if (useTwoLayer) {
-      // Perform two-layer cut
+      // Phase 3.1: Enhanced Hierarchy with dynamic configuration
+      const corpusSize = effectiveSentences.length;
+      let primaryTargetK = K;
+      
+      // If AutoK didn't run or hierarchy was forced by policy, determine target primary K
+      if (corpusSize > 300) primaryTargetK = 6;
+      else if (corpusSize > 150) primaryTargetK = 8;
+      else if (primaryTargetK > 10) primaryTargetK = 10;
+
       const detailAutoRange = autoK ? { min: 20, max: 50, step: 5 } : undefined;
       const twoLayerResult = cutDendrogramTwoLayer(
         dendrogram,
@@ -556,17 +714,18 @@ export async function buildAnalysis(
         { ...resolvedCutQualityParams, minJurorSupportPerConcept: 1, minEffectiveMassPerConcept: 1 }, // Looser constraints for detail
         primaryGranularity,
         detailGranularity,
-        detailAutoRange
+        detailAutoRange,
+        primaryTargetK
       );
       assignments = twoLayerResult.primaryAssignments;
       detailAssignments = twoLayerResult.detailAssignments;
       parentMap = twoLayerResult.parentMap;
       
       K = new Set(assignments).size;
-      centroids = computeCentroids(semanticVectors, assignments, K);
+      centroids = computeCentroids(semanticVectors, assignments, K, jurorWeights);
       
       const numDetail = new Set(detailAssignments).size;
-      detailCentroids = computeCentroids(semanticVectors, detailAssignments, numDetail);
+      detailCentroids = computeCentroids(semanticVectors, detailAssignments, numDetail, jurorWeights);
       
       log("analysis", `Two-layer cut complete: Primary=${K}, Detail=${numDetail} concepts`);
       if (twoLayerResult.detailGranularities && Object.keys(twoLayerResult.detailGranularities).length > 0) {
@@ -605,6 +764,24 @@ export async function buildAnalysis(
     const km = kmeansCosine(semanticVectors, K, 25, resolvedSeed);
     assignments = km.assignments;
     centroids = km.centroids;
+  }
+
+  // Phase 2.1: Post-AutoK Semantic Merging
+  if (assignments.length > 0 && centroids.length > 1) {
+    const mergeResult = semanticMergeConcepts(
+      centroids,
+      assignments,
+      semanticVectors,
+      { similarityThreshold: semanticMergeThreshold }
+    );
+    semanticMergeSummary = mergeResult;
+    
+    if (mergeResult.mergedCount > 0) {
+      log("quality", `Semantic Merge: merged ${mergeResult.mergedCount} redundant concepts (threshold=${semanticMergeThreshold})`);
+      assignments = mergeResult.assignments;
+      K = new Set(assignments).size;
+      centroids = computeCentroids(semanticVectors, assignments, K, jurorWeights);
+    }
   }
 
   const normalizeDetailByPrimary = (
@@ -780,8 +957,8 @@ export async function buildAnalysis(
     minClusterSizeApplied = resolvedMinSize;
     minClusterSizeMerged = mergeResult.mergedCount;
     minClusterSizeDetails = { beforeSize, afterSize, mergedCount: mergeResult.mergedCount };
-    K = afterSize;
-    centroids = computeCentroids(semanticVectors, assignments, K);
+      K = afterSize;
+    centroids = computeCentroids(semanticVectors, assignments, K, jurorWeights);
     if (mergeResult.mergedCount > 0) {
       log("quality", `MinClusterSize: merged ${mergeResult.mergedCount} clusters (minSize=${resolvedMinSize})`);
     }
@@ -794,7 +971,7 @@ export async function buildAnalysis(
       const detailMerge = mergeDetailClustersByPrimary(detailAssignments, assignments, semanticVectors, resolvedMinSize);
       detailAssignments = detailMerge.assignments;
       parentMap = detailMerge.parentMap;
-      detailCentroids = computeCentroids(semanticVectors, detailAssignments, new Set(detailAssignments).size);
+      detailCentroids = computeCentroids(semanticVectors, detailAssignments, new Set(detailAssignments).size, jurorWeights);
       if (detailMerge.mergedCount > 0) {
         log("quality", `MinClusterSize detail: merged ${detailMerge.mergedCount} clusters (minSize=${resolvedMinSize})`);
       }
@@ -808,7 +985,7 @@ export async function buildAnalysis(
     if (primarySplit.applied) {
       assignments = primarySplit.assignments;
       K = new Set(assignments).size;
-      centroids = computeCentroids(semanticVectors, assignments, K);
+      centroids = computeCentroids(semanticVectors, assignments, K, jurorWeights);
       dominanceSplitApplied = true;
       dominanceSplitDetails = {
         primary: {
@@ -823,12 +1000,12 @@ export async function buildAnalysis(
       const aligned = normalizeDetailByPrimary(detailAssignments, assignments);
       detailAssignments = aligned.assignments;
       parentMap = aligned.parentMap;
-      detailCentroids = computeCentroids(semanticVectors, detailAssignments, new Set(detailAssignments).size);
+      detailCentroids = computeCentroids(semanticVectors, detailAssignments, new Set(detailAssignments).size, jurorWeights);
 
       const detailSplit = applyDominanceCap("detail", detailAssignments, semanticVectors, maxClusterSize);
       if (detailSplit.applied) {
         detailAssignments = detailSplit.assignments;
-        detailCentroids = computeCentroids(semanticVectors, detailAssignments, new Set(detailAssignments).size);
+        detailCentroids = computeCentroids(semanticVectors, detailAssignments, new Set(detailAssignments).size, jurorWeights);
         dominanceSplitApplied = true;
         dominanceSplitDetails = {
           ...(dominanceSplitDetails ?? {}),
@@ -844,7 +1021,7 @@ export async function buildAnalysis(
         const rebuilt = normalizeDetailByPrimary(detailAssignments, assignments);
         detailAssignments = rebuilt.assignments;
         parentMap = rebuilt.parentMap;
-        detailCentroids = computeCentroids(semanticVectors, detailAssignments, new Set(detailAssignments).size);
+        detailCentroids = computeCentroids(semanticVectors, detailAssignments, new Set(detailAssignments).size, jurorWeights);
       }
     }
   }
@@ -856,6 +1033,8 @@ export async function buildAnalysis(
     dendrogram,
     unitType: "chunk",
   });
+
+  const primaryConceptIds = primaryConceptSet.stableIds;
 
   let detailConceptSet: ConceptSet | undefined;
   if (useTwoLayer && detailAssignments && detailCentroids) {
@@ -938,83 +1117,16 @@ export async function buildAnalysis(
   for (let c = 0; c < K; c++) {
     const clusterSentenceIndices = Array.from(clusterSentenceMap.get(c) ?? []).sort((a, b) => a - b);
     const clusterSentences = clusterSentenceIndices.map((i) => docs[i]);
+    const nearestSentences = computeNearestSentences(centroids[c], clusterSentenceIndices, 5);
     conceptTopTermsMap[c] = getClusterTopTerms(
       centroids[c],
       bm25Discriminative,
       clusterSentences,
       docs,
-      12
+      12,
+      nearestSentences
     );
   }
-
-  const computeNearestSentences = (
-    centroid: Float64Array,
-    sentenceIndices: number[],
-    limit: number = 3
-  ): string[] => {
-    const diagnostics = {
-      total: docs.length,
-      missingVectors: 0,
-      emptySentences: 0,
-      invalidScores: 0,
-    };
-    const candidates: Array<{ idx: number; score: number; sentence: string }> = [];
-
-    for (let idx = 0; idx < docs.length; idx++) {
-      const sentence = docs[idx];
-      if (!sentence || sentence.trim().length === 0) {
-        diagnostics.emptySentences++;
-        continue;
-      }
-      const vec = sentenceVectors[idx];
-      if (!vec) {
-        diagnostics.missingVectors++;
-        continue;
-      }
-      const score = cosine(centroid, vec);
-      if (!Number.isFinite(score)) {
-        diagnostics.invalidScores++;
-        continue;
-      }
-      candidates.push({ idx, score, sentence });
-    }
-
-    candidates.sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return a.idx - b.idx;
-    });
-
-    const selected = candidates.slice(0, limit);
-    let sentences = selected.map((entry) => entry.sentence);
-
-    if (sentences.length < limit && sentenceIndices.length > 0) {
-      const seen = new Set(sentences);
-      for (const idx of sentenceIndices) {
-        const sentence = docs[idx];
-        if (!sentence || sentence.trim().length === 0) continue;
-        if (seen.has(sentence)) continue;
-        sentences.push(sentence);
-        seen.add(sentence);
-        if (sentences.length >= limit) break;
-      }
-    }
-
-    if (sentences.length === 0) {
-      log("analysis", "Nearest sentence search returned no results; using fallback sentences.", diagnostics);
-      const clusterFallback = sentenceIndices
-        .map((idx) => docs[idx])
-        .filter((s) => s && s.trim().length > 0);
-      if (clusterFallback.length > 0) {
-        return clusterFallback.slice(0, Math.min(limit, clusterFallback.length));
-      }
-      const corpusFallback = docs.filter((s) => s && s.trim().length > 0);
-      if (corpusFallback.length > 0) {
-        return corpusFallback.slice(0, Math.min(limit, corpusFallback.length));
-      }
-    }
-
-    return sentences;
-  };
 
   if (autoWeights && centroids.length > 0 && assignments.length > 0) {
     log(
@@ -1058,111 +1170,6 @@ export async function buildAnalysis(
         `Auto-Weights weights=${m.weights.semanticWeight}/${m.weights.frequencyWeight}: score=${Number.isFinite(m.score) ? m.score.toFixed(4) : "-inf"}, coherence=${(m.evidenceCoherence ?? 0).toFixed(4)}, dominance=${((m.dominance ?? 0) * 100).toFixed(1)}%`
       );
     });
-  }
-
-  // Build primary concept objects
-  const primaryConceptIds = primaryConceptSet.stableIds;
-  const primaryConcepts: Concept[] = [];
-  
-  for (let c = 0; c < K; c++) {
-    const id = primaryConceptIds[c];
-    const clusterSentenceIndices = Array.from(clusterSentenceMap.get(c) ?? []).sort((a, b) => a - b);
-    const clusterSentences = clusterSentenceIndices.map(i => docs[i]);
-    const nearestSentences = computeNearestSentences(centroids[c], clusterSentenceIndices, 3);
-    if (nearestSentences.length === 0) {
-      log("analysis", `Nearest sentences empty for concept ${id}.`, {
-        clusterSize: clusterSentenceIndices.length,
-      });
-    }
-    
-    const { label, keyphrases } = contrastiveLabelCluster(
-      centroids[c],
-      bm25Discriminative,
-      clusterSentences,
-      docs,
-      4,
-      nearestSentences,
-      id
-    );
-    const topTerms = conceptTopTermsMap[c] ?? getClusterTopTerms(centroids[c], bm25Discriminative, clusterSentences, docs, 12);
-    
-    const rankedEvidence = rankEvidenceForConcept(
-      docs,
-      clusterSentenceIndices,
-      centroids[c],
-      sentenceVectors,
-      bm25Consensus,
-      topTerms,
-      finalEvidenceRankingParams,
-      3
-    );
-
-    primaryConcepts.push({
-      id,
-      stableId: id,
-      label,
-      size: 0, // Will be computed later
-      topTerms,
-      keyphrases,
-      representativeSentences: rankedEvidence.map(r => r.sentence)
-    });
-  }
-
-  // Build detail concept objects if in two-layer mode
-  let detailConcepts: Concept[] = [];
-  let conceptHierarchy: Record<string, string[]> = {};
-  
-  if (useTwoLayer && detailAssignments && parentMap && detailCentroids) {
-    const numDetail = detailCentroids.length;
-    const detailConceptIds = detailConceptSet?.stableIds ?? Array.from({ length: numDetail }, (_, i) => `concept:detail:${i}`);
-    
-    for (let d = 0; d < numDetail; d++) {
-      const id = detailConceptIds[d];
-      const clusterSentenceIndices = Array.from(detailClusterSentenceMap.get(d) ?? []).sort((a, b) => a - b);
-      const clusterSentences = clusterSentenceIndices.map(i => docs[i]);
-      const nearestSentences = computeNearestSentences(detailCentroids[d], clusterSentenceIndices, 3);
-      if (nearestSentences.length === 0) {
-        log("analysis", `Nearest sentences empty for concept ${id}.`, {
-          clusterSize: clusterSentenceIndices.length,
-        });
-      }
-      
-      const { label, keyphrases } = contrastiveLabelCluster(
-        detailCentroids[d],
-        bm25Discriminative,
-        clusterSentences,
-        docs,
-        4,
-        nearestSentences,
-        id
-      );
-      const topTerms = getClusterTopTerms(detailCentroids[d], bm25Discriminative, clusterSentences, docs, 12);
-      
-      const rankedEvidence = rankEvidenceForConcept(
-        docs,
-        clusterSentenceIndices,
-        detailCentroids[d],
-        sentenceVectors,
-        bm25Consensus,
-        topTerms,
-        finalEvidenceRankingParams,
-        3
-      );
-
-      detailConcepts.push({
-        id,
-        stableId: id,
-        label,
-        size: 0,
-        topTerms,
-        keyphrases,
-        representativeSentences: rankedEvidence.map(r => r.sentence)
-      });
-
-      const primaryId = primaryConceptIds[parentMap[d]] ?? `concept:${parentMap[d]}`;
-      conceptHierarchy[primaryId] = conceptHierarchy[primaryId] || [];
-      conceptHierarchy[primaryId].push(id);
-    }
   }
 
   // Assign concepts to sentences by projecting chunk memberships back down
@@ -1274,8 +1281,12 @@ export async function buildAnalysis(
   progress(83, "Computing juror vectors");
   const jurorVectors: Record<string, Record<string, number>> = {};
   const jurorVectorsDetail: Record<string, Record<string, number>> = {};
+  const jurorCounts: Record<string, Record<string, number>> = {};
+  const jurorCountsDetail: Record<string, Record<string, number>> = {};
   const primaryConceptCounts: Record<string, number> = {};
   const detailConceptCounts: Record<string, number> = {};
+  const primaryConceptHardCounts: Record<string, number> = {};
+  const detailConceptHardCounts: Record<string, number> = {};
   const stanceCounts: Record<Stance, number> = { praise: 0, critique: 0, suggestion: 0, neutral: 0 };
 
   for (let i = 0; i < effectiveSentences.length; i++) {
@@ -1286,26 +1297,39 @@ export async function buildAnalysis(
     // Primary layer weights
     if (s.conceptMembership && s.conceptMembership.length > 0) {
       jurorVectors[j] = jurorVectors[j] || {};
+      jurorCounts[j] = jurorCounts[j] || {};
       for (const m of s.conceptMembership) {
         jurorVectors[j][m.conceptId] = (jurorVectors[j][m.conceptId] ?? 0) + m.weight;
         primaryConceptCounts[m.conceptId] = (primaryConceptCounts[m.conceptId] ?? 0) + m.weight;
       }
+      // Top concept gets the hard count
+      const topCid = s.conceptId || s.conceptMembership[0].conceptId;
+      jurorCounts[j][topCid] = (jurorCounts[j][topCid] ?? 0) + 1;
+      primaryConceptHardCounts[topCid] = (primaryConceptHardCounts[topCid] ?? 0) + 1;
     } else if (s.conceptId) {
       const c = s.conceptId!;
       jurorVectors[j] = jurorVectors[j] || {};
+      jurorCounts[j] = jurorCounts[j] || {};
       jurorVectors[j][c] = (jurorVectors[j][c] ?? 0) + 1;
+      jurorCounts[j][c] = (jurorCounts[j][c] ?? 0) + 1;
       primaryConceptCounts[c] = (primaryConceptCounts[c] ?? 0) + 1;
+      primaryConceptHardCounts[c] = (primaryConceptHardCounts[c] ?? 0) + 1;
     }
 
     // Detail layer weights
     if (useTwoLayer) {
       jurorVectorsDetail[j] = jurorVectorsDetail[j] || {};
+      jurorCountsDetail[j] = jurorCountsDetail[j] || {};
       const sentenceDetailMembership = detailMemberships?.[i];
       if (sentenceDetailMembership && sentenceDetailMembership.length > 0) {
         for (const m of sentenceDetailMembership) {
           jurorVectorsDetail[j][m.conceptId] = (jurorVectorsDetail[j][m.conceptId] ?? 0) + m.weight;
           detailConceptCounts[m.conceptId] = (detailConceptCounts[m.conceptId] ?? 0) + m.weight;
         }
+        // Top detail concept gets the hard count
+        const topDetailCid = sentenceDetailMembership[0].conceptId;
+        jurorCountsDetail[j][topDetailCid] = (jurorCountsDetail[j][topDetailCid] ?? 0) + 1;
+        detailConceptHardCounts[topDetailCid] = (detailConceptHardCounts[topDetailCid] ?? 0) + 1;
       }
     }
   }
@@ -1320,6 +1344,17 @@ export async function buildAnalysis(
       const total = Object.values(jurorVectorsDetail[j]).reduce((a, b) => a + b, 0) || 1;
       for (const c of Object.keys(jurorVectorsDetail[j])) jurorVectorsDetail[j][c] /= total;
     }
+  }
+
+  // Anchored axis projections (optional, measurement only)
+  let resolvedAnchorAxes = anchorAxes;
+  let anchorAxisScores: AnalysisResult["anchorAxisScores"] | undefined;
+  if (anchorAxes && anchorAxes.length > 0) {
+    resolvedAnchorAxes = await embedAnchorAxes(anchorAxes);
+    anchorAxisScores = {
+      concepts: projectConceptCentroids(centroids, resolvedAnchorAxes, primaryConceptIds),
+      jurors: projectJurorVectors(jurorVectors, centroids, resolvedAnchorAxes, primaryConceptIds),
+    };
   }
 
   // Compute high-dimensional juror vectors and extract top terms
@@ -1344,11 +1379,235 @@ export async function buildAnalysis(
     }
   }
 
+  // Build primary concept objects
+  const primaryConcepts: Concept[] = [];
+  
+  for (let c = 0; c < K; c++) {
+    const id = primaryConceptIds[c];
+    const clusterSentenceIndices = Array.from(clusterSentenceMap.get(c) ?? []).sort((a, b) => a - b);
+    const clusterSentences = clusterSentenceIndices.map(i => docs[i]);
+    const nearestSentences = computeNearestSentences(centroids[c], clusterSentenceIndices, 3);
+    const weight = primaryConceptCounts[id] ?? 0;
+    const count = primaryConceptHardCounts[id] ?? 0;
+    
+    if (nearestSentences.length === 0) {
+      log("analysis", `Nearest sentences empty for concept ${id}.`, {
+        clusterSize: clusterSentenceIndices.length,
+      });
+    }
+    
+    const { label: algorithmicLabel, keyphrases } = contrastiveLabelCluster(
+      centroids[c],
+      bm25Discriminative,
+      clusterSentences,
+      docs,
+      4,
+      nearestSentences,
+      id
+    );
+
+    // Phase 1.1: Promote LLM to label arbiter
+    // Calculate stance mix for LLM synthesis
+    const stanceCounts = { praise: 0, critique: 0, suggestion: 0, neutral: 0 };
+    clusterSentenceIndices.forEach(idx => {
+      const s = effectiveSentences[idx];
+      if (s) stanceCounts[s.stance]++;
+    });
+    const total = clusterSentenceIndices.length || 1;
+    const stance_mix = {
+      praise: stanceCounts.praise / total,
+      critique: stanceCounts.critique / total,
+      suggestion: stanceCounts.suggestion / total,
+      neutral: stanceCounts.neutral / total,
+    };
+
+    // Immediate LLM synthesis
+    const synthesisResult = await synthesizeConceptLabel({
+      id,
+      label_seed: algorithmicLabel,
+      top_ngrams: conceptTopTermsMap[c] || [],
+      evidence_sentences: clusterSentences,
+      stance_mix,
+      model: options.model || DEFAULT_MODEL,
+      concept_share_pct: clusterSentenceIndices.length / docs.length,
+      centroid_semantic_terms: conceptTopTermsMap[c] || [],
+      juror_contribution: Object.entries(stanceCounts)
+        .filter(([, count]) => count > 0)
+        .map(([stance, count]) => `${stance}: ${count}`)
+        .join(", "),
+      related_axes_scores: anchorAxisScores?.concepts?.[id] 
+        ? Object.entries(anchorAxisScores.concepts[id])
+            .map(([axis, score]) => `${axis}: ${score.toFixed(2)}`)
+            .join(", ")
+        : undefined
+    });
+
+    const label = synthesisResult.concept_title;
+    const conceptIsFallback = Boolean(synthesisResult.is_fallback);
+    const labelSource = deriveConceptLabelSource(algorithmicLabel, synthesisResult);
+    const topTerms = conceptTopTermsMap[c] ?? getClusterTopTerms(centroids[c], bm25Discriminative, clusterSentences, docs, 12);
+    
+    const rankedEvidence = rankEvidenceForConcept(
+      docs,
+      clusterSentenceIndices,
+      centroids[c],
+      sentenceVectors,
+      bm25Consensus,
+      topTerms,
+      finalEvidenceRankingParams,
+      3
+    );
+
+    primaryConcepts.push({
+      id,
+      stableId: id,
+      label,
+      title: label,
+      labelSource,
+      isFallback: conceptIsFallback,
+      size: Math.min(6 + Math.log2(weight + 1) * 8.4, 48.0),
+      topTerms,
+      keyphrases,
+      representativeSentences: rankedEvidence.map(r => r.sentence),
+      weight,
+      count,
+      summary: synthesisResult.concept_one_liner,
+      labelQuality: {
+        score: synthesisResult.quality?.score ?? 0,
+        passed: synthesisResult.quality?.passed ?? false,
+        violations: synthesisResult.quality?.violations ?? [],
+        needsReview: conceptIsFallback || !(synthesisResult.quality?.passed)
+      }
+    });
+  }
+
+  // Build detail concept objects if in two-layer mode
+  let detailConcepts: Concept[] = [];
+  let conceptHierarchy: Record<string, string[]> = {};
+  
+  if (useTwoLayer && detailAssignments && parentMap && detailCentroids) {
+    const numDetail = detailCentroids.length;
+    const detailConceptIds = detailConceptSet?.stableIds ?? Array.from({ length: numDetail }, (_, i) => `concept:detail:${i}`);
+    
+    for (let d = 0; d < numDetail; d++) {
+      const id = detailConceptIds[d];
+      const clusterSentenceIndices = Array.from(detailClusterSentenceMap.get(d) ?? []).sort((a, b) => a - b);
+      const clusterSentences = clusterSentenceIndices.map(i => docs[i]);
+      const nearestSentences = computeNearestSentences(detailCentroids[d], clusterSentenceIndices, 3);
+      const weight = detailConceptCounts[id] ?? 0;
+      const count = detailConceptHardCounts[id] ?? 0;
+
+      if (nearestSentences.length === 0) {
+        log("analysis", `Nearest sentences empty for concept ${id}.`, {
+          clusterSize: clusterSentenceIndices.length,
+        });
+      }
+      
+    const { label: algorithmicLabel, keyphrases } = contrastiveLabelCluster(
+      detailCentroids[d],
+      bm25Discriminative,
+      clusterSentences,
+      docs,
+      4,
+      nearestSentences,
+      id
+    );
+
+    // Calculate stance mix for LLM synthesis
+    const stanceCounts = { praise: 0, critique: 0, suggestion: 0, neutral: 0 };
+    clusterSentenceIndices.forEach(idx => {
+      const s = effectiveSentences[idx];
+      if (s) stanceCounts[s.stance]++;
+    });
+    const total = clusterSentenceIndices.length || 1;
+    const stance_mix = {
+      praise: stanceCounts.praise / total,
+      critique: stanceCounts.critique / total,
+      suggestion: stanceCounts.suggestion / total,
+      neutral: stanceCounts.neutral / total,
+    };
+
+    // Immediate LLM synthesis
+    const synthesisResult = await synthesizeConceptLabel({
+      id,
+      label_seed: algorithmicLabel,
+      top_ngrams: getClusterTopTerms(detailCentroids[d], bm25Discriminative, clusterSentences, docs, 12),
+      evidence_sentences: clusterSentences,
+      stance_mix,
+      model: options.selectedModel || DEFAULT_MODEL,
+      concept_share_pct: clusterSentenceIndices.length / docs.length,
+      centroid_semantic_terms: getClusterTopTerms(detailCentroids[d], bm25Discriminative, clusterSentences, docs, 12),
+      juror_contribution: Object.entries(stanceCounts)
+        .filter(([, count]) => count > 0)
+        .map(([stance, count]) => `${stance}: ${count}`)
+        .join(", "),
+      related_axes_scores: anchorAxisScores?.concepts?.[id] 
+        ? Object.entries(anchorAxisScores.concepts[id])
+            .map(([axis, score]) => `${axis}: ${score.toFixed(2)}`)
+            .join(", ")
+        : undefined
+    });
+
+    const label = synthesisResult.concept_title;
+    const detailIsFallback = Boolean(synthesisResult.is_fallback);
+    const detailLabelSource = deriveConceptLabelSource(algorithmicLabel, synthesisResult);
+    const topTerms = getClusterTopTerms(detailCentroids[d], bm25Discriminative, clusterSentences, docs, 12);
+      
+      const rankedEvidence = rankEvidenceForConcept(
+        docs,
+        clusterSentenceIndices,
+        detailCentroids[d],
+        sentenceVectors,
+        bm25Consensus,
+        topTerms,
+        finalEvidenceRankingParams,
+        3
+      );
+
+      detailConcepts.push({
+        id,
+        stableId: id,
+        label,
+        title: label,
+        labelSource: detailLabelSource,
+        isFallback: detailIsFallback,
+        size: Math.min(4 + Math.log2(weight + 1) * 6.0, 32.0),
+        topTerms,
+        keyphrases,
+        representativeSentences: rankedEvidence.map(r => r.sentence),
+        weight,
+        count,
+        summary: synthesisResult.concept_one_liner,
+        labelQuality: {
+          score: synthesisResult.quality?.score ?? 0,
+          passed: synthesisResult.quality?.passed ?? false,
+          violations: synthesisResult.quality?.violations ?? [],
+          needsReview: detailIsFallback || !(synthesisResult.quality?.passed)
+        }
+      });
+
+      const primaryId = primaryConceptIds[parentMap[d]] ?? `concept:${parentMap[d]}`;
+      conceptHierarchy[primaryId] = conceptHierarchy[primaryId] || [];
+      conceptHierarchy[primaryId].push(id);
+    }
+  }
+
   // Determine final number of dimensions if in automatic mode
   let finalNumDimensions = numDimensions;
+  let scanLimitUsed: number | undefined;
+  let thresholdNotReached = false;
+  let maxVarianceAchieved: number | undefined;
+
   if (dimensionMode !== "manual" && centroids.length > 1) {
-    const scanTargetDimensions = Math.max(12, numDimensions);
-    const scanResult = reduceToND(centroids, scanTargetDimensions, 10, resolvedSeed);
+    const maxPossible = Math.max(1, centroids.length - 1);
+    
+    const scanLimit =
+      dimensionMode === "threshold"
+        ? Math.min(maxPossible, maxScanDimensions ?? 30)
+        : Math.min(maxPossible, Math.max(12, numDimensions));
+    
+    scanLimitUsed = scanLimit;
+    const scanResult = reduceToND(centroids, scanLimit, 10, resolvedSeed);
 
     if (dimensionMode === "threshold") {
       finalNumDimensions = findOptimalDimensionsThreshold(
@@ -1356,14 +1615,25 @@ export async function buildAnalysis(
         scanResult.varianceStats.totalVariance,
         varianceThreshold
       );
+      
+      // Check if threshold was actually reached
+      const achieved = scanResult.varianceStats.cumulativeVariances[finalNumDimensions - 1] / scanResult.varianceStats.totalVariance;
+      maxVarianceAchieved = achieved;
+      if (finalNumDimensions === scanLimit && achieved < varianceThreshold) {
+        thresholdNotReached = true;
+      }
     } else if (dimensionMode === "elbow") {
       finalNumDimensions = findOptimalDimensionsElbow(scanResult.varianceStats.explainedVariances);
     }
 
-    // Clamp to available scan dimensions to avoid trailing zero-variance axes
-    const maxAvailable = Math.max(1, scanResult.varianceStats.explainedVariances.length || 1);
-    finalNumDimensions = Math.max(1, Math.min(maxAvailable, finalNumDimensions));
+    // Clamp to available scan dimensions
+    finalNumDimensions = Math.max(1, Math.min(maxPossible, finalNumDimensions));
   }
+
+  // Calculate layout dimensions with UX floor for 3D visualization
+  const maxPossible = Math.max(1, centroids.length - 1);
+  const appliedNumDimensions = Math.min(Math.max(finalNumDimensions, 1), maxPossible);
+  const layoutNumDimensions = maxPossible >= 3 ? Math.max(3, appliedNumDimensions) : appliedNumDimensions;
 
   // Compute 3D positions
   progress(90, "PCA + 3D vectors");
@@ -1372,9 +1642,10 @@ export async function buildAnalysis(
     centroids,
     jurorList,
     primaryConceptIds,
-    finalNumDimensions,
+    layoutNumDimensions,
     10, // scale
-    resolvedSeed
+    resolvedSeed,
+    useTwoLayer ? primaryConceptIds : undefined
   );
 
   const getUniqueTags = (sentenceIndices: number[]): string[] => {
@@ -1414,14 +1685,22 @@ export async function buildAnalysis(
   progress(75, "Labeling concepts");
   for (const c of primaryConcepts) {
     const pos = positions3D.get(c.id) ?? { x: 0, y: 0, z: 0 };
-    const weight = primaryConceptCounts[c.id] ?? 0;
-    c.size = Math.min(6 + Math.log2(weight + 1) * 8.4, 48.0);
-    c.weight = weight;
 
     const clusterSentenceIndices = Array.from(clusterSentenceMap.get(primaryConceptIds.indexOf(c.id)) ?? []);
     const jurorDistribution = jurorList
-      .map(j => ({ juror: j, weight: jurorVectors[j]?.[c.id] ?? 0 }))
-      .filter(d => d.weight > 0);
+      .map(j => ({ 
+        juror: j, 
+        weight: jurorVectors[j]?.[c.id] ?? 0,
+        count: jurorCounts[j]?.[c.id] ?? 0
+      }))
+      .filter(d => d.weight > 0 || d.count > 0);
+
+    const avgWeight = Object.values(primaryConceptCounts).reduce((a, b) => a + b, 0) / primaryConcepts.length;
+    const confidence = c.count! >= 10 && jurorDistribution.length >= 3 ? "high" : (c.count! >= 5 && jurorDistribution.length >= 2 ? "medium" : "low");
+    const qualityFlags: Array<"low-volume" | "single-juror" | "small-concept"> = [];
+    if (c.count! < 5) qualityFlags.push("low-volume");
+    if (jurorDistribution.length === 1) qualityFlags.push("single-juror");
+    if (c.weight! < avgWeight * 0.3) qualityFlags.push("small-concept");
 
     nodes.push({ 
       id: c.id, 
@@ -1432,7 +1711,10 @@ export async function buildAnalysis(
         topTerms: c.topTerms,
         keyphrases: c.keyphrases,
         weight: c.weight,
-        jurorDistribution
+        count: c.count,
+        jurorDistribution,
+        confidence,
+        qualityFlags
       },
       x: pos.x,
       y: pos.y,
@@ -1448,19 +1730,27 @@ export async function buildAnalysis(
   if (useTwoLayer) {
     for (let di = 0; di < detailConcepts.length; di++) {
       const c = detailConcepts[di];
-      const weight = detailConceptCounts[c.id] ?? 0;
-      c.size = Math.min(4 + Math.log2(weight + 1) * 6.0, 32.0);
-      c.weight = weight;
 
       const clusterSentenceIndices = Array.from(detailClusterSentenceMap.get(di) ?? []);
       const jurorDistribution = jurorList
-        .map(j => ({ juror: j, weight: jurorVectorsDetail[j]?.[c.id] ?? 0 }))
-        .filter(d => d.weight > 0);
+        .map(j => ({ 
+          juror: j, 
+          weight: jurorVectorsDetail[j]?.[c.id] ?? 0,
+          count: jurorCountsDetail[j]?.[c.id] ?? 0
+        }))
+        .filter(d => d.weight > 0 || d.count > 0);
 
       // Find parent primary concept
       const parentId = Object.keys(conceptHierarchy).find(pId => conceptHierarchy[pId].includes(c.id));
       const parentNode = nodes.find(n => n.id === parentId);
       
+      const avgWeight = Object.values(detailConceptCounts).reduce((a, b) => a + b, 0) / detailConcepts.length;
+      const confidence = c.count! >= 10 && jurorDistribution.length >= 3 ? "high" : (c.count! >= 5 && jurorDistribution.length >= 2 ? "medium" : "low");
+      const qualityFlags: Array<"low-volume" | "single-juror" | "small-concept"> = [];
+      if (c.count! < 5) qualityFlags.push("low-volume");
+      if (jurorDistribution.length === 1) qualityFlags.push("single-juror");
+      if (c.weight! < avgWeight * 0.3) qualityFlags.push("small-concept");
+
       // Initially position near parent with slight random offset
       const offset = 2.0;
       nodes.push({
@@ -1472,7 +1762,10 @@ export async function buildAnalysis(
           topTerms: c.topTerms,
           keyphrases: c.keyphrases,
           weight: c.weight,
-          jurorDistribution
+          count: c.count,
+          jurorDistribution,
+          confidence,
+          qualityFlags
         },
         x: (parentNode?.x || 0) + (Math.random() - 0.5) * offset,
         y: (parentNode?.y || 0) + (Math.random() - 0.5) * offset,
@@ -1570,7 +1863,7 @@ export async function buildAnalysis(
   const jurorSimilarityLinks = buildJurorSimilarityLinks(jurorList, jurorVectors, primaryConceptIds, similarityThreshold);
   links.push(...jurorSimilarityLinks);
 
-  const conceptConceptThreshold = similarityThreshold * 0.7;
+  const conceptConceptThreshold = similarityThreshold * 0.85; // Increased from 0.7 to reduce density
   const conceptSimilarityLinks = buildConceptSimilarityLinks(
     primaryConceptIds,
     centroids,
@@ -1586,19 +1879,8 @@ export async function buildAnalysis(
     link.structuralRole = structuralRoles.get(link.id) ?? link.structuralRole ?? "cluster-internal";
   });
 
-  // Anchored axis projections (optional, measurement only)
-  let resolvedAnchorAxes = anchorAxes;
-  let anchorAxisScores: AnalysisResult["anchorAxisScores"] | undefined;
-  if (anchorAxes && anchorAxes.length > 0) {
-    resolvedAnchorAxes = await embedAnchorAxes(anchorAxes);
-    anchorAxisScores = {
-      concepts: projectConceptCentroids(centroids, resolvedAnchorAxes, primaryConceptIds),
-      jurors: projectJurorVectors(jurorVectors, centroids, resolvedAnchorAxes, primaryConceptIds),
-    };
-  }
-
   // Compute axis labels from 3D node positions
-  const axisLabels = labelAxes(nodes, finalNumDimensions, conceptPcValues);
+  const axisLabels = labelAxes(nodes, finalNumDimensions, layoutNumDimensions, conceptPcValues);
   const chunkAssignmentsByConceptId = assignments.map((clusterId) => primaryConceptIds[clusterId] ?? `concept:${clusterId}`);
 
   const formattedSeedLeaderboard = seedLeaderboard?.map(
@@ -1625,7 +1907,7 @@ export async function buildAnalysis(
     links,
   });
 
-  return {
+  const finalResult: AnalysisResult = {
     jurors: jurorList,
     concepts: primaryConcepts,
     primaryConcepts,
@@ -1637,6 +1919,8 @@ export async function buildAnalysis(
     sentences: effectiveSentences,
     jurorVectors,
     jurorVectorsDetail,
+    jurorCounts,
+    jurorCountsDetail,
     nodes,
     links,
     stats: {
@@ -1676,7 +1960,29 @@ export async function buildAnalysis(
     varianceStats,
     requestedNumDimensions,
     appliedNumDimensions: varianceStats?.explainedVariances.length ?? finalNumDimensions,
+    layoutNumDimensions,
+    scanLimitUsed,
+    thresholdNotReached,
+    maxVarianceAchieved,
     dimensionMode,
     varianceThreshold,
+    finalKUsed: primaryConcepts.length,
+    autoKRecommended,
+    policyAdjustedK: conceptCountPolicyResult?.adjustedK,
+    conceptCountPolicy: conceptCountPolicyResult,
+    semanticMerge: semanticMergeSummary,
+    analysisBuildId: createAnalysisBuildId(),
   };
+
+  // Phase 5.1: Report Health Indicators
+  if (reportHealthEnabled) {
+    try {
+      finalResult.reportHealth = evaluateReportHealth(finalResult);
+      log("quality", `Report health score: ${(finalResult.reportHealth.overallScore * 100).toFixed(0)}%`);
+    } catch (e) {
+      console.error("Error evaluating report health:", e);
+    }
+  }
+
+  return finalResult;
 }

@@ -41,7 +41,7 @@ export function FloatingDetailsPanel({
   const nodeColor = selectedNode?.pcValues ? getPCColor(selectedNode.pcValues, baseColor) : baseColor;
 
   return (
-    <div className="absolute top-4 right-4 z-50 w-96 rounded-2xl border border-slate-200 bg-white/95 p-0 shadow-2xl backdrop-blur-sm transition-all duration-300 animate-in fade-in slide-in-from-right-4 max-h-[calc(100vh-8rem)] flex flex-col overflow-hidden">
+    <div className="absolute top-4 right-4 z-50 w-[650px] rounded-2xl border border-slate-200 bg-white/95 p-0 shadow-2xl backdrop-blur-sm transition-all duration-300 animate-in fade-in slide-in-from-right-4 max-h-[calc(100vh-8rem)] flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 bg-slate-50/50">
         <div className="flex items-center gap-3 min-w-0">

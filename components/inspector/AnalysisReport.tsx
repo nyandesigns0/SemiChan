@@ -275,6 +275,9 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
     </div>
   );
 
+  const resolveConceptTitle = (concept: AnalysisResult["concepts"][number]) =>
+    concept.title ?? concept.label ?? "Untitled concept";
+
   const togglePrimaryConceptExpand = (id: string) => {
     setExpandedPrimaryConcepts(prev => {
       const next = new Set(prev);
@@ -307,13 +310,33 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
       analysis.concepts.map((c) => {
         const insight = insights?.[c.id];
         const resolvedLabel = resolveInsightLabel(insight?.shortLabel);
+        const finalTitle = resolveConceptTitle(c);
         return [
           c.id,
-          { label: resolvedLabel ?? c.label, ai: Boolean(resolvedLabel), loading: insight?.isLoadingLabel },
+          { label: resolvedLabel ?? finalTitle, ai: Boolean(resolvedLabel), loading: insight?.isLoadingLabel },
         ];
       })
     );
   }, [analysis, insights]);
+
+  const labelSourceSummary = useMemo(() => {
+    if (!analysis || analysis.concepts.length === 0) return null;
+    const counts = { llm: 0, template: 0, seed: 0, unknown: 0 };
+    analysis.concepts.forEach((concept) => {
+      const source = concept.labelSource ?? (concept.isFallback ? "template" : "llm");
+      if (source === "llm") counts.llm++;
+      else if (source === "template") counts.template++;
+      else if (source === "seed") counts.seed++;
+      else counts.unknown++;
+    });
+    const total = analysis.concepts.length;
+    const fallback = counts.template + counts.seed + counts.unknown;
+    return {
+      total,
+      counts,
+      text: `LLM labels: ${counts.llm}/${total} | fallback/template: ${fallback}`,
+    };
+  }, [analysis]);
 
   const conceptColors = useMemo(() => {
     if (!analysis) return new Map<string, { base: string; soft: string }>();
@@ -501,6 +524,14 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
     // Format parameters section
     const formatParameters = () => {
       const e = p.evidenceRankingParams || { semanticWeight: 0.7, frequencyWeight: 0.3 };
+      const dimThresholdInfo = p.dimensionMode === "threshold" 
+        ? `${Math.round(p.varianceThreshold * 100)}%`
+        : "N/A (elbow mode)";
+      
+      const thresholdWarning = p.thresholdNotReached 
+        ? `\n⚠ THRESHOLD NOT REACHED: max ${(p.maxVarianceAchieved ? p.maxVarianceAchieved * 100 : 0).toFixed(1)}% at ${p.scanLimitUsed} dims scanned`
+        : "";
+
       return `ANALYSIS PARAMETERS
 ${separator}
 kConcepts: ${p.kConcepts} | minEdgeWeight: ${p.minEdgeWeight} | similarityThreshold: ${p.similarityThreshold}
@@ -509,7 +540,8 @@ autoMinClusterSize: ${p.autoMinClusterSize ?? false} | minClusterSize: ${p.minCl
 autoDominanceCap: ${p.autoDominanceCap ?? true} | dominanceCapThreshold: ${p.autoDominanceCapThreshold ?? "default"}
 autoSeed params: candidates=${p.seedCandidates ?? "-"}, perturbations=${p.seedPerturbations ?? "-"}, weights(coh=${p.seedCoherenceWeight ?? "-"}, sep=${p.seedSeparationWeight ?? "-"}, stab=${p.seedStabilityWeight ?? "-"}, domPen=${p.seedDominancePenaltyWeight ?? "-"}, microPen=${p.seedMicroClusterPenaltyWeight ?? "-"}, labelPen=${p.seedLabelPenaltyWeight ?? "-"}), domThresh=${p.seedDominanceThreshold ?? "-"}
 evidenceRanking: sem=${e.semanticWeight}, freq=${e.frequencyWeight} | dimensionMode: ${p.dimensionMode}
-appliedDimensions: ${p.appliedNumDimensions} | varianceThreshold: ${p.varianceThreshold}
+appliedNumDimensions (meaningful): ${p.appliedNumDimensions} | layoutNumDimensions (3D): ${p.layoutNumDimensions ?? p.appliedNumDimensions}
+varianceThreshold: ${dimThresholdInfo}${thresholdWarning}
 autoUnit: ${p.autoUnit ?? false} | recommendedUnitMode: ${p.recommendedUnitMode?.label ?? "-"}
 autoWeights: ${p.autoWeights ?? false} | recommendedWeights: sem=${p.recommendedWeights?.semanticWeight ?? "-"}, freq=${p.recommendedWeights?.frequencyWeight ?? "-"}
 Model: ${rawExportContext.selectedModel} | Export: ${rawExportContext.exportTimestamp || new Date().toISOString()}`;
@@ -521,7 +553,10 @@ Model: ${rawExportContext.selectedModel} | Export: ${rawExportContext.exportTime
         const vec = analysis.jurorVectors[juror] || {};
         const weights = Object.entries(vec)
           .sort((a, b) => b[1] - a[1]) // Sort by weight descending
-          .map(([cid, w]) => `${cid}:${(w * 100).toFixed(1)}%`)
+          .map(([cid, w]) => {
+            const count = analysis.jurorCounts?.[juror]?.[cid] ?? 0;
+            return `${cid}:${count}(${(w * 100).toFixed(1)}%)`;
+          })
           .join(' ');
         return `${juror.padEnd(25)} ${weights}`;
       });
@@ -532,10 +567,12 @@ ${lines.join('\n')}`;
 
     // Format concepts
     const formatConcepts = () => {
-      const conceptMap = new Map(analysis.concepts.map((c, idx) => [c.id, { idx, concept: c }]));
       const lines = analysis.concepts.map((c, idx) => {
         const terms = c.topTerms.slice(0, 12).join(', ');
-        return `concept-${idx} | ${c.label} (${c.size} sentences)\n    Terms: ${terms}`;
+        const count = c.count ?? 0;
+        const mass = c.weight ? (c.weight).toFixed(1) : "0";
+        const title = resolveConceptTitle(c);
+        return `concept-${idx} | ${title} (count: ${count}, mass: ${mass})\n    Terms: ${terms}`;
       });
       return `CONCEPTS
 ${separator}
@@ -560,7 +597,9 @@ ${lines.join('\n\n')}`;
           const targetId = resolveNodeReference(l.target);
           const sourceLabel = sourceId.replace('juror:', '');
           const targetLabel = analysis.concepts.find(c => c.id === targetId)?.label || targetId;
-          return `${sourceLabel}→${targetLabel} (${((l.weight || 0) * 100).toFixed(1)}%, ${l.evidenceIds?.length || 0} evidence)`;
+          const count = l.evidenceIds?.length || 0;
+          const mass = ((l.weight || 0) * 100).toFixed(1);
+          return `${sourceLabel}→${targetLabel} (${count}, ${mass}%)`;
         })
         .join(', ');
 
@@ -589,7 +628,10 @@ Top Links: ${topLinks || 'N/A'}`;
         const totalVar = analysis.varianceStats.totalVariance || 1;
         const pct = Math.round((cumVar / totalVar) * 100 * 10) / 10;
         const explained = analysis.varianceStats.explainedVariances.slice(0, analysis.appliedNumDimensions);
-        varInfo = `${analysis.appliedNumDimensions} dimensions explain ${pct}% (${explained.map(v => v.toFixed(2)).join(', ')} / ${totalVar.toFixed(2)} total)`;
+        const layoutInfo = analysis.layoutNumDimensions && analysis.layoutNumDimensions !== analysis.appliedNumDimensions
+          ? ` (layout uses ${analysis.layoutNumDimensions} axis)`
+          : '';
+        varInfo = `${analysis.appliedNumDimensions} axis explain ${pct}% (${explained.map(v => v.toFixed(2)).join(', ')} / ${totalVar.toFixed(2)} total)${layoutInfo}`;
       }
 
       let kSearchInfo = '';
@@ -680,7 +722,7 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
 
   const overviewBadges = [
     { label: "Sentences", value: analysis.stats.totalSentences },
-    { label: "Concepts", value: analysis.stats.totalConcepts },
+    { label: "Concepts", value: analysis.finalKUsed ?? analysis.stats.totalConcepts },
     { label: "Jurors", value: analysis.stats.totalJurors },
     { label: "Source Files", value: jurorBlocks.length },
   ];
@@ -902,15 +944,71 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
           </div>
         </div>
 
+        {analysis.reportHealth && (
+          <div className="h-full rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
+              {renderHeading(<CheckCircle2 className="h-5 w-5" />, "bg-emerald-50 text-emerald-700", "Report Quality", "Structural health & reliability")}
+              <Badge variant="outline" className={cn(
+                "px-2 py-0 text-[11px] font-black border-2",
+                analysis.reportHealth.overallScore >= 0.8 ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                analysis.reportHealth.overallScore >= 0.6 ? "bg-amber-50 text-amber-700 border-amber-200" :
+                "bg-rose-50 text-rose-700 border-rose-200"
+              )}>
+                Score: {(analysis.reportHealth.overallScore * 100).toFixed(0)}%
+              </Badge>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                {Object.entries(analysis.reportHealth.metrics).map(([key, metric]) => (
+                  <div key={key} className="flex flex-col gap-1 rounded-lg border border-slate-100 bg-slate-50 p-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">{metric.label}</span>
+                      <div className={cn(
+                        "h-2 w-2 rounded-full",
+                        metric.status === "good" ? "bg-emerald-500" :
+                        metric.status === "warning" ? "bg-amber-500" : "bg-rose-500"
+                      )} />
+                    </div>
+                    <div className="text-sm font-black text-slate-900">
+                      {key === 'axisVariance' || key === 'singleJurorConcepts' ? `${metric.value.toFixed(0)}%` : metric.value.toFixed(1)}
+                    </div>
+                    <p className="text-[9px] text-slate-500 leading-tight">{metric.description}</p>
+                  </div>
+                ))}
+              </div>
+              {analysis.reportHealth.recommendations.length > 0 && (
+                <div className="space-y-1.5 rounded-lg border border-amber-100 bg-amber-50/30 p-3">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-700 uppercase tracking-widest">
+                    <AlertCircle className="h-3 w-3" />
+                    Recommendations
+                  </div>
+                  <ul className="list-inside list-disc space-y-1">
+                    {analysis.reportHealth.recommendations.map((rec, idx) => (
+                      <li key={idx} className="text-[11px] text-amber-800 font-medium leading-tight">{rec}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {showAutoKSelection && (
           <div className="h-full rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
               {renderHeading(<CircleDot className="h-5 w-5" />, "bg-indigo-50 text-indigo-700", "AutoK Selection", "Automatic cluster search")}
-              {analysis.recommendedK !== undefined && (
-                <Badge variant="outline" className="border-indigo-200 bg-indigo-50 px-2 py-0 text-[11px] font-black text-indigo-700">
-                  Chosen K = {analysis.recommendedK}
-                </Badge>
-              )}
+              <div className="flex items-center gap-1">
+                {analysis.autoKRecommended !== undefined && (
+                  <Badge variant="outline" className="border-indigo-200 bg-indigo-50 px-2 py-0 text-[11px] font-black text-indigo-700">
+                    AutoK recommended {analysis.autoKRecommended}
+                  </Badge>
+                )}
+                {analysis.finalKUsed !== undefined && (
+                  <Badge variant="secondary" className="border-indigo-200 bg-white px-2 py-0 text-[11px] font-black text-indigo-700">
+                    Final K {analysis.finalKUsed}
+                  </Badge>
+                )}
+              </div>
             </div>
             <div className="px-5 py-4 space-y-3">
               <div className="text-[12px] font-semibold text-slate-600">
@@ -919,6 +1017,11 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
               {analysis.autoKReasoning && (
                 <p className="text-[12px] text-slate-600">
                   Reasoning: {analysis.autoKReasoning}
+                </p>
+              )}
+              {analysis.conceptCountPolicy?.reasoning && (
+                <p className="text-[12px] text-slate-600">
+                  Policy: {analysis.conceptCountPolicy.reasoning}
                 </p>
               )}
               <div className="overflow-hidden rounded-lg border border-slate-100">
@@ -1369,7 +1472,14 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                       {juror}
                     </Badge>
                     <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                      <span>{sentences} sentences</span>
+                      <span className={cn(sentences < 8 && "text-amber-600 font-semibold")}>
+                        {sentences} sentences
+                        {sentences < 8 && (
+                          <Badge variant="outline" className="ml-1.5 h-4 border-amber-200 bg-amber-50 px-1 text-[9px] text-amber-700">
+                            Low Volume
+                          </Badge>
+                        )}
+                      </span>
                       <span className="h-3 w-px bg-slate-200" />
                       <span>{conceptCoverage} concept links</span>
                     </div>
@@ -1405,6 +1515,7 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                       const isExpanded = expandedJurorVectors[`${juror}:${id}`];
                       const detailIds = analysis.conceptHierarchy?.[id] || [];
                       const hasDetails = detailIds.length > 0;
+                      const count = analysis.jurorCounts?.[juror]?.[id] ?? 0;
 
                       return (
                         <div key={id} className="flex flex-col gap-1.5">
@@ -1427,7 +1538,7 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                               className="mr-1 inline-block h-2 w-2 rounded-full"
                               style={{ backgroundColor: colors?.base ?? "#312e81" }}
                             />
-                            {labelInfo?.label || id} • {formatPercent(weight)}
+                            {labelInfo?.label || id} • {count} ({formatPercent(weight / (sentencesByJuror.get(juror) ?? 1))})
                             {labelInfo?.ai && (
                               <Badge variant="outline" className="ml-2 border-white/60 bg-white/50 text-[9px] font-semibold" style={{ color: colors?.base ?? "#312e81" }}>
                                 AI
@@ -1457,7 +1568,7 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                                     variant="outline" 
                                     className="text-[9px] h-4 px-1.5 bg-white border-indigo-50 text-indigo-600 font-medium"
                                   >
-                                    {detail?.label || dId} | {formatPercent(dw, 0)}
+                                    {detail?.label || dId} | {analysis.jurorCountsDetail?.[juror]?.[dId] ?? 0} ({formatPercent(dw, 0)})
                                   </Badge>
                                 );
                               })}
@@ -1836,6 +1947,11 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                 )}
               </div>
             </div>
+            {labelSourceSummary?.text && (
+              <div className="px-5 pt-2 text-[11px] text-slate-500">
+                {labelSourceSummary.text}
+              </div>
+            )}
           </div>
           <div className="space-y-3 px-5 py-4">
             {visibleConcepts.map((concept) => {
@@ -1850,6 +1966,16 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
               const aiLabel = resolveInsightLabel(conceptInsight?.shortLabel);
               const isLoadingLabel = conceptInsight?.isLoadingLabel;
               const topTerms = Array.isArray(concept.topTerms) ? concept.topTerms : [];
+              const conceptTitle = resolveConceptTitle(concept);
+              const labelSourceLabel = concept.labelSource
+                ? concept.labelSource === "llm"
+                  ? "LLM label"
+                  : concept.labelSource === "seed"
+                    ? "Seed label"
+                    : "Fallback label"
+                : concept.isFallback
+                  ? "Fallback label"
+                  : "LLM label";
               
               const isExpanded = expandedPrimaryConcepts.has(concept.id);
               const detailIds = analysis.conceptHierarchy?.[concept.id] || [];
@@ -1873,7 +1999,7 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                             className="mr-1 inline-block h-2 w-2 rounded-full border border-black flex-shrink-0"
                             style={{ backgroundColor: conceptColors.get(concept.id)?.base ?? "#334155" }}
                           />
-                          {aiLabel || concept.label}
+                          {aiLabel || conceptTitle} • {concept.count ?? 0} ({formatPercent((concept.weight ?? 0) / analysis.stats.totalSentences)})
                         </Badge>
                         {aiLabel && (
                           <Badge variant="outline" className="border-indigo-100 bg-white text-[10px] font-semibold text-indigo-700">
@@ -1885,6 +2011,9 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                             Labeling...
                           </Badge>
                         )}
+                        <Badge variant="outline" className="border-slate-200 bg-white text-[10px] font-semibold text-slate-500">
+                          {labelSourceLabel}
+                        </Badge>
                         {hasDetails && (
                           <button 
                             onClick={() => togglePrimaryConceptExpand(concept.id)}
@@ -1899,7 +2028,7 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
 
                     <div className="flex items-center justify-between">
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Juror attribution
+                        Ownership (Hard Count / Soft Mass)
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className="border-slate-200 bg-white text-[11px] font-semibold text-slate-600">
@@ -1927,6 +2056,7 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                         visibleDistribution.map((entry) => {
                           const colors = conceptColors.get(concept.id);
                           const jurorColor = jurorColors.get(entry.juror);
+                          const jurorTotalSentences = sentencesByJuror.get(entry.juror) ?? 1;
                           return (
                             <Badge
                               key={entry.juror}
@@ -1943,7 +2073,7 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                                 className="mr-1 inline-block h-2 w-2 rounded-full"
                               style={{ backgroundColor: jurorColor?.base ?? colors?.base ?? "#334155" }}
                             />
-                            {entry.juror} | {formatPercent(entry.weight)}
+                            {entry.juror} | {entry.count ?? 0} ({formatPercent(entry.weight / jurorTotalSentences)})
                           </Badge>
                         );
                       })
@@ -1997,8 +2127,9 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                         
                         const detailDistribution = (analysis.jurorVectorsDetail ? Object.keys(analysis.jurorVectorsDetail).map(j => ({
                           juror: j,
-                          weight: analysis.jurorVectorsDetail![j][dId] ?? 0
-                        })).filter(d => d.weight > 0).sort((a, b) => b.weight - a.weight) : []).slice(0, 3);
+                          weight: analysis.jurorVectorsDetail![j][dId] ?? 0,
+                          count: analysis.jurorCountsDetail?.[j]?.[dId] ?? 0
+                        })).filter(d => d.weight > 0 || d.count > 0).sort((a, b) => b.weight - a.weight) : []).slice(0, 3);
 
                         return (
                           <div key={dId} className="rounded-lg border border-slate-100 bg-white p-2.5 shadow-sm">
@@ -2014,7 +2145,7 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                             <div className="flex flex-wrap gap-1 mb-2">
                               {detailDistribution.map(entry => (
                                 <span key={entry.juror} className="text-[9px] font-medium text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
-                                  {entry.juror} | {formatPercent(entry.weight, 0)}
+                                  {entry.juror} | {entry.count} ({formatPercent(entry.weight, 0)})
                                 </span>
                               ))}
                             </div>
@@ -2036,6 +2167,13 @@ API: ${rawExportContext.apiCallCount} calls${apiCost}`;
                 </div>
               );
             })}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-[11px] text-slate-500">
+          <div className="flex items-center justify-between">
+            <span>Report build ID: {analysis.analysisBuildId ?? "unknown"}</span>
+            <span>Final K used: {analysis.finalKUsed ?? analysis.stats.totalConcepts}</span>
           </div>
         </div>
 

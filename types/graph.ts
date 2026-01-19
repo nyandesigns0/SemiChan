@@ -8,7 +8,10 @@ export interface GraphNode extends SimulationNodeDatum {
   type: NodeType;
   label: string;
   size: number;
-  meta?: Record<string, unknown>;
+  meta?: Record<string, unknown> & {
+    confidence?: "high" | "medium" | "low";
+    qualityFlags?: Array<"low-volume" | "single-juror" | "small-concept">;
+  };
   /** Z coordinate for 3D visualization (from PCA reduction) */
   z?: number;
   /** Raw principal component values for N-dimensional visualization */

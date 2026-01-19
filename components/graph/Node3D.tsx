@@ -213,10 +213,14 @@ export function Node3D({
     color = nodeColor;
   }
 
-  // Mesh opacity: 1.0 for selected/primary, 0.3 for others to create "x-ray" effect
-  // This ensures both connected (0.7) and grayed out (0) nodes are transparent
   const meshOpacity = opacity === 1.0 ? 1.0 : 0.3;
-  const isGhost = meshOpacity < 1.0;
+  
+  // Phase 4.2: Dim low-confidence nodes
+  const confidence = (node.meta as any)?.confidence as string | undefined;
+  const isLowConfidence = confidence === "low";
+  const finalMeshOpacity = isLowConfidence && !isSelected && !hovered ? meshOpacity * 0.5 : meshOpacity;
+  
+  const isGhost = finalMeshOpacity < 1.0;
   const radius = (node.size / 16) * 0.3; // Scale down for 3D space
   const labelText = resolveConceptLabel(insight?.shortLabel, node.label);
   const shouldShowLabel = isSelected || hovered || isVisible;
@@ -474,7 +478,7 @@ export function Node3D({
         )}
         <meshPhysicalMaterial
           color={color}
-          opacity={meshOpacity}
+          opacity={finalMeshOpacity}
           transparent={true} // Always allow the material to blend
           depthWrite={!isGhost}
           roughness={isGhost ? 1 : 0.45}

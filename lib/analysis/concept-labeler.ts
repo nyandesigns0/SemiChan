@@ -21,6 +21,60 @@ function normalizePhrase(phrase: string): string {
   return phrase.trim().replace(/\s+/g, " ");
 }
 
+/**
+ * Sanitize a label by removing duplicate consecutive words and stripping leading/trailing stop fragments.
+ * Also removes common domain-specific low-information phrases.
+ */
+export function sanitizeLabel(label: string): string {
+  if (!label) return "";
+  
+  // 1. Remove common low-information n-grams and domain boilerplate
+  let cleaned = label.toLowerCase();
+  const boilerplate = [
+    "goes beyond", "goes goes", "goes", "it's good", "has clear", 
+    "rendered rendered", "proposal proposal", "beyond", "project", 
+    "designing spaces", "moving forward", "overall", "specifically",
+    "seems to", "appears to", "is about", "relates to"
+  ];
+  
+  // 2. Remove duplicate consecutive words (e.g., "rendered rendered" -> "rendered")
+  const words = label.split(/\s+/);
+  const dedupedWords: string[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    if (i === 0 || word.toLowerCase() !== words[i - 1].toLowerCase()) {
+      dedupedWords.push(word);
+    }
+  }
+  
+  // 3. Filter out words that are leading/trailing stop words or too short
+  let start = 0;
+  while (start < dedupedWords.length && (STOPWORDS.has(dedupedWords[start].toLowerCase()) || dedupedWords[start].length < 2)) {
+    start++;
+  }
+  
+  let end = dedupedWords.length - 1;
+  while (end >= start && (STOPWORDS.has(dedupedWords[end].toLowerCase()) || dedupedWords[end].length < 2)) {
+    end--;
+  }
+  
+  let finalWords = dedupedWords.slice(start, end + 1);
+
+  // 4. Secondary deduplication and boilerplate removal
+  if (finalWords.length > 0) {
+    const forbidden = new Set(["beyond", "project", "designing", "spaces", "goes"]);
+    // If the label is just a single forbidden word, keep it as fallback but otherwise prune it from start/end
+    if (finalWords.length > 1) {
+      while (finalWords.length > 0 && forbidden.has(finalWords[0].toLowerCase())) finalWords.shift();
+      while (finalWords.length > 0 && forbidden.has(finalWords[finalWords.length - 1].toLowerCase())) finalWords.pop();
+    }
+  }
+
+  if (finalWords.length === 0) return label; // Fallback to original if we stripped everything
+  
+  return finalWords.join(" ");
+}
+
 function cleanToken(token: string): string {
   return token.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "");
 }
@@ -91,7 +145,8 @@ export function contrastiveLabelCluster(
     bm25Model,
     sentencesInCluster,
     allSentences,
-    Math.max(topNCount * 2, 8)
+    Math.max(topNCount * 2, 8),
+    nearestSentences
   );
 
   const seenStems = new Set<string>();
@@ -176,7 +231,8 @@ export function contrastiveLabelCluster(
   }
 
   const labelParts = deduped.slice(0, topNCount);
-  const label = labelParts.length > 0 ? labelParts.join(" ") : (fallbackId ?? "concept:unknown");
+  const rawLabel = labelParts.length > 0 ? labelParts.join(" ") : (fallbackId ?? "concept:unknown");
+  const label = sanitizeLabel(rawLabel);
 
   return { label, keyphrases: keyphrases.length > 0 ? keyphrases : fallbackKeyphrases, terms };
 }
@@ -184,13 +240,16 @@ export function contrastiveLabelCluster(
 /**
  * Get top terms for a cluster using contrastive BM25 scoring.
  * Used for concept labels and detailed metadata.
+ * 
+ * If BM25 terms are empty, backfills with meaningful tokens from nearest sentences.
  */
 export function getClusterTopTerms(
   semanticCentroid: Float64Array,
   bm25Model: BM25Model,
   sentencesInCluster: string[],
   allSentences: string[],
-  topCount: number = 12
+  topCount: number = 12,
+  nearestSentences?: string[]
 ): string[] {
   const scores = computeContrastiveTermScores(
     sentencesInCluster,
@@ -200,7 +259,38 @@ export function getClusterTopTerms(
     0.8 // maxDFPercent
   );
 
-  return scores.slice(0, topCount).map(s => s.term);
+  let terms = scores.slice(0, topCount).map(s => s.term);
+
+  // Backfill if empty or too few terms
+  if (terms.length < 3) {
+    const sourceDocs = nearestSentences && nearestSentences.length > 0 ? nearestSentences : sentencesInCluster;
+    const tokenCounts = new Map<string, number>();
+    const existingTerms = new Set(terms.map(t => t.toLowerCase()));
+    
+    for (const doc of sourceDocs) {
+      const tokens = doc.toLowerCase().replace(/[^a-z0-9\s'-]/g, " ").split(/\s+/);
+      for (const token of tokens) {
+        const cleaned = cleanToken(token);
+        if (cleaned && cleaned.length >= 3 && !STOPWORDS.has(cleaned) && !existingTerms.has(cleaned)) {
+          tokenCounts.set(cleaned, (tokenCounts.get(cleaned) ?? 0) + 1);
+        }
+      }
+    }
+    
+    const backfillTerms = Array.from(tokenCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, topCount - terms.length)
+      .map(entry => entry[0]);
+    
+    terms = [...terms, ...backfillTerms];
+  }
+
+  // Final fallback: if still empty, use a placeholder
+  if (terms.length === 0) {
+    terms = ["unclassified", "general", "feedback"];
+  }
+
+  return terms;
 }
 
 /**

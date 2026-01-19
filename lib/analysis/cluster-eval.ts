@@ -60,6 +60,7 @@ export interface SelectBestSeedOptions extends SeedScoreWeights {
   perturbations?: number;
   baseSeed?: number;
   evidenceRankingParams?: { semanticWeight: number; frequencyWeight: number };
+  qualityParams?: CutQualityParams;
   extraHashComponent?: string;
   onProgress?: (evaluated: number, total: number, best?: SeedEvaluationResult, k?: number) => void;
 }
@@ -374,7 +375,11 @@ export function evaluateSeed(
   vectors: Float64Array[],
   k: number,
   seed: number,
-  options: SeedScoreWeights & { perturbations?: number } = {}
+  options: SeedScoreWeights & { 
+    perturbations?: number;
+    sentences?: SentenceRecord[];
+    qualityParams?: CutQualityParams;
+  } = {}
 ): SeedEvaluationResult {
   const km = kmeansCosine(vectors, k, 25, seed);
   const assignments = km.assignments;
@@ -400,10 +405,21 @@ export function evaluateSeed(
     options.perturbations ?? 3
   );
 
+  // Calculate juror support penalty if sentences are provided
+  let supportPenalty = 0;
+  if (options.sentences) {
+    const quality = evaluateCutQuality(assignments, options.sentences, centroids, options.qualityParams);
+    if (!quality.isValid) {
+      // Scale penalty by number of violations
+      const violations = (quality.penalties.supportViolations || 0) + (quality.penalties.massViolations || 0);
+      supportPenalty = violations * 0.1; 
+    }
+  }
+
   const score = scoreClusteringOutcome(
     { coherence, separation, stability, labelability, maxClusterShare, microClusters, k: effectiveK },
     options
-  );
+  ) - supportPenalty;
 
   return {
     seed,
@@ -451,7 +467,12 @@ export function selectBestSeed(
   let best: SeedEvaluationResult | undefined;
 
   candidates.forEach((candidate, idx) => {
-    const result = evaluateSeed(vectors, k, candidate, { ...weights, perturbations });
+    const result = evaluateSeed(vectors, k, candidate, { 
+      ...weights, 
+      perturbations,
+      sentences,
+      qualityParams: options.qualityParams 
+    });
     leaderboard.push(result);
 
     if (
@@ -534,6 +555,7 @@ export function evaluateKRangeWithAutoSeed(
       candidateCount: seedOptions.candidateCount,
       perturbations: seedOptions.perturbations ?? 3,
       evidenceRankingParams: seedOptions.evidenceRankingParams,
+      qualityParams: _qualityParams,
       extraHashComponent: `k=${k}`,
       coherenceWeight: seedOptions.coherenceWeight,
       separationWeight: seedOptions.separationWeight,
@@ -579,11 +601,42 @@ export function evaluateKRangeWithAutoSeed(
     }
   }
 
+  let reason = "Highest Auto-Seed composite score";
+  const validMetrics = metrics.filter(m => m.valid);
+  const candidatesStr = validMetrics.map(m => m.k).join(", ");
+
+  if (metrics.length > 1) {
+    const winner = metrics.find(m => m.k === bestK);
+    const objective = `Objective: maximize score (coherence + separation + stability - penalties) with k-penalty=${kPenalty.toFixed(4)} and epsilon=${epsilon.toFixed(3)}`;
+    
+    if (winner) {
+      const candidatesInfo = `Candidates: [${candidatesStr}]`;
+      const sortedByScore = [...validMetrics].sort((a, b) => b.score - a.score);
+      const topScorer = sortedByScore[0];
+      
+      if (topScorer.k !== winner.k) {
+        const diff = topScorer.score - winner.score;
+        if (winner.maxClusterShare < topScorer.maxClusterShare) {
+          reason = `${objective}. ${candidatesInfo}. K=${winner.k} selected over K=${topScorer.k} due to better distribution (${(winner.maxClusterShare * 100).toFixed(1)}% vs ${(topScorer.maxClusterShare * 100).toFixed(1)}% max share) within epsilon range (score diff=${diff.toFixed(4)})`;
+        } else {
+          reason = `${objective}. ${candidatesInfo}. K=${winner.k} selected as a more parsimonious or stable model within epsilon range of K=${topScorer.k} (score diff=${diff.toFixed(4)})`;
+        }
+      } else {
+        const runnerUp = sortedByScore[1];
+        if (runnerUp) {
+          reason = `${objective}. ${candidatesInfo}. K=${winner.k} selected with score ${winner.score.toFixed(3)} (runner-up K=${runnerUp.k} score ${runnerUp.score.toFixed(3)})`;
+        } else {
+          reason = `${objective}. ${candidatesInfo}. K=${winner.k} selected as the best scoring model.`;
+        }
+      }
+    }
+  }
+
   return {
     recommendedK: bestK,
     recommendedSeed: bestSeed,
     metrics,
-    reason: "Highest Auto-Seed composite score",
+    reason,
     seedLeaderboard: winningLeaderboard,
   };
 }
@@ -762,10 +815,12 @@ export function evaluateKRange(
   }
 
   const validMetrics = metrics.filter((m) => m.valid && Number.isFinite(m.score));
+  const candidatesStr = validMetrics.map(m => m.k).join(", ");
+  const objective = `Objective: balance silhouette (${(1 - qualityWeight).toFixed(1)}) and quality (${qualityWeight.toFixed(1)}) minus complex/dominance penalties (k-penalty=${kPenalty}, epsilon=${epsilon})`;
 
   // If no valid K found, fallback to kMin but warn?
   if (validMetrics.length === 0) {
-    return { recommendedK: kMin, metrics, reason: "No valid K found; fallback to minimum" };
+    return { recommendedK: kMin, metrics, reason: `${objective}. No valid K found among tested values; falling back to kMin=${kMin}.` };
   }
 
   // Find K with maximum score
@@ -783,7 +838,7 @@ export function evaluateKRange(
     }
   }
 
-  let reason = "Highest penalized score";
+  let reason = `${objective}. Candidates: [${candidatesStr}]. K=${bestK} selected as best scoring model.`;
 
   // Elbow detection if we hit the cap
   if (bestK === actualKMax && validMetrics.length > 1) {
@@ -800,11 +855,11 @@ export function evaluateKRange(
     if (elbowCandidate && bestScore - elbowCandidate.score <= epsilon) {
       bestK = elbowCandidate.k;
       bestScore = elbowCandidate.score;
-      reason = "Elbow detection near upper bound";
+      reason = `${objective}. Candidates: [${candidatesStr}]. Elbow detection: K=${bestK} selected because adding more clusters yielded diminishing returns (drop after K=${bestK})`;
     } else if (elbowCandidate) {
       bestK = elbowCandidate.k;
       bestScore = elbowCandidate.score;
-      reason = "Upper-bound hit; choosing elbow";
+      reason = `${objective}. Candidates: [${candidatesStr}]. Upper-bound hit; choosing elbow at K=${bestK}`;
     }
   }
 
@@ -813,9 +868,20 @@ export function evaluateKRange(
     .filter((m) => m.k < bestK && bestScore - m.score <= epsilon)
     .sort((a, b) => a.k - b.k);
   if (smallerWithinEpsilon.length > 0) {
+    const originalBestK = bestK;
     bestK = smallerWithinEpsilon[0].k;
     bestScore = smallerWithinEpsilon[0].score;
-    reason = "Scores within epsilon; prefer simpler K";
+    reason = `${objective}. Candidates: [${candidatesStr}]. Simplicity: K=${bestK} preferred over K=${originalBestK} (scores within epsilon ${epsilon})`;
+  }
+
+  // If we have a clear runner up, add it to reason if it's still generic
+  if (reason.includes("best scoring model") && validMetrics.length > 1) {
+    const sorted = [...validMetrics].sort((a, b) => b.score - a.score);
+    const winner = sorted[0];
+    const runnerUp = sorted[1];
+    if (winner.score - runnerUp.score > epsilon) {
+       reason = `${objective}. Candidates: [${candidatesStr}]. K=${winner.k} (score ${winner.score.toFixed(3)}) significantly outperformed runner-up K=${runnerUp.k} (score ${runnerUp.score.toFixed(3)})`;
+    }
   }
 
   return { recommendedK: bestK, metrics, reason };

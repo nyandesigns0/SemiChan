@@ -37,6 +37,11 @@ export interface ExportAnalysisParams {
   appliedNumDimensions: number;
   dimensionMode: "manual" | "elbow" | "threshold";
   varianceThreshold: number;
+  layoutNumDimensions?: number;
+  scanLimitUsed?: number;
+  thresholdNotReached?: boolean;
+  maxVarianceAchieved?: number;
+  maxScanDimensions?: number;
   showAxes: boolean;
   showGraph: boolean;
   enableAxisLabelAI: boolean;

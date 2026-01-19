@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
       numDimensions,
       dimensionMode,
       varianceThreshold,
+      maxScanDimensions,
       softMembershipParams,
       cutQualityParams,
       model,
@@ -177,6 +178,7 @@ export async function POST(request: NextRequest) {
         numDimensions: numDimensions || 3,
         dimensionMode,
         varianceThreshold,
+        maxScanDimensions,
         softMembershipParams,
         cutQualityParams,
         onProgress: (payload) => {

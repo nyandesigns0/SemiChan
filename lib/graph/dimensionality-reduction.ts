@@ -405,7 +405,8 @@ export function computeNode3DPositions(
   conceptIds: string[],
   numDimensions: number = 3,
   scale: number = 10,
-  seed: number = 42
+  seed: number = 42,
+  useOnlyConcepts?: string[]
 ): { 
   positions: Map<string, { x: number; y: number; z: number }>; 
   conceptPcValues: Map<string, number[]>;
@@ -420,8 +421,47 @@ export function computeNode3DPositions(
   const conceptPcValues = new Map<string, number[]>();
   const jurorPcValues = new Map<string, number[]>();
   
-  // First, get N-D positions for concepts from centroids
-  const { coords: conceptCoords, pcValues: conceptRawPcValues, varianceStats } = reduceToND(conceptCentroids, numDimensions, scale, seed);
+  // Phase 3.2: Hierarchy-Based Axis Computation
+  // If useOnlyConcepts is provided, compute PCA based on those concepts only
+  let pcaResult;
+  if (useOnlyConcepts && useOnlyConcepts.length > 1) {
+    const subsetIndices = useOnlyConcepts
+      .map(id => conceptIds.indexOf(id))
+      .filter(idx => idx >= 0);
+    
+    if (subsetIndices.length > 1) {
+      const subsetCentroids = subsetIndices.map(idx => conceptCentroids[idx]);
+      const subsetPca = reduceToND(subsetCentroids, numDimensions, scale, seed);
+      
+      // Project ALL concepts into this space
+      const mean = computeMean(subsetCentroids);
+      const centeredAll = centerVectors(conceptCentroids, mean);
+      
+      // Find top N principal components from subset (need to extract from reduceToND or recompute)
+      // Since reduceToND doesn't return components, we'll recompute power iteration here or modify reduceToND
+      // Let's modify reduceToND to return components or add a projection helper.
+      // For now, I'll re-run powerIteration on centered subset.
+      const maxPossibleComponents = Math.max(1, Math.min(numDimensions, subsetCentroids.length - 1, subsetCentroids[0].length));
+      const centeredSubset = centerVectors(subsetCentroids, mean);
+      const { components, variances } = powerIteration(centeredSubset, maxPossibleComponents, 100, seed);
+      
+      const ndCoords = projectToND(centeredAll, components);
+      const axisDirections = generateSymmetricAxisDirections(components.length);
+      const coords3D = projectNDTo3D(ndCoords, axisDirections);
+      
+      pcaResult = {
+        coords: normalizeCoordinates(coords3D, scale),
+        pcValues: ndCoords,
+        varianceStats: subsetPca.varianceStats
+      };
+    } else {
+      pcaResult = reduceToND(conceptCentroids, numDimensions, scale, seed);
+    }
+  } else {
+    pcaResult = reduceToND(conceptCentroids, numDimensions, scale, seed);
+  }
+
+  const { coords: conceptCoords, pcValues: conceptRawPcValues, varianceStats } = pcaResult;
   const effectiveDims = Math.max(1, varianceStats.explainedVariances.length || numDimensions);
   
   for (let i = 0; i < conceptIds.length; i++) {

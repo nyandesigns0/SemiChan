@@ -123,7 +123,9 @@ export function processPrompt(
     const isEmptyString = value === "";
 
     if (value === undefined || value === null || isEmptyArray || isEmptyString) {
-      console.warn("Prompt variable missing, using fallback.", { variableName });
+      if (!variable.fallback) {
+        console.warn("Prompt variable missing, using fallback.", { variableName });
+      }
       return fallback;
     }
 

@@ -286,6 +286,8 @@ export interface TwoLayerCut {
  * @param detailParams Constraints for the detail layer
  * @param primaryGranularity Coarseness for primary layer (default 70%)
  * @param detailGranularity Fineness for detail layer (default 30%)
+ * @param detailAutoRange Optional range for automatic detail granularity
+ * @param primaryTargetK Optional target number of clusters for primary layer
  * @returns Primary and detail assignments with mapping
  */
 export function cutDendrogramTwoLayer(
@@ -296,26 +298,35 @@ export function cutDendrogramTwoLayer(
   detailParams: CutQualityParams,
   primaryGranularity: number = 70,
   detailGranularity: number = 30,
-  detailAutoRange?: { min: number; max: number; step?: number }
+  detailAutoRange?: { min: number; max: number; step?: number },
+  primaryTargetK?: number
 ): TwoLayerCut {
   const n = vectors.length;
   if (n === 0) {
     return { primaryAssignments: [], detailAssignments: [], parentMap: {} };
   }
 
-  // 1. Get primary assignments using coarse threshold and quality constraints
-  const primaryAssignments = cutDendrogramByThreshold(
-    dendrogram, 
-    vectors, 
-    sentences, 
-    primaryGranularity, 
-    primaryParams
-  );
+  // 1. Get primary assignments
+  let primaryAssignments: number[];
+  if (primaryTargetK) {
+    // If target K is provided, we use a count-based cut but still validate quality
+    primaryAssignments = cutDendrogramByCount(vectors, primaryTargetK);
+    // Note: we could add a quality-based refinement here if needed
+  } else {
+    primaryAssignments = cutDendrogramByThreshold(
+      dendrogram, 
+      vectors, 
+      sentences, 
+      primaryGranularity, 
+      primaryParams
+    );
+  }
   
   const primaryClusterIds = Array.from(new Set(primaryAssignments)).sort((a, b) => a - b);
   const numPrimary = primaryClusterIds.length;
 
-  // 2. For each primary cluster, perform a detail cut
+  // Adaptive adjustment: if primary layer is too fragmented, adjust detail targets
+  const effectiveDetailAutoRange = detailAutoRange || (numPrimary > 8 ? { min: 40, max: 70, step: 10 } : undefined);
   const detailAssignments = new Array(n).fill(-1);
   const parentMap: Record<number, number> = {};
   const detailGranularities: Record<number, number> = {};
@@ -350,15 +361,15 @@ export function cutDendrogramTwoLayer(
     let chosenGranularity = detailGranularity;
     let subAssignments: number[] = [];
 
-    if (detailAutoRange) {
+    if (effectiveDetailAutoRange) {
       const detailEval = findOptimalDetailGranularity(
         subDendrogram,
         clusterVectors,
         clusterSentences,
         detailParams,
-        detailAutoRange.min,
-        detailAutoRange.max,
-        detailAutoRange.step ?? 5
+        effectiveDetailAutoRange.min,
+        effectiveDetailAutoRange.max,
+        effectiveDetailAutoRange.step ?? 5
       );
       chosenGranularity = detailEval.granularity;
       subAssignments = detailEval.assignments;

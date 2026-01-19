@@ -92,12 +92,27 @@ export function useConceptSummarizer(
       neutral: counts.neutral / total,
     };
     
+    const totalSentences = analysis.sentences.length || 1;
+    const relatedAxesScores = analysis.anchorAxisScores?.concepts?.[conceptId];
+    const relatedAxesString = relatedAxesScores 
+      ? Object.entries(relatedAxesScores)
+          .map(([axis, score]) => `${axis}: ${score.toFixed(2)}`)
+          .join(", ")
+      : undefined;
+
     const requestBody: ConceptSynthesisRequest = {
       id: conceptId,
       label_seed: insights[conceptId].shortLabel || concept.label,
       top_ngrams: concept.topTerms,
       evidence_sentences: concept.representativeSentences || [],
       stance_mix,
+      concept_share_pct: conceptSentences.length / totalSentences,
+      centroid_semantic_terms: concept.topTerms,
+      juror_contribution: Object.entries(counts)
+        .filter(([, count]) => count > 0)
+        .map(([stance, count]) => `${stance}: ${count}`)
+        .join(", "),
+      related_axes_scores: relatedAxesString,
       model: selectedModel
     };
 

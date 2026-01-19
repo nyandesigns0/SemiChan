@@ -105,6 +105,8 @@ interface AnalysisControlsProps {
   onDimensionModeChange: (mode: "manual" | "elbow" | "threshold") => void;
   varianceThreshold: number;
   onVarianceThresholdChange: (value: number) => void;
+  maxScanDimensions: number;
+  onMaxScanDimensionsChange: (value: number) => void;
   appliedNumDimensions?: number;
 }
 
@@ -179,6 +181,8 @@ export function AnalysisControls({
   onDimensionModeChange,
   varianceThreshold,
   onVarianceThresholdChange,
+  maxScanDimensions,
+  onMaxScanDimensionsChange,
   appliedNumDimensions,
 }: AnalysisControlsProps) {
   const [showClusteringSettings, setShowClusteringSettings] = useState(false);
@@ -1144,10 +1148,31 @@ export function AnalysisControls({
                       <span>More Compression</span>
                       <span>More Accuracy</span>
                     </div>
-                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-500">
-                      <span>Applied Axes</span>
+
+                    <div className="h-px bg-slate-100 my-2" />
+
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-[11px] font-bold text-slate-700">Max Scan Dimensions</Label>
+                        <Badge variant="secondary" className="bg-indigo-50 px-1.5 py-0 text-[9px] font-bold text-indigo-700">
+                          {maxScanDimensions}
+                        </Badge>
+                      </div>
+                      <Slider 
+                        value={[maxScanDimensions]} 
+                        onValueChange={([v]) => onMaxScanDimensionsChange(v)} 
+                        min={10} 
+                        max={50} 
+                        step={1} 
+                        className="py-1"
+                      />
+                      <p className="text-[8px] text-slate-400 italic">Upper bound for threshold discovery</p>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 mt-2">
+                      <span>Applied Axis</span>
                       <Badge variant="secondary" className="bg-white px-1.5 py-0 text-[9px] font-bold text-indigo-700 border border-indigo-100">
-                        {effectiveAxes} axis{effectiveAxes === 1 ? "" : "es"}
+                        {effectiveAxes} axis
                       </Badge>
                     </div>
                   </div>
@@ -1159,9 +1184,9 @@ export function AnalysisControls({
                       Automated dimension selection using the Scree Plot Elbow method. Finds the "sweet spot" where adding more axes yields diminishing returns in explained variance.
                     </p>
                     <div className="flex items-center justify-between text-[10px] font-bold text-slate-500">
-                      <span>Applied Axes</span>
+                      <span>Applied Axis</span>
                       <Badge variant="secondary" className="bg-white px-1.5 py-0 text-[9px] font-bold text-indigo-700 border border-indigo-100">
-                        {effectiveAxes} axis{effectiveAxes === 1 ? "" : "es"}
+                        {effectiveAxes} axis
                       </Badge>
                     </div>
                   </div>

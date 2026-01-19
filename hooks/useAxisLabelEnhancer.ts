@@ -169,6 +169,7 @@ export function useAxisLabelEnhancer(
           body: JSON.stringify({
             axisLabels: axisLabelsRequest,
             model: selectedModel,
+            analysis: analysisSnapshot, // Pass analysis for context (top concepts, variance)
           }),
         });
 

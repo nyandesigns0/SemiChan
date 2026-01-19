@@ -79,6 +79,8 @@ interface AnalysisControlsAccordionProps {
   onDimensionModeChange: (mode: "manual" | "elbow" | "threshold") => void;
   varianceThreshold: number;
   onVarianceThresholdChange: (value: number) => void;
+  maxScanDimensions: number;
+  onMaxScanDimensionsChange: (value: number) => void;
   appliedNumDimensions?: number;
 }
 
@@ -249,6 +251,8 @@ export function AnalysisControlsAccordion({
             onDimensionModeChange={onDimensionModeChange}
             varianceThreshold={varianceThreshold}
             onVarianceThresholdChange={onVarianceThresholdChange}
+            maxScanDimensions={maxScanDimensions}
+            onMaxScanDimensionsChange={onMaxScanDimensionsChange}
             appliedNumDimensions={appliedNumDimensions}
           />
         </div>

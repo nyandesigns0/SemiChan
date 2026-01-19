@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Brain, Fingerprint, Users, MessageSquare, Layers, ChevronDown, ChevronRight } from "lucide-react";
+import { Sparkles, Brain, Fingerprint, Users, MessageSquare, Layers, ChevronDown, ChevronRight, Tag, AlertTriangle, ShieldCheck, Info } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils/cn";
@@ -403,8 +403,36 @@ export function NodeInspector({ node, analysis, jurorBlocks, insight, onFetchSum
     const detailConcepts = (analysis.detailConcepts || []).filter(dc => detailIds.includes(dc.id));
     const hasSubthemes = isPrimary && detailIds.length > 0;
 
+    const confidence = (node.meta as any)?.confidence as "high" | "medium" | "low" | undefined;
+    const qualityFlags = (node.meta as any)?.qualityFlags as string[] | undefined;
+
     return (
       <Tabs defaultValue="insight" className="w-full">
+        <div className="mb-4 space-y-2">
+          {confidence && (
+            <div className="flex items-center gap-2">
+              <Badge 
+                variant="outline" 
+                className={cn(
+                  "text-[10px] font-black uppercase tracking-wider px-2 py-0.5 border-2",
+                  confidence === "high" ? "text-emerald-600 border-emerald-200 bg-emerald-50" :
+                  confidence === "medium" ? "text-amber-600 border-amber-200 bg-amber-50" :
+                  "text-rose-600 border-rose-200 bg-rose-50"
+                )}
+              >
+                {confidence === "high" ? <ShieldCheck className="h-3 w-3 mr-1" /> : 
+                 confidence === "medium" ? <Info className="h-3 w-3 mr-1" /> : 
+                 <AlertTriangle className="h-3 w-3 mr-1" />}
+                {confidence} confidence
+              </Badge>
+              {qualityFlags && qualityFlags.length > 0 && qualityFlags.map(flag => (
+                <Badge key={flag} variant="outline" className="text-[9px] font-bold text-slate-500 border-slate-200 bg-slate-50 px-1.5 py-0.5">
+                  {flag.replace('-', ' ')}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
         <TabsList className={cn("grid w-full mb-4", hasSubthemes ? "grid-cols-6" : "grid-cols-5")}>
           <TabsTrigger 
             value="insight" 

@@ -23,6 +23,8 @@ export interface AnalyzeRequest {
   dimensionMode?: "manual" | "elbow" | "threshold";
   /** Variance threshold for threshold method (0.0-1.0, default 0.9) */
   varianceThreshold?: number;
+  /** Max dimensions to scan in threshold mode (default 30) */
+  maxScanDimensions?: number;
   
   // New clustering options
   clusteringMode?: "kmeans" | "hierarchical";
@@ -69,6 +71,11 @@ export interface AnalyzeRequest {
   /** LLM model to use for analysis (e.g., GPT-4o) */
   model?: string;
   anchorAxes?: AnchorAxis[];
+  enableLabelQualityGate?: boolean;
+  semanticMergeThreshold?: number;
+  conceptCountPolicyEnabled?: boolean;
+  jurorNormalizationEnabled?: boolean;
+  reportHealthEnabled?: boolean;
 }
 
 export interface AnalyzeResponse {
@@ -91,6 +98,7 @@ export interface AxisSynthesisRequest {
     name?: string;
   }>;
   model?: string;
+  analysis?: AnalysisResult;
 }
 
 export interface AxisSynthesisResponse {
@@ -116,6 +124,10 @@ export interface ConceptBrief {
     suggestion: number;
     neutral: number;
   };
+  concept_share_pct?: number;
+  centroid_semantic_terms?: string[];
+  juror_contribution?: string;
+  related_axes_scores?: string;
 }
 
 export interface ConceptSynthesisRequest extends ConceptBrief {
