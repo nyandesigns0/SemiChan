@@ -7,9 +7,10 @@ import { cn } from "@/lib/utils/cn";
 interface FileUploaderWithDropProps {
   onFileSelect: (file: File) => Promise<void>;
   loading: boolean;
+  className?: string;
 }
 
-export function FileUploaderWithDrop({ onFileSelect, loading }: FileUploaderWithDropProps) {
+export function FileUploaderWithDrop({ onFileSelect, loading, className }: FileUploaderWithDropProps) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -50,10 +51,10 @@ export function FileUploaderWithDrop({ onFileSelect, loading }: FileUploaderWith
   };
 
   return (
-    <div className="space-y-4">
+    <div className={cn("flex flex-col gap-4", className)}>
       <div
         className={cn(
-          "relative border-2 border-dashed rounded-xl p-8 transition-all",
+          "relative border-2 border-dashed rounded-xl p-8 transition-all flex-1 flex flex-col items-center justify-center",
           isDragging
             ? "border-indigo-500 bg-indigo-50 scale-[1.02]"
             : "border-slate-300 hover:border-indigo-400 hover:bg-slate-50",

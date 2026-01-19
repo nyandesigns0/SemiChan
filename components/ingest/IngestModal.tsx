@@ -200,10 +200,10 @@ export function IngestModal({
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="pdf" className="flex-1 overflow-auto mt-0 min-h-0">
-              <FileUploaderWithDrop onFileSelect={handleFile} loading={loading} />
+            <TabsContent value="pdf" className="flex-1 flex flex-col mt-0 min-h-0">
+              <FileUploaderWithDrop onFileSelect={handleFile} loading={loading} className="flex-1" />
               {designerText && (
-                <p className="mt-3 text-xs text-slate-500">
+                <p className="mt-3 text-xs text-slate-500 shrink-0">
                   Parsed {designerText.length.toLocaleString()} characters. Review in the Text tab.
                 </p>
               )}
@@ -481,15 +481,15 @@ export function IngestModal({
         </TabsContent>
 
         <TabsContent value="upload" className="flex-1 flex flex-col min-h-0 mt-0">
-          <div className="mb-4 flex items-start gap-3 p-4 bg-amber-50 border border-amber-100 rounded-2xl">
+          <div className="mb-4 flex items-start gap-3 p-4 bg-amber-50 border border-amber-100 rounded-2xl shrink-0">
             <Info className="h-4 w-4 text-amber-500 mt-0.5" />
             <p className="text-xs text-amber-700 leading-relaxed font-medium">
               Uploading a file will automatically attempt to segment the text into individual juror blocks. 
               Review the results in the <strong>Juror List</strong> tab after processing.
             </p>
           </div>
-          <div className="flex-1 overflow-auto">
-            <FileUploaderWithDrop onFileSelect={handleFile} loading={loading} />
+          <div className="flex-1 min-h-0 flex flex-col">
+            <FileUploaderWithDrop onFileSelect={handleFile} loading={loading} className="flex-1" />
           </div>
         </TabsContent>
       </Tabs>
@@ -518,7 +518,7 @@ export function IngestModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] min-w-[800px] min-h-[75vh] flex flex-col p-0 gap-0 border-none rounded-3xl overflow-hidden shadow-2xl">
+      <DialogContent className="max-w-5xl max-h-[90vh] min-w-[1000px] min-h-[75vh] flex flex-col p-0 gap-0 border-none rounded-3xl overflow-hidden shadow-2xl">
         <DialogHeader className="px-8 pt-8 pb-6 border-b border-slate-100 bg-white shrink-0">
           <div className="flex items-center gap-3">
             <div className="rounded-2xl bg-slate-900 p-2.5 text-white shadow-xl">
