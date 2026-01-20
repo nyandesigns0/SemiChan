@@ -201,7 +201,7 @@ export function InspectorPanel({
             active={currentTab === "analysis"}
             onClick={() => handleTabChange("analysis")}
             icon={<BarChart3 className="h-3.5 w-3.5" />}
-            label="Analysis"
+            label="Data"
           />
           <TabButton
             active={currentTab === "reports"}

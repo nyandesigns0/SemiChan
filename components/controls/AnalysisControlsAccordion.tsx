@@ -155,6 +155,8 @@ export function AnalysisControlsAccordion({
   onDimensionModeChange,
   varianceThreshold,
   onVarianceThresholdChange,
+  maxScanDimensions,
+  onMaxScanDimensionsChange,
   appliedNumDimensions,
 }: AnalysisControlsAccordionProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -169,7 +171,7 @@ export function AnalysisControlsAccordion({
           <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600 ring-1 ring-indigo-100/50">
             <Sparkles className="h-5 w-5" />
           </div>
-          <span className="font-bold text-slate-800">Analysis Controls</span>
+          <span className="font-bold text-slate-800">Data Controls</span>
         </div>
         {isExpanded ? (
           <ChevronUp className="h-5 w-5 text-slate-400" />
