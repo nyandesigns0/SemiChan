@@ -29,10 +29,12 @@ interface IngestModalProps {
   mode: IngestModalMode;
   jurorBlocks?: JurorBlock[];
   onAddJurorBlock?: (block: JurorBlock) => void;
+  onAddJurorBlocks?: (blocks: JurorBlock[]) => void;
   onUpdateJurorBlock?: (index: number, block: JurorBlock) => void;
   onRemoveJurorBlock?: (index: number) => void;
   onClearJurorBlocks?: () => void;
   onFileProcessed?: () => void;
+  onConfirm?: () => void;
   onAddDesignerBlock?: (block: DesignerBlock) => void;
 }
 
@@ -42,10 +44,12 @@ export function IngestModal({
   mode,
   jurorBlocks = [],
   onAddJurorBlock,
+  onAddJurorBlocks,
   onUpdateJurorBlock,
   onRemoveJurorBlock,
   onClearJurorBlocks,
   onFileProcessed,
+  onConfirm,
   onAddDesignerBlock,
 }: IngestModalProps) {
   const [loading, setLoading] = useState(false);
@@ -125,7 +129,11 @@ export function IngestModal({
         setActiveTab("text");
       } else {
         const blocks = segmentByJuror(normalized);
-        blocks.forEach(b => onAddJurorBlock?.(b));
+        if (onAddJurorBlocks) {
+          onAddJurorBlocks(blocks);
+        } else {
+          blocks.forEach(b => onAddJurorBlock?.(b));
+        }
         setActiveTab("manual");
       }
     } catch (e: unknown) {
@@ -620,7 +628,10 @@ export function IngestModal({
                   </Button>
                 )}
                 <Button
-                  onClick={() => onOpenChange(false)}
+                  onClick={() => {
+                    onConfirm?.();
+                    onOpenChange(false);
+                  }}
                   className="w-full rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-10 shadow-lg shadow-indigo-200"
                 >
                   Confirm & Done

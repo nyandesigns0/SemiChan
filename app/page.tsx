@@ -66,6 +66,8 @@ export default function HomePage() {
   const sampleProgressIdRef = useRef<string | null>(null);
   const restoringReportRef = useRef(false);
   const [ingestError, setIngestError] = useState<string | null>(null);
+  const [isAnalysisRequested, setIsAnalysisRequested] = useState(false);
+  const [needsAnalysis, setNeedsAnalysis] = useState(false);
 
   useEffect(() => {
     // Only show splash screen on client after mount to avoid hydration mismatch
@@ -149,6 +151,10 @@ export default function HomePage() {
     setJurorBlocks((prev) => [...prev, block]);
   }, []);
 
+  const handleAddJurorBlocks = useCallback((blocks: JurorBlock[]) => {
+    setJurorBlocks((prev) => [...prev, ...blocks]);
+  }, []);
+
   const handleUpdateJurorBlock = useCallback((index: number, block: JurorBlock) => {
     setJurorBlocks((prev) => {
       const next = [...prev];
@@ -163,6 +169,7 @@ export default function HomePage() {
 
   const handleClearJurorBlocks = useCallback(() => {
     setJurorBlocks([]);
+    setIsAnalysisRequested(false);
   }, []);
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
   const [expandedPrimaryConcepts, setExpandedPrimaryConcepts] = useState<Set<string>>(new Set());
@@ -238,7 +245,72 @@ export default function HomePage() {
   
   // Pipeline checkpoint state
   const [checkpointIndex, setCheckpointIndex] = useState(-1);
-  
+
+  // Compute if analysis is needed based on current parameters vs last successful analysis
+  const currentAnalysisSignature = useMemo(() => {
+    return JSON.stringify({
+      blocks: jurorBlocks,
+      kConcepts,
+      similarityThreshold,
+      evidenceRankingParams,
+      clusteringMode,
+      autoK,
+      autoUnit,
+      autoWeights,
+      autoKStability,
+      autoKDominanceThreshold,
+      autoKKPenalty,
+      autoKEpsilon,
+      autoMinClusterSize,
+      minClusterSize,
+      autoDominanceCap,
+      autoDominanceCapThreshold,
+      autoSeed,
+      seedCandidates,
+      seedPerturbations,
+      seedCoherenceWeight,
+      seedSeparationWeight,
+      seedStabilityWeight,
+      seedDominancePenaltyWeight,
+      seedMicroClusterPenaltyWeight,
+      seedLabelPenaltyWeight,
+      seedDominanceThreshold,
+      kMin: kMinOverride,
+      kMax: kMaxOverride,
+      clusterSeed,
+      softMembership,
+      cutType,
+      granularityPercent: cutType === "granularity" ? granularityPercent : undefined,
+      numDimensions,
+      dimensionMode,
+      varianceThreshold,
+      maxScanDimensions,
+      model: selectedModel,
+      anchorAxes,
+    });
+  }, [jurorBlocks, kConcepts, similarityThreshold, evidenceRankingParams, clusteringMode, autoK, autoUnit, autoWeights, autoKStability, autoKDominanceThreshold, autoKKPenalty, autoKEpsilon, autoMinClusterSize, minClusterSize, autoDominanceCap, autoDominanceCapThreshold, autoSeed, seedCandidates, seedPerturbations, seedCoherenceWeight, seedSeparationWeight, seedStabilityWeight, seedDominancePenaltyWeight, seedMicroClusterPenaltyWeight, seedLabelPenaltyWeight, seedDominanceThreshold, kMinOverride, kMaxOverride, clusterSeed, softMembership, cutType, granularityPercent, numDimensions, selectedModel, dimensionMode, varianceThreshold, maxScanDimensions, anchorAxes]);
+
+  const lastSuccessfulSignatureRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (jurorBlocks.length > 0 && currentAnalysisSignature !== lastSuccessfulSignatureRef.current) {
+      setNeedsAnalysis(true);
+    } else {
+      setNeedsAnalysis(false);
+    }
+  }, [currentAnalysisSignature, jurorBlocks.length]);
+
+  useEffect(() => {
+    if (analysis && !restoringReportRef.current) {
+      // When analysis completes, we want to update the last successful signature
+      // but only if it's the final result, not a checkpoint
+      if (checkpointIndex === -1) {
+        lastSuccessfulSignatureRef.current = currentAnalysisSignature;
+        setNeedsAnalysis(false);
+      }
+    }
+  }, [analysis, currentAnalysisSignature, checkpointIndex]);
+
   // Graph view toggles
   const [showAxes, setShowAxes] = useState(true);
   const [showGraph, setShowGraph] = useState(true);
@@ -566,52 +638,20 @@ export default function HomePage() {
         return;
       }
 
+      // If analysis hasn't been explicitly requested, don't run it
+      // Exceptions: sample load (handled by setting isAnalysisRequested to true if desired)
+      // or if we already have an analysis but parameters changed (might want to re-run automatically or not)
+      // The plan says "it should only process the text... only when I confirm and proceed to process it will only start processing"
+      if (!isAnalysisRequested) {
+        return;
+      }
+
       if (sampleLoadPendingRef.current) {
         setSampleProgress((prev) => Math.max(prev, 55));
         setSampleStep("Processing embeddings");
       }
 
-      const requestPayload = {
-        blocks: jurorBlocks,
-        kConcepts,
-        similarityThreshold,
-        evidenceRankingParams,
-        clusteringMode,
-        autoK,
-        autoUnit,
-        autoWeights,
-        autoKStability,
-        autoKDominanceThreshold,
-        autoKKPenalty,
-        autoKEpsilon,
-        autoMinClusterSize,
-        minClusterSize,
-        autoDominanceCap,
-        autoDominanceCapThreshold,
-        autoSeed,
-        seedCandidates,
-        seedPerturbations,
-        seedCoherenceWeight,
-        seedSeparationWeight,
-        seedStabilityWeight,
-        seedDominancePenaltyWeight,
-        seedMicroClusterPenaltyWeight,
-        seedLabelPenaltyWeight,
-        seedDominanceThreshold,
-        kMin: kMinOverride,
-        kMax: kMaxOverride,
-        clusterSeed,
-        softMembership,
-        cutType,
-        granularityPercent: cutType === "granularity" ? granularityPercent : undefined,
-        numDimensions,
-        dimensionMode,
-        varianceThreshold,
-        maxScanDimensions,
-        model: selectedModel,
-        anchorAxes,
-      };
-      const requestSignature = JSON.stringify(requestPayload);
+      const requestSignature = currentAnalysisSignature;
       if (lastStartedSignatureRef.current === requestSignature) {
         return;
       }
@@ -629,7 +669,7 @@ export default function HomePage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            ...requestPayload,
+            ...JSON.parse(requestSignature),
             progressId: sampleLoadPendingRef.current ? sampleProgressIdRef.current ?? undefined : undefined,
           }),
         });
@@ -656,6 +696,7 @@ export default function HomePage() {
           }
           
           setAnalysis({ ...data.analysis, runId: analyzeRunId });
+          setIsAnalysisRequested(false);
         } else {
           const errorData = await response.json().catch(() => ({}));
           console.error(`[Analysis] Analysis failed`, errorData);
@@ -692,11 +733,12 @@ export default function HomePage() {
           lastStartedSignatureRef.current = null;
         }
         setLoadingAnalysis(false);
+        setIsAnalysisRequested(false);
       }
     };
 
     analyze();
-  }, [jurorBlocks, kConcepts, similarityThreshold, evidenceRankingParams, clusteringMode, autoK, autoUnit, autoWeights, autoKStability, autoKDominanceThreshold, autoKKPenalty, autoKEpsilon, autoMinClusterSize, minClusterSize, autoDominanceCap, autoDominanceCapThreshold, autoSeed, seedCandidates, seedPerturbations, seedCoherenceWeight, seedSeparationWeight, seedStabilityWeight, seedDominancePenaltyWeight, seedMicroClusterPenaltyWeight, seedLabelPenaltyWeight, seedDominanceThreshold, kMinOverride, kMaxOverride, clusterSeed, softMembership, cutType, granularityPercent, numDimensions, selectedModel, dimensionMode, varianceThreshold, maxScanDimensions, anchorAxes, addLog]);
+  }, [isAnalysisRequested, jurorBlocks, kConcepts, similarityThreshold, evidenceRankingParams, clusteringMode, autoK, autoUnit, autoWeights, autoKStability, autoKDominanceThreshold, autoKKPenalty, autoKEpsilon, autoMinClusterSize, minClusterSize, autoDominanceCap, autoDominanceCapThreshold, autoSeed, seedCandidates, seedPerturbations, seedCoherenceWeight, seedSeparationWeight, seedStabilityWeight, seedDominancePenaltyWeight, seedMicroClusterPenaltyWeight, seedLabelPenaltyWeight, seedDominanceThreshold, kMinOverride, kMaxOverride, clusterSeed, softMembership, cutType, granularityPercent, numDimensions, selectedModel, dimensionMode, varianceThreshold, maxScanDimensions, anchorAxes, addLog]);
 
   useEffect(() => {
     let ticker: ReturnType<typeof setInterval> | null = null;
@@ -1256,6 +1298,7 @@ export default function HomePage() {
     }));
     setJurorBlocks(taggedBlocks);
     setRawText(DEFAULT_SAMPLE);
+    setIsAnalysisRequested(true);
     
     setIngestError(null);
     setSamplePhase("loading");
@@ -1281,6 +1324,10 @@ export default function HomePage() {
   const handleTurntableSpeedChange = useCallback((speed: number) => {
     const clamped = Math.min(2, Math.max(0, speed));
     setTurntableSpeed(clamped);
+  }, []);
+
+  const handleRunAnalysis = useCallback(() => {
+    setIsAnalysisRequested(true);
   }, []);
 
   const handleReportSaved = useCallback((report: SavedReport) => {
@@ -1353,6 +1400,49 @@ export default function HomePage() {
     setInspectorTab("analysis");
     addLog("info", `Loaded report: ${report.name} (id: ${report.id})`, { phase: "report" });
 
+    // Update the last successful signature so we don't immediately show "needs analysis"
+    lastSuccessfulSignatureRef.current = JSON.stringify({
+      blocks: report.jurorBlocks,
+      kConcepts: params.kConcepts,
+      similarityThreshold: params.similarityThreshold,
+      evidenceRankingParams: params.evidenceRankingParams ?? { semanticWeight: 0.7, frequencyWeight: 0.3 },
+      clusteringMode: params.clusteringMode,
+      autoK: params.autoK,
+      autoUnit: params.autoUnit ?? false,
+      autoWeights: params.autoWeights ?? false,
+      autoKStability: params.autoKStability ?? false,
+      autoKDominanceThreshold: params.autoKDominanceThreshold ?? 0.35,
+      autoKKPenalty: params.autoKKPenalty ?? 0.001,
+      autoKEpsilon: params.autoKEpsilon ?? 0.02,
+      autoMinClusterSize: params.autoMinClusterSize ?? false,
+      minClusterSize: params.minClusterSize,
+      autoDominanceCap: params.autoDominanceCap ?? true,
+      autoDominanceCapThreshold: params.autoDominanceCapThreshold,
+      autoSeed: params.autoSeed ?? false,
+      seedCandidates: params.seedCandidates ?? 64,
+      seedPerturbations: params.seedPerturbations ?? 3,
+      seedCoherenceWeight: params.seedCoherenceWeight ?? 0.3,
+      seedSeparationWeight: params.seedSeparationWeight ?? 0.25,
+      seedStabilityWeight: params.seedStabilityWeight ?? 0.2,
+      seedDominancePenaltyWeight: params.seedDominancePenaltyWeight ?? 0.15,
+      seedMicroClusterPenaltyWeight: params.seedMicroClusterPenaltyWeight ?? 0.05,
+      seedLabelPenaltyWeight: params.seedLabelPenaltyWeight ?? 0.05,
+      seedDominanceThreshold: params.seedDominanceThreshold ?? 0.35,
+      kMin: params.kMinOverride,
+      kMax: params.kMaxOverride,
+      clusterSeed: params.clusterSeed ?? 42,
+      softMembership: params.softMembership,
+      cutType: params.cutType,
+      granularityPercent: params.cutType === "granularity" ? params.granularityPercent : undefined,
+      numDimensions: params.numDimensions,
+      dimensionMode: params.dimensionMode,
+      varianceThreshold: params.varianceThreshold,
+      maxScanDimensions: params.maxScanDimensions ?? 30, // Default if not in report
+      model: report.metadata?.model ?? selectedModel,
+      anchorAxes: report.analysis.anchorAxes ?? [],
+    });
+    setNeedsAnalysis(false);
+
     setTimeout(() => {
       restoringReportRef.current = false;
     }, 150);
@@ -1385,6 +1475,9 @@ export default function HomePage() {
             onDesignerKConceptsChange={setDesignerKConcepts}
             designerLoading={designerLoading}
             onAnalyzeDesigner={handleDesignerAnalysis}
+            onRunAnalysis={handleRunAnalysis}
+            loadingAnalysis={loadingAnalysis}
+            needsAnalysis={needsAnalysis}
           />
 
           <AIControlsAccordion
@@ -1770,8 +1863,10 @@ export default function HomePage() {
         mode="juror"
         jurorBlocks={jurorBlocks}
         onAddJurorBlock={handleAddJurorBlock}
+        onAddJurorBlocks={handleAddJurorBlocks}
         onRemoveJurorBlock={handleRemoveJurorBlock}
         onClearJurorBlocks={handleClearJurorBlocks}
+        onConfirm={handleRunAnalysis}
       />
       <IngestModal
         open={designerModalOpen}

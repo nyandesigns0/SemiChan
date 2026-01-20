@@ -10,6 +10,7 @@ import { JurorBlocksView } from "./JurorBlocksView";
 import { ChevronDown, ChevronUp, FileUp, PenSquare, Settings2, Upload, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils/cn";
 
 interface DataInputPanelProps {
   jurorBlocks: JurorBlock[];
@@ -22,6 +23,9 @@ interface DataInputPanelProps {
   onDesignerKConceptsChange: (v: number) => void;
   designerLoading?: boolean;
   onAnalyzeDesigner: () => void;
+  onRunAnalysis?: () => void;
+  loadingAnalysis?: boolean;
+  needsAnalysis?: boolean;
 }
 
 export function DataInputPanel({
@@ -35,6 +39,9 @@ export function DataInputPanel({
   onDesignerKConceptsChange,
   designerLoading,
   onAnalyzeDesigner,
+  onRunAnalysis,
+  loadingAnalysis,
+  needsAnalysis,
 }: DataInputPanelProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showJurorBlocks, setShowJurorBlocks] = useState(false);
@@ -105,6 +112,40 @@ export function DataInputPanel({
                       <div className="rounded-xl border border-slate-100 bg-slate-50/30 p-2.5">
                         <JurorBlocksView blocks={jurorBlocks} />
                       </div>
+                    </div>
+                  )}
+
+                  {jurorBlocks.length > 0 && (
+                    <div className="pt-2">
+                      <Button
+                        onClick={onRunAnalysis}
+                        disabled={loadingAnalysis || !needsAnalysis}
+                        className={cn(
+                          "w-full rounded-xl font-bold py-3 transition-all",
+                          needsAnalysis 
+                            ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-md hover:shadow-lg animate-pulse" 
+                            : "bg-slate-100 text-slate-400 cursor-default"
+                        )}
+                      >
+                        {loadingAnalysis ? (
+                          <>
+                            <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                            Analyzing...
+                          </>
+                        ) : needsAnalysis ? (
+                          <>
+                            <Settings2 className="mr-2 h-4 w-4" />
+                            Process & Run Analysis
+                          </>
+                        ) : (
+                          "Analysis Up to Date"
+                        )}
+                      </Button>
+                      {needsAnalysis && (
+                        <p className="mt-2 text-[10px] text-center font-bold text-indigo-500 uppercase tracking-tight">
+                          New data detected - Analysis required
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>

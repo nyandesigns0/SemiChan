@@ -1363,17 +1363,17 @@ export function GraphCanvas3D({
           </div>
         )}
 
-        {!empty && recalculating && !loadingSample && (
+        {recalculating && !loadingSample && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 bg-white/70 backdrop-blur-sm pointer-events-none">
             <LoadingProgressCard
-              title="Recalculating Graph"
+              title={empty ? "Analyzing Data" : "Recalculating Graph"}
               step={recalculationStep ?? "Updating layout..."}
               progress={recalculationProgress ?? 0}
               className="pointer-events-auto"
             />
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
               <span className="h-2 w-2 animate-ping rounded-full bg-amber-400" />
-              <span>Applying your latest parameter changes...</span>
+              <span>{empty ? "Generating your first graph..." : "Applying your latest parameter changes..."}</span>
             </div>
           </div>
         )}
