@@ -1,8 +1,12 @@
 import { pipeline, env } from "@xenova/transformers";
 import type { SentenceEmbeddingResult } from "@/types/nlp";
+import path from "path";
+import os from "os";
 
-// Configure transformers.js to use local cache
-env.cacheDir = "./.cache";
+// Configure transformers.js to use a writable cache directory
+// In serverless environments (like Vercel), we must use a writable directory like /tmp
+env.cacheDir = path.join(os.tmpdir(), ".cache");
+env.allowLocalModels = false;
 env.allowRemoteModels = true;
 
 // Singleton pipeline instance for reuse

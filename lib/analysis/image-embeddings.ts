@@ -1,4 +1,6 @@
 import { cacheEmbedding, getCachedEmbedding } from "@/lib/utils/image-cache";
+import path from "path";
+import os from "os";
 
 // Lazy CLIP pipeline loader. Falls back to a deterministic pseudo-embedding when the model is unavailable.
 let clipPipelinePromise: Promise<any> | null = null;
@@ -9,7 +11,9 @@ async function getClipPipeline() {
     try {
       const transformers = await import("@xenova/transformers");
       // Prefer small quantized model for speed
+      transformers.env.cacheDir = path.join(os.tmpdir(), ".cache");
       transformers.env.allowLocalModels = false;
+      transformers.env.allowRemoteModels = true;
       return transformers.pipeline("feature-extraction", "Xenova/clip-vit-base-patch32", {
         quantized: true,
       });
