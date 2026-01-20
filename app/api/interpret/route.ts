@@ -68,10 +68,11 @@ function buildMetaFromAnalysis(
   analysis: any,
   rawExportContext?: any
 ): InterpretationReport["meta"] {
-  const stats = analysis.stats ?? { totalSentences: 0, totalJurors: 0, totalConcepts: 0, stanceCounts: {} };
-  const totalStance = Object.values(stats.stanceCounts || {}).reduce((sum, value) => sum + value, 0);
+  const stats = analysis.stats || { totalSentences: 0, totalJurors: 0, totalConcepts: 0, stanceCounts: {} };
+  const stanceCounts = (stats.stanceCounts || {}) as Record<string, number>;
+  const totalStance = Object.values(stanceCounts).reduce((sum: number, value: number) => sum + value, 0);
   const buildStance = (kind: string) => {
-    const count = stats.stanceCounts?.[kind as keyof typeof stats.stanceCounts] ?? 0;
+    const count = stanceCounts[kind] ?? 0;
     return {
       count,
       pct: totalStance ? Math.round((count / totalStance) * 100) : null

@@ -18,8 +18,8 @@ export function buildInterpretationPromptContext(
   const stats = analysis.stats;
   const statsLine = `Stats: ${stats?.totalSentences ?? "Not provided"} sentences, ${stats?.totalJurors ?? "Not provided"} jurors, ${stats?.totalConcepts ?? "Not provided"} concepts.`;
 
-  const topConcepts = (analysis.concepts ?? [])
-    .map((c) => {
+  const topConcepts = ((analysis.concepts as any[]) ?? [])
+    .map((c: any) => {
       const terms = c.topTerms?.slice(0, 8).join(", ") || "None";
       const evidence = c.representativeSentences?.[0] || "None";
       return `${c.id}: ${c.label ?? c.title ?? "concept"} (Count: ${c.count ?? c.size ?? "?"}, Terms: [${terms}], Evidence: "${evidence}")`;
