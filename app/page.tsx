@@ -22,6 +22,7 @@ import { FloatingDetailsPanel } from "@/components/inspector/FloatingDetailsPane
 import { CollapsibleSidebar } from "@/components/ui/collapsible-sidebar";
 import { useConceptSummarizer } from "@/hooks/useConceptSummarizer";
 import { useAxisLabelEnhancer } from "@/hooks/useAxisLabelEnhancer";
+import { useInterpretationGenerator } from "@/hooks/useInterpretationGenerator";
 import { segmentByJuror } from "@/lib/segmentation/juror-segmenter";
 import { downloadJson, downloadPdfServer } from "@/lib/utils/download";
 import { cn } from "@/lib/utils/cn";
@@ -481,6 +482,14 @@ export default function HomePage() {
   const { enhancedLabels, isLoading: isRefreshingAxisLabels, refreshAxisLabels } =
     useAxisLabelEnhancer(analysis, enableAxisLabelAI, selectedModel, handleAxisLog);
   
+  const { 
+    interpretation, 
+    isGenerating: isGeneratingInterpretation, 
+    progress: interpretationProgress, 
+    stage: interpretationStage,
+    generate: generateInterpretation 
+  } = useInterpretationGenerator(analysis);
+
   // Merge enhanced axis labels with analysis axis labels
   const displayAxisLabels = useMemo(() => {
     if (!analysis?.axisLabels) return undefined;
@@ -1798,6 +1807,13 @@ export default function HomePage() {
             onLoadReport={handleLoadReport}
             reportRefreshToken={reportRefreshToken}
             onReportSaved={handleReportSaved}
+            interpretation={interpretation}
+            isGeneratingInterpretation={isGeneratingInterpretation}
+            interpretationProgress={interpretationProgress}
+            interpretationStage={interpretationStage}
+            onGenerateInterpretation={() => generateInterpretation(analysis!, rawDataExportContext)}
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
           />
 
         </div>

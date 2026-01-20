@@ -3,6 +3,7 @@ import type { AxisSynthesisRequest, AxisSynthesisResponse } from "@/types/api";
 import type { AnalysisResult } from "@/types/analysis";
 
 import { DEFAULT_MODEL } from "@/constants/nlp-constants";
+import { normalizeModelId } from "@/lib/utils/api-utils";
 import { loadPrompts, processPrompt } from "@/lib/prompts/prompt-processor";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -92,7 +93,7 @@ export async function POST(request: NextRequest) {
           "Authorization": `Bearer ${OPENAI_API_KEY}`
         },
         body: JSON.stringify({
-          model: modelName.toLowerCase().replace(/\s+/g, "-"),
+          model: normalizeModelId(modelName),
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt }

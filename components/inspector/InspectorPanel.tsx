@@ -2,11 +2,13 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { formatCostReadable } from "@/lib/utils/api-utils";
-import { Terminal, BarChart3, ChevronDown, ChevronUp, Users, MessageSquare, Lightbulb, Layers, Activity, Hash, Link as LinkIcon, FileText } from "lucide-react";
+import { Terminal, BarChart3, ChevronDown, ChevronUp, Users, MessageSquare, Lightbulb, Layers, Activity, Hash, Link as LinkIcon, FileText, Zap, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { InspectorConsole, type LogEntry } from "./InspectorConsole";
 import { AnalysisReport } from "@/components/inspector/AnalysisReport";
+import { InterpretationDashboard } from "@/components/inspector/InterpretationDashboard";
 import type { RawDataExportContext } from "@/components/inspector/export-types";
 import type { AnalysisResult } from "@/types/analysis";
 import type { JurorBlock } from "@/types/nlp";
@@ -14,8 +16,11 @@ import type { ConceptInsight } from "@/hooks/useConceptSummarizer";
 import { ReportsList } from "./ReportsList";
 import type { SavedReport } from "@/types/analysis";
 import { getReportCount } from "@/lib/utils/report-storage";
+import type { InterpretationReport } from "@/types/interpretation";
+import { SUPPORTED_MODELS } from "@/constants/nlp-constants";
+import { Label } from "@/components/ui/label";
 
-export type InspectorTab = "console" | "analysis" | "reports";
+export type InspectorTab = "console" | "analysis" | "interpretation" | "reports";
 
 interface InspectorPanelProps {
   logs: LogEntry[];
@@ -46,6 +51,14 @@ interface InspectorPanelProps {
   reportRefreshToken?: number;
   /** Notify when a report is saved */
   onReportSaved?: (report: SavedReport) => void;
+  /** Interpretation data */
+  interpretation?: InterpretationReport | null;
+  isGeneratingInterpretation?: boolean;
+  interpretationProgress?: number;
+  interpretationStage?: string | null;
+  onGenerateInterpretation?: () => void;
+  selectedModel?: string;
+  onModelChange?: (model: string) => void;
 }
 
 const MIN_HEIGHT = 40;
@@ -73,6 +86,13 @@ export function InspectorPanel({
   onLoadReport,
   reportRefreshToken = 0,
   onReportSaved,
+  interpretation,
+  isGeneratingInterpretation,
+  interpretationProgress,
+  interpretationStage,
+  onGenerateInterpretation,
+  selectedModel,
+  onModelChange,
 }: InspectorPanelProps) {
   const [internalTab, setInternalTab] = useState<InspectorTab>("console");
   const [height, setHeight] = useState(MIN_HEIGHT);
@@ -204,6 +224,12 @@ export function InspectorPanel({
             label="Data"
           />
           <TabButton
+            active={currentTab === "interpretation"}
+            onClick={() => handleTabChange("interpretation")}
+            icon={<Activity className="h-3.5 w-3.5" />}
+            label="Analysis"
+          />
+          <TabButton
             active={currentTab === "reports"}
             onClick={() => handleTabChange("reports")}
             icon={<FileText className="h-3.5 w-3.5" />}
@@ -320,6 +346,96 @@ export function InspectorPanel({
               />
           </div>
         )}
+          {currentTab === "interpretation" && (
+            <div className="h-full overflow-y-auto bg-white">
+              {interpretation ? (
+                <InterpretationDashboard 
+                  report={interpretation} 
+                  analysis={analysis}
+                  rawExportContext={rawExportContext}
+                  onRefresh={onGenerateInterpretation}
+                  isGenerating={isGeneratingInterpretation}
+                  progress={interpretationProgress}
+                  stage={interpretationStage}
+                  selectedModel={selectedModel}
+                  onModelChange={onModelChange}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full p-8 text-center space-y-6">
+                  <div className="relative">
+                    <Activity className={cn(
+                      "h-16 w-16 text-slate-200 transition-all duration-1000",
+                      isGeneratingInterpretation && "text-blue-500 animate-pulse scale-110"
+                    )} />
+                    {isGeneratingInterpretation && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-[10px] font-black text-blue-600">{interpretationProgress}%</span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="max-w-md space-y-2">
+                    <h3 className="text-lg font-bold text-slate-800">
+                      {isGeneratingInterpretation ? "Generating AI Interpretation..." : "No Interpretation Generated"}
+                    </h3>
+                    {isGeneratingInterpretation && (
+                      <p className="text-sm text-slate-500 leading-relaxed">
+                        {`Currently ${interpretationStage || 'processing'} analysis data into actionable architectural strategy. This may take a minute.`}
+                      </p>
+                    )}
+                  </div>
+
+                  {!isGeneratingInterpretation && (
+                    <div className="flex flex-col items-center gap-6 w-full max-w-sm">
+                      <div className="w-full space-y-2 text-left">
+                        <Label className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-500">
+                          <Sparkles className="h-3 w-3" />
+                          Language Model
+                        </Label>
+                        <div className="relative group">
+                          <select
+                            value={selectedModel}
+                            onChange={(e) => onModelChange?.(e.target.value)}
+                            className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold uppercase tracking-tight text-slate-700 outline-none transition-all hover:border-slate-300 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
+                          >
+                            {SUPPORTED_MODELS.map((m) => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                          </select>
+                          <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 group-hover:text-slate-600">
+                            <Sparkles className="h-3.5 w-3.5" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <Button 
+                        onClick={onGenerateInterpretation} 
+                        disabled={!analysis || isGeneratingInterpretation}
+                        className="w-full bg-slate-900 text-white hover:bg-slate-800 px-8 py-6 rounded-2xl font-bold shadow-xl shadow-slate-900/10 transition-all active:scale-95"
+                      >
+                        <Zap className="mr-2 h-5 w-5 fill-current text-yellow-400" />
+                        Generate Design Strategy
+                      </Button>
+                    </div>
+                  )}
+
+                  {isGeneratingInterpretation && (
+                    <div className="w-64 space-y-2">
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                        <div 
+                          className="h-full bg-blue-500 transition-all duration-500" 
+                          style={{ width: `${interpretationProgress}%` }} 
+                        />
+                      </div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        Stage: {interpretationStage || 'Initiating'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           {currentTab === "reports" && (
             <div className="h-full overflow-y-auto bg-white">
               <ReportsList

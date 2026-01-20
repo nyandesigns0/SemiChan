@@ -34,6 +34,28 @@ export function calculateCost(model: string, usage?: TokenUsage): number {
   return cost;
 }
 
+/**
+ * Normalizes a model name (potentially with spaces or custom branding)
+ * into a valid OpenAI model ID.
+ */
+export function normalizeModelId(model: string): string {
+  const m = model.toLowerCase();
+  
+  if (m.includes("gpt-4o-mini") || m.includes("mini") || m.includes("nano")) {
+    return "gpt-4o-mini";
+  }
+  if (m.includes("gpt-4o") || m.includes("gpt-4.1") || m.includes("gpt-4")) {
+    return "gpt-4o";
+  }
+  if (m.includes("gpt-5")) {
+    // GPT-5 doesn't exist yet, fallback to gpt-4o for now
+    return "gpt-4o";
+  }
+  
+  // Default fallback
+  return "gpt-4o-mini";
+}
+
 export function formatCost(cost: number): string {
   if (cost === 0) return "$0.00";
   if (cost < 0.0001) return `<$0.0001`;

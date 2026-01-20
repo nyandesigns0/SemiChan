@@ -172,7 +172,7 @@ export const SUPPORTED_MODELS = [
   "GPT-4o-mini",
 ];
 
-export const DEFAULT_MODEL = "GPT-4.1 mini";
+export const DEFAULT_MODEL = "GPT-4o-mini";
 
 export const DEFAULT_SAMPLE = `
 Sarah Broadstock

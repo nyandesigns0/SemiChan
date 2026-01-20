@@ -1,4 +1,5 @@
 import { DEFAULT_MODEL } from "@/constants/nlp-constants";
+import { normalizeModelId } from "@/lib/utils/api-utils";
 import { loadPrompts, processPrompt } from "@/lib/prompts/prompt-processor";
 import { evaluateLabelQuality } from "./label-quality";
 import { getFallbackLabel } from "./label-templates";
@@ -101,7 +102,7 @@ export async function synthesizeConceptLabel(
           "Authorization": `Bearer ${OPENAI_API_KEY}`
         },
         body: JSON.stringify({
-          model: model.toLowerCase().replace(/\s+/g, "-"),
+          model: normalizeModelId(model),
           messages: [
             { role: "system", content: systemPrompt + (attempts > 0 ? "\n\nCRITICAL: Your previous response failed quality checks. Please strictly follow all constraints, especially the word count and noun phrase requirements." : "") },
             { role: "user", content: userPrompt }
