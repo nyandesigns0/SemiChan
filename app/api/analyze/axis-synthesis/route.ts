@@ -9,7 +9,6 @@ import { loadPrompts, processPrompt } from "@/lib/prompts/prompt-processor";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 type AxisSynthesisPayload = AxisSynthesisRequest & {
-  analysis?: AnalysisResult;
   corpus_domain?: string;
   style_preset?: string;
 };
@@ -65,8 +64,10 @@ export async function POST(request: NextRequest) {
           .map(n => n.label);
       };
 
-      const negTopConcepts = Number.isFinite(axisIndex) ? getTopConceptsNearPole(axisIndex, 'neg') : [];
-      const posTopConcepts = Number.isFinite(axisIndex) ? getTopConceptsNearPole(axisIndex, 'pos') : [];
+      const negTopConcepts = axisLabels[axisIdx]?.negativeTopConcepts ?? 
+        (Number.isFinite(axisIndex) ? getTopConceptsNearPole(axisIndex, 'neg') : []);
+      const posTopConcepts = axisLabels[axisIdx]?.positiveTopConcepts ?? 
+        (Number.isFinite(axisIndex) ? getTopConceptsNearPole(axisIndex, 'pos') : []);
 
       const variables = {
         AXIS_ID: axisIdx,

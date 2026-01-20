@@ -95,10 +95,12 @@ export interface AxisSynthesisRequest {
     positive: string;
     negativeContext: { keywords: string[]; sentences: string[] };
     positiveContext: { keywords: string[]; sentences: string[] };
+    negativeTopConcepts?: string[];
+    positiveTopConcepts?: string[];
     name?: string;
   }>;
   model?: string;
-  analysis?: AnalysisResult;
+  analysis?: any; // Pruned analysis object to avoid 413 Payload Too Large
 }
 
 export interface AxisSynthesisResponse {

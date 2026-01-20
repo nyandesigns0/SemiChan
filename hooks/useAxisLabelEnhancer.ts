@@ -146,19 +146,35 @@ export function useAxisLabelEnhancer(
         const getConceptContext = (id: string) => {
           const concept = analysisSnapshot.concepts.find(c => c.id === id);
           if (!concept) return { keywords: [], sentences: [] };
+          // Only send the first 5 sentences and top 10 keywords to minimize payload
           return {
-            keywords: concept.topTerms,
-            sentences: concept.representativeSentences || []
+            keywords: concept.topTerms.slice(0, 10),
+            sentences: (concept.representativeSentences || []).slice(0, 5)
           };
+        };
+
+        const getTopConceptsNearPole = (dim: number, direction: 'neg' | 'pos', limit: number = 3) => {
+          if (!analysisSnapshot.nodes) return [];
+          return analysisSnapshot.nodes
+            .filter(n => n.type === 'concept' && n.pcValues && n.pcValues[dim] !== undefined)
+            .map(n => ({ label: n.label, score: n.pcValues![dim] }))
+            .sort((a, b) => direction === 'neg' ? a.score - b.score : b.score - a.score)
+            .slice(0, limit)
+            .map(n => n.label);
         };
 
         const axisLabelsRequest: any = {};
         Object.entries(axisLabels).forEach(([key, axis]) => {
+          const aliasMap: Record<string, number> = { 'x': 0, 'y': 1, 'z': 2 };
+          const axisIndex = aliasMap[key.toLowerCase()] ?? Number.parseInt(key, 10);
+          
           axisLabelsRequest[key] = {
             negative: axis.negative,
             positive: axis.positive,
             negativeContext: getConceptContext(axis.negativeId),
             positiveContext: getConceptContext(axis.positiveId),
+            negativeTopConcepts: Number.isFinite(axisIndex) ? getTopConceptsNearPole(axisIndex, 'neg') : [],
+            positiveTopConcepts: Number.isFinite(axisIndex) ? getTopConceptsNearPole(axisIndex, 'pos') : [],
             name: axis.name || axis.synthesizedName,
           };
         });
@@ -169,7 +185,10 @@ export function useAxisLabelEnhancer(
           body: JSON.stringify({
             axisLabels: axisLabelsRequest,
             model: selectedModel,
-            analysis: analysisSnapshot, // Pass analysis for context (top concepts, variance)
+            // Send only the minimal variance stats to avoid 413 Payload Too Large
+            analysis: {
+              varianceStats: analysisSnapshot.varianceStats,
+            },
           }),
         });
 
