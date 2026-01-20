@@ -34,7 +34,7 @@ export function buildInterpretationPromptContext(
   const axisLine = options.axisDescriptions?.length
     ? `Axis descriptions: ${options.axisDescriptions.join(" ; ")}.`
     : analysis.axisLabels 
-      ? `Axis descriptions: ${Object.entries(analysis.axisLabels).map(([id, axis]) => `${id}: ${axis.name || axis.synthesizedName || (axis.negative + " vs " + axis.positive)}`).join(" ; ")}.`
+      ? `Axis descriptions: ${Object.entries(analysis.axisLabels as Record<string, any>).map(([id, axis]: [string, any]) => `${id}: ${axis.name || axis.synthesizedName || (axis.negative + " vs " + axis.positive)}`).join(" ; ")}.`
       : "Axis descriptions: Not provided in the report.";
 
   const paramLine = buildParameterLine(rawExportContext);
