@@ -100,7 +100,7 @@ export function useInterpretationGenerator(analysis: AnalysisResult | null) {
   }, []);
 
   const generate = useCallback(
-    async (analysisToGenerate: AnalysisResult, rawExport?: RawDataExportContext) => {
+    async (analysisToGenerate: AnalysisResult, rawExport?: RawDataExportContext, model?: string) => {
       if (!analysisToGenerate) return;
       
       setState((prev) => ({
@@ -112,12 +112,38 @@ export function useInterpretationGenerator(analysis: AnalysisResult | null) {
       }));
 
       try {
+        // Prune the analysis result to avoid "Payload Too Large" (413) errors
+        // We only send the fields required by the interpretation API
+        const prunedAnalysis = {
+          stats: analysisToGenerate.stats,
+          concepts: analysisToGenerate.concepts.map(c => ({
+            id: c.id,
+            label: c.label,
+            title: c.title,
+            count: c.count,
+            size: c.size,
+            topTerms: c.topTerms,
+            representativeSentences: c.representativeSentences
+          })),
+          jurors: analysisToGenerate.jurors,
+          axisLabels: analysisToGenerate.axisLabels,
+          finalKUsed: analysisToGenerate.finalKUsed,
+          analysisBuildId: analysisToGenerate.analysisBuildId,
+          reportHealth: analysisToGenerate.reportHealth,
+        };
+
+        const prunedRawExport = rawExport ? {
+          analysisParams: rawExport.analysisParams,
+          exportTimestamp: rawExport.exportTimestamp
+        } : undefined;
+
         const response = await fetch("/api/interpret", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            analysis: analysisToGenerate,
-            rawExportContext: rawExport
+            analysis: prunedAnalysis,
+            rawExportContext: prunedRawExport,
+            model
           })
         });
         if (!response.ok) {

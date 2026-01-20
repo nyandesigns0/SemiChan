@@ -11,8 +11,8 @@ import type { InterpretationReport } from "@/types/interpretation";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 type InterpretationRequestBody = {
-  analysis: AnalysisResult;
-  rawExportContext?: RawDataExportContext;
+  analysis: any; // Using any to allow pruned objects from the client
+  rawExportContext?: any;
   axisDescriptions?: string[];
   jurorHighlights?: string[];
   model?: string;
@@ -65,8 +65,8 @@ async function callOpenAI(prompt: string, model: string) {
 }
 
 function buildMetaFromAnalysis(
-  analysis: AnalysisResult,
-  rawExportContext?: RawDataExportContext
+  analysis: any,
+  rawExportContext?: any
 ): InterpretationReport["meta"] {
   const stats = analysis.stats ?? { totalSentences: 0, totalJurors: 0, totalConcepts: 0, stanceCounts: {} };
   const totalStance = Object.values(stats.stanceCounts || {}).reduce((sum, value) => sum + value, 0);
@@ -100,8 +100,8 @@ function buildMetaFromAnalysis(
 }
 
 function assembleReport(
-  analysis: AnalysisResult,
-  rawExportContext: RawDataExportContext | undefined,
+  analysis: any,
+  rawExportContext: any | undefined,
   stageOutputs: Record<string, any>
 ): InterpretationReport {
   const meta = buildMetaFromAnalysis(analysis, rawExportContext);

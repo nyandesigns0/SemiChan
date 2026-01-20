@@ -11,8 +11,8 @@ interface ContextOptions {
 }
 
 export function buildInterpretationPromptContext(
-  analysis: AnalysisResult,
-  rawExportContext?: RawDataExportContext,
+  analysis: any,
+  rawExportContext?: any,
   options: ContextOptions = {}
 ): InterpretationPromptContext {
   const stats = analysis.stats;

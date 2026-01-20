@@ -1811,7 +1811,7 @@ export default function HomePage() {
             isGeneratingInterpretation={isGeneratingInterpretation}
             interpretationProgress={interpretationProgress}
             interpretationStage={interpretationStage}
-            onGenerateInterpretation={() => generateInterpretation(analysis!, rawDataExportContext)}
+            onGenerateInterpretation={() => generateInterpretation(analysis!, rawDataExportContext, selectedModel)}
             selectedModel={selectedModel}
             onModelChange={setSelectedModel}
           />
