@@ -145,6 +145,8 @@ export async function buildAnalysis(
     conceptCountPolicyEnabled?: boolean;
     jurorNormalizationEnabled?: boolean;
     reportHealthEnabled?: boolean;
+    model?: string;
+    selectedModel?: string; // Legacy/alt name
     onLog?: (type: "analysis" | "quality" | "hierarchy", message: string, data?: any) => void;
     onProgress?: (payload: { progress: number; step: string }) => void;
   } = {}
@@ -380,7 +382,7 @@ export async function buildAnalysis(
       juror: baseSentence?.juror ?? "Unattributed",
       sentence: u.text,
       stance: baseSentence?.stance ?? "neutral",
-      sourceTag: baseSentence?.sourceTag,
+      sourceTags: baseSentence?.sourceTags ?? [],
     };
   });
 
@@ -1428,7 +1430,7 @@ export async function buildAnalysis(
       top_ngrams: conceptTopTermsMap[c] || [],
       evidence_sentences: clusterSentences,
       stance_mix,
-      model: options.model || DEFAULT_MODEL,
+      model: options.model || options.selectedModel || DEFAULT_MODEL,
       concept_share_pct: clusterSentenceIndices.length / docs.length,
       centroid_semantic_terms: conceptTopTermsMap[c] || [],
       juror_contribution: Object.entries(stanceCounts)
@@ -1534,7 +1536,7 @@ export async function buildAnalysis(
       top_ngrams: getClusterTopTerms(detailCentroids[d], bm25Discriminative, clusterSentences, docs, 12),
       evidence_sentences: clusterSentences,
       stance_mix,
-      model: options.selectedModel || DEFAULT_MODEL,
+      model: options.model || options.selectedModel || DEFAULT_MODEL,
       concept_share_pct: clusterSentenceIndices.length / docs.length,
       centroid_semantic_terms: getClusterTopTerms(detailCentroids[d], bm25Discriminative, clusterSentences, docs, 12),
       juror_contribution: Object.entries(stanceCounts)

@@ -10,8 +10,8 @@ export interface InterpretationJobState {
 
 export const jobStore = (() => {
   const globalKey = "__interpretationJobStore";
-  if (!globalThis[globalKey]) {
-    globalThis[globalKey] = new Map<string, InterpretationJobState>();
+  if (!(globalThis as any)[globalKey]) {
+    (globalThis as any)[globalKey] = new Map<string, InterpretationJobState>();
   }
-  return globalThis[globalKey] as Map<string, InterpretationJobState>;
+  return (globalThis as any)[globalKey] as Map<string, InterpretationJobState>;
 })();

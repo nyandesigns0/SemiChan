@@ -616,8 +616,8 @@ export function evaluateKRangeWithAutoSeed(
       
       if (topScorer.k !== winner.k) {
         const diff = topScorer.score - winner.score;
-        if (winner.maxClusterShare < topScorer.maxClusterShare) {
-          reason = `${objective}. ${candidatesInfo}. K=${winner.k} selected over K=${topScorer.k} due to better distribution (${(winner.maxClusterShare * 100).toFixed(1)}% vs ${(topScorer.maxClusterShare * 100).toFixed(1)}% max share) within epsilon range (score diff=${diff.toFixed(4)})`;
+        if ((winner.maxClusterShare ?? 0) < (topScorer.maxClusterShare ?? 0)) {
+          reason = `${objective}. ${candidatesInfo}. K=${winner.k} selected over K=${topScorer.k} due to better distribution (${((winner.maxClusterShare ?? 0) * 100).toFixed(1)}% vs ${((topScorer.maxClusterShare ?? 0) * 100).toFixed(1)}% max share) within epsilon range (score diff=${diff.toFixed(4)})`;
         } else {
           reason = `${objective}. ${candidatesInfo}. K=${winner.k} selected as a more parsimonious or stable model within epsilon range of K=${topScorer.k} (score diff=${diff.toFixed(4)})`;
         }

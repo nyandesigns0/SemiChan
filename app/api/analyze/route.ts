@@ -189,6 +189,7 @@ export async function POST(request: NextRequest) {
           logs.push({ type, message, data });
         },
         anchorAxes,
+        model,
       }
     );
 

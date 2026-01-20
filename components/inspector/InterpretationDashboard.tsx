@@ -27,7 +27,8 @@ import type {
   AxisInterpretation, 
   ConceptInterpretation, 
   JurorInterpretation, 
-  ActionStep 
+  ActionStep,
+  StanceDatum
 } from "@/types/interpretation";
 import type { AnalysisResult } from "@/types/analysis";
 import type { RawDataExportContext } from "./export-types";
@@ -376,7 +377,7 @@ function MetaChip({ label, value }: { label: string, value: any }) {
   );
 }
 
-function StancePill({ label, data, color }: { label: string, data: { count: any, pct: any }, color: string }) {
+function StancePill({ label, data, color }: { label: string, data: StanceDatum, color: string }) {
   const dotColor = {
     emerald: "bg-[#1e8e5a]",
     red: "bg-[#c23b3b]",
@@ -387,8 +388,8 @@ function StancePill({ label, data, color }: { label: string, data: { count: any,
   return (
     <span className="inline-flex items-center gap-2 bg-[#151c25]/55 border border-[#1f2630] px-3 py-1.5 rounded-full text-xs text-[#a9b6c7]">
       <span className={cn("w-2 h-2 rounded-full", dotColor)} />
-      {label}: <b className="text-[#e8eef6] font-bold">{data.count}</b>
-      <span className="text-[#7e8b9c]">({data.pct}%)</span>
+      {label}: <b className="text-[#e8eef6] font-bold">{data.count ?? 0}</b>
+      <span className="text-[#7e8b9c]">({data.pct ?? 0}%)</span>
     </span>
   );
 }

@@ -63,7 +63,7 @@ export function segmentByJuror(raw: string): JurorBlock[] {
   const text = normalizeWhitespace(raw);
   const lines = text.split("\n").map((l) => l.trim());
 
-  const blocks: JurorBlock[] = [];
+  const blocks: { juror: string; text: string }[] = [];
   let currentName: string | null = null;
   let buf: string[] = [];
 

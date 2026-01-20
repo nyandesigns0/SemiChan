@@ -34,6 +34,7 @@ function toSentenceRecords(blocks: DesignerBlock[]): SentenceRecord[] {
         juror: block.designer,
         sentence: sentences[i],
         stance: "neutral" as Stance,
+        sourceTags: [],
       });
     }
   }

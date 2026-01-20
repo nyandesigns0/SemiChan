@@ -46,9 +46,9 @@ export function evaluateReportHealth(analysis: AnalysisResult): ReportHealth {
   else if (varianceValue < 0.75) varianceStatus = "warning";
 
   // 4. Single-Juror Concepts
-  const concepts = analysis.concepts || [];
-  const singleJurorCount = concepts.filter(c => {
-    const jurors = c.meta?.jurorDistribution as any[];
+  const singleJurorCount = (analysis.nodes || []).filter(n => {
+    if (n.type !== "concept") return false;
+    const jurors = (n.meta as any)?.jurorDistribution as any[];
     return jurors && jurors.length === 1;
   }).length;
   const singleJurorRatio = totalConcepts > 0 ? singleJurorCount / totalConcepts : 0;

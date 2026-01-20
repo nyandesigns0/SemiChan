@@ -379,11 +379,11 @@ export function AnalysisReport({ analysis, jurorBlocks, axisLabels, enableAxisLa
   }, [analysis]);
 
   const conceptJurorDistribution = useMemo(() => {
-    if (!analysis) return new Map<string, Array<{ juror: string; weight: number }>>();
+    if (!analysis) return new Map<string, Array<{ juror: string; weight: number; count: number }>>();
     return new Map(
       analysis.nodes
         .filter((n) => n.type === "concept" && Array.isArray((n.meta as any)?.jurorDistribution))
-        .map((n) => [n.id, (n.meta as any).jurorDistribution as Array<{ juror: string; weight: number }>])
+        .map((n) => [n.id, (n.meta as any).jurorDistribution as Array<{ juror: string; weight: number; count: number }>])
     );
   }, [analysis]);
 
