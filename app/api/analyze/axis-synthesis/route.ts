@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { AxisSynthesisRequest, AxisSynthesisResponse } from "@/types/api";
 import type { AnalysisResult } from "@/types/analysis";
+import type { GraphNode } from "@/types/graph";
 
 import { DEFAULT_MODEL } from "@/constants/nlp-constants";
 import { normalizeModelId } from "@/lib/utils/api-utils";
@@ -56,9 +57,9 @@ export async function POST(request: NextRequest) {
       // Find top concepts near each pole
       const getTopConceptsNearPole = (dim: number, direction: 'neg' | 'pos', limit: number = 3) => {
         if (!analysis?.nodes) return [];
-        return analysis.nodes
-          .filter(n => n.type === 'concept' && n.pcValues && n.pcValues[dim] !== undefined)
-          .map(n => ({ label: n.label, score: n.pcValues![dim] }))
+        return (analysis.nodes as GraphNode[])
+          .filter((n: GraphNode) => n.type === 'concept' && n.pcValues && n.pcValues[dim] !== undefined)
+          .map((n: GraphNode) => ({ label: n.label, score: n.pcValues![dim] }))
           .sort((a, b) => direction === 'neg' ? a.score - b.score : b.score - a.score)
           .slice(0, limit)
           .map(n => n.label);
